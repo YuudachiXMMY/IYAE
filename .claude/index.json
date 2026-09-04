@@ -1,0 +1,274 @@
+{
+  "timestamp": "2026-06-19T07:23:23",
+  "project": "Clossette",
+  "description": "AI-powered fashion marketplace with conversational styling, 3D/AR try-on, and indie designer marketplace",
+  "modules": [
+    {
+      "path": "server",
+      "language": "Java 22 / Spring Boot 3.4",
+      "entryPoint": "src/main/java/com/clossette/ClossettApplication.java",
+      "sourceFiles": 168,
+      "testDir": "src/test/java/com/clossette/",
+      "testsExist": true,
+      "testFiles": 48,
+      "testMethods": 338,
+      "testSupport": 4,
+      "configFiles": [
+        "build.gradle.kts",
+        "settings.gradle.kts",
+        "src/main/resources/application.yml",
+        "src/main/resources/application-dev.yml",
+        "src/main/resources/application-prod.yml",
+        "src/test/resources/application-test.yml",
+        "Dockerfile"
+      ],
+      "keyPaths": {
+        "controllers": "src/main/java/com/clossette/controller/ (21 files)",
+        "services": "src/main/java/com/clossette/service/ (27 files, incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway + GuestAvatarService)",
+        "repositories": "src/main/java/com/clossette/repository/ (22 files)",
+        "entities": "src/main/java/com/clossette/entity/ (22 files + 9 enums)",
+        "dtos": "src/main/java/com/clossette/dto/ (46 files)",
+        "ai": "src/main/java/com/clossette/ai/ (7 files)",
+        "security": "src/main/java/com/clossette/security/ (3 files)",
+        "config": "src/main/java/com/clossette/config/ (9 files: SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig)",
+        "util": "src/main/java/com/clossette/util/ (1 file: GlbPlaceholderGenerator)",
+        "migrations": "src/main/resources/db/migration/ (10 files: V1-V10)"
+      },
+      "coverage": {
+        "entryPoint": true,
+        "apiEndpoints": true,
+        "dataModel": true,
+        "security": true,
+        "rateLimiting": true,
+        "emailVerification": true,
+        "passwordReset": true,
+        "aiProviders": true,
+        "dataSeeder": true,
+        "schedulerConfig": true,
+        "globalExceptionHandler": true,
+        "generationLifecycle": true,
+        "riggingLifecycle": true,
+        "productionSmtpConfig": true,
+        "publicProfiles": true,
+        "avatarGeneration": true,
+        "communityPostsFollows": true,
+        "designerRoleRegistration": true,
+        "suggestionChips": true,
+        "savedLookItems": true,
+        "avatarGenderMapping": true,
+        "stripeCheckout": true,
+        "guestAvatar": true,
+        "cartSizeSelection": true,
+        "tests": true,
+        "percentage": 100
+      }
+    },
+    {
+      "path": "web",
+      "language": "TypeScript / Next.js 16",
+      "entryPoint": "app/layout.tsx",
+      "sourceFiles": 161,
+      "testDir": "__tests__/",
+      "testsExist": true,
+      "testFiles": 17,
+      "testMethods": 227,
+      "e2eTestDir": "e2e/",
+      "e2eTestFiles": 8,
+      "e2eTestMethods": 60,
+      "configFiles": [
+        "package.json",
+        "tsconfig.json",
+        "next.config.ts",
+        "tailwind.config.ts",
+        "postcss.config.mjs",
+        "eslint.config.mjs",
+        "components.json",
+        "middleware.ts",
+        "vitest.config.ts",
+        "playwright.config.ts"
+      ],
+      "keyPaths": {
+        "pages": "app/ (37 page routes + 2 API routes + not-found.tsx + error.tsx + layout.tsx)",
+        "components": "components/ (74 app-specific + 19 shadcn/ui = 93 total)",
+        "componentSubdirs": "home/ (18), register/ (7), profile/ (9), outfits/ (6), designer/ (2), community/ (1), root (31 -- incl. 3D/AR viewers)",
+        "uiPrimitives": "components/ui/ (19 shadcn components)",
+        "lib": "lib/ (api.ts, auth-context.tsx, cart-context.tsx, utils.ts, profile-surface.ts, social-graph.ts, profile-options.ts, community-feed.ts, profile-dashboard.ts, outfit-slots.ts, pose-config.ts, demo-looks.ts, email-templates.ts -- 13 domain modules)",
+        "hooks": "lib/hooks/ (11 custom hooks: useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation)",
+        "errorBoundaries": "app/not-found.tsx, app/error.tsx",
+        "staticAssets": "public/assets/images/products/placeholder.svg, public/models/demo-outfit.glb, public/models/default-avatar.glb, public/models/poses/",
+        "tests": "__tests__/ (setup.ts + 17 test files)",
+        "e2eTests": "e2e/ (8 spec files)"
+      },
+      "coverage": {
+        "entryPoint": true,
+        "pageRoutes": true,
+        "components": true,
+        "apiClient": true,
+        "authFlow": true,
+        "designSystem": true,
+        "errorBoundaries": true,
+        "suspensePattern": true,
+        "middleware": true,
+        "cspHeaders": true,
+        "abortSignal": true,
+        "testInfra": true,
+        "tests": true,
+        "e2eTests": true,
+        "authHelpers": true,
+        "riggingHelpers": true,
+        "outfitTypes": true,
+        "communityModules": true,
+        "profileSurface": true,
+        "profileOptions": true,
+        "socialGraph": true,
+        "profileDashboard": true,
+        "communityStateHook": true,
+        "riggingStatusHook": true,
+        "outfitRiggingStatusHook": true,
+        "poseAnimation": true,
+        "outfitSlots": true,
+        "skeletonContext": true,
+        "suggestionChips": true,
+        "poseSelector": true,
+        "cssGradientVariables": true,
+        "staticAssets": true,
+        "sizeSelector": true,
+        "demoLooks": true,
+        "emailTemplates": true,
+        "designerComponents": true,
+        "percentage": 100
+      }
+    },
+    {
+      "path": "worker",
+      "language": "Python 3.12",
+      "entryPoint": "main.py",
+      "sourceFiles": 22,
+      "testDir": "tests/",
+      "testsExist": true,
+      "testFiles": 15,
+      "testMethods": 292,
+      "configFiles": [
+        "requirements.txt",
+        "Dockerfile",
+        "Dockerfile.rigging"
+      ],
+      "keyPaths": {
+        "taskQueue": "task_queue.py (claim, complete, fail, retry, reclaim_stale)",
+        "avatarTaskQueue": "avatar_task_queue.py (claim, complete, fail, reclaim_stale)",
+        "riggingTaskQueue": "rigging_task_queue.py (claim, complete, fail, reclaim_stale)",
+        "validator": "validator.py (validate_glb, validate_usdz, validate_triangle_count, validate_bounding_box, validate_no_nan, validate_metadata, validate_rigged_glb, validate_skin_metadata, validate_required_bones)",
+        "providers": "providers/ (stub_generator.py, tripo_generator.py, meshy_generator.py, smplx_provider.py, smplx_stub_provider.py, stub_rigging_provider.py, blender_rigging_provider.py, python_rigging_provider.py, canonical_skeleton.py, mesh_preflight.py, weight_transfer.py, skinned_glb_writer.py, a_pose.py, scale_normalizer.py)",
+        "blenderScripts": "providers/blender_scripts/ (canonical_skeleton.py, rig_garment.py, fbx_to_pose_glb.py)",
+        "scripts": "scripts/ (generate_pose_glbs.py, import_fbx_pose.py, import_smplx_pose.py, pose_manifest.py)",
+        "tests": "tests/ (15 test files, 292 tests)"
+      },
+      "coverage": {
+        "entryPoint": true,
+        "providers": true,
+        "taskQueue": true,
+        "taskQueueRetry": true,
+        "taskQueueReclaim": true,
+        "avatarTaskQueue": true,
+        "riggingTaskQueue": true,
+        "validation": true,
+        "metadataValidation": true,
+        "riggedGlbValidation": true,
+        "tests": true,
+        "taskStatusLifecycle": true,
+        "staleReclamation": true,
+        "meshyProvider": true,
+        "meshyImageUrlResolve": true,
+        "smplxProvider": true,
+        "riggingProviders": true,
+        "blenderScripts": true,
+        "aPose": true,
+        "scaleNormalizer": true,
+        "poseGlbGenerator": true,
+        "percentage": 100
+      }
+    },
+    {
+      "path": "nginx",
+      "language": "Config only (Nginx)",
+      "entryPoint": "conf.d/default.conf",
+      "sourceFiles": 2,
+      "testDir": null,
+      "testsExist": false,
+      "configFiles": [
+        "nginx.conf",
+        "conf.d/default.conf"
+      ],
+      "keyPaths": {
+        "mainConfig": "nginx.conf (worker_processes, gzip, client_max_body_size 20m)",
+        "routing": "conf.d/default.conf (API proxy, static assets, WebSocket upgrade, security headers)"
+      },
+      "coverage": {
+        "routing": true,
+        "securityHeaders": true,
+        "sslBlock": true,
+        "percentage": 100
+      }
+    }
+  ],
+  "rootFiles": [
+    "PRD.md",
+    ".env.example",
+    "docker-compose.yml",
+    "docker-compose.prod.yml",
+    "dev.sh",
+    "prod_deploy.sh",
+    ".gitignore",
+    "CLAUDE.md",
+    "docs/CODEMAPS/architecture.md",
+    "docs/CODEMAPS/backend.md",
+    "docs/CODEMAPS/frontend.md",
+    "docs/CODEMAPS/data.md",
+    "docs/CODEMAPS/dependencies.md",
+    "docs/meshy_Image-to-3D.md"
+  ],
+  "scan": {
+    "totalSourceFiles": 353,
+    "scannedFiles": 353,
+    "coveragePercentage": 100,
+    "ignoredDirectories": [
+      "node_modules (web/node_modules/)",
+      ".git",
+      ".next",
+      "dist",
+      "server/build/",
+      "server/.gradle/",
+      "worker/__pycache__/"
+    ],
+    "truncated": false,
+    "scanDuration": "incremental verification scan (2026-06-19T07:23:23)"
+  },
+  "gaps": [
+    {
+      "module": "server",
+      "type": "testCoverage",
+      "description": "338 test methods across 48 files (24 service + 20 controller + 4 other). Untested: SecurityConfig (integration), DataSeeder/GlbAssetInitializer (seeding logic), GuestAvatarController/GuestAvatarService (no dedicated test files yet)."
+    },
+    {
+      "module": "web",
+      "type": "testCoverage",
+      "description": "227 unit test cases across 17 files + 60 E2E tests across 8 specs. Untested: all 33 page components, most app-specific components (74 total, only FittingHelper/SizeSelector tested), 6 custom hooks (useARSupport, useCommunityState, useAvatarStatus, useReveal, useRiggingStatus, usePoseAnimation), 5 3D/AR components, 4 lib modules (social-graph.ts, profile-options.ts, demo-looks.ts, email-templates.ts)."
+    },
+    {
+      "module": "worker",
+      "type": "testCoverage",
+      "description": "292 tests across 15 files. Untested: TripoGenerator provider."
+    }
+  ],
+  "previousScan": {
+    "timestamp": "2026-06-14T23:51:06",
+    "changes": "2026-06-19 verification scan: all CLAUDE.md counts confirmed accurate; index.json web component counts corrected 72->74 app-specific, 91->93 total; sourceFiles counts updated to precise glob-verified values (server 160->168, web 153->161); gap descriptions updated to reflect 74 app-specific components."
+  },
+  "documentsWritten": [
+    "CLAUDE.md (no changes needed -- all counts verified accurate)",
+    "server/CLAUDE.md (no changes needed -- all counts verified accurate)",
+    "web/CLAUDE.md (no changes needed -- all counts verified accurate)",
+    "worker/CLAUDE.md (no changes needed -- all counts verified accurate)",
+    ".claude/index.json (updated: timestamp, web component counts 72->74/91->93, sourceFiles corrected, gap descriptions updated)"
+  ]
+}

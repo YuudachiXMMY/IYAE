@@ -1,0 +1,153 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: clossette
+      MYSQL_USER: clossette
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT:-3002}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "${API_PORT:-3001}:8080"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: clossette
+      DB_USERNAME: clossette
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://clossette.localhost}
+      AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: 1025
+      JAVA_TOOL_OPTIONS: "-Xmx384m -Xms128m"
+      RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
+      INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET:-dev-internal-secret}
+    volumes:
+      - assets_data:/var/clossette/assets
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clossette-api.rule=Host(`${API_DOMAIN:-api.clossette.localhost}`)"
+      - "traefik.http.services.clossette-api.loadbalancer.server.port=8080"
+    networks:
+      - clossette-net
+      - proxy
+      - default
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: clossette-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: clossette
+      DB_USERNAME: clossette
+      DB_PASSWORD: ${DB_PASSWORD}
+      MODEL_GENERATION_PROVIDER: ${MODEL_GENERATION_PROVIDER:-mock}
+      AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
+      WORKER_TRIPO_API_KEY: ${WORKER_TRIPO_API_KEY:-}
+      WORKER_MESHY_API_KEY: ${WORKER_MESHY_API_KEY:-}
+      WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
+      WORKER_OUTPUT_DIR: /var/clossette/assets
+      RIGGING_PROVIDER: ${RIGGING_PROVIDER:-mock}
+      SMPLX_MODELS_PATH: /var/clossette/smplx_models
+    volumes:
+      - assets_data:/var/clossette/assets
+      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/clossette/smplx_models:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  rigging-worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.rigging
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: clossette
+      DB_USERNAME: clossette
+      DB_PASSWORD: ${DB_PASSWORD}
+      WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
+      WORKER_OUTPUT_DIR: /var/clossette/assets
+      RIGGING_PROVIDER: ${RIGGING_PROVIDER:-python}
+      SMPLX_MODELS_PATH: /var/clossette/smplx_models
+    volumes:
+      - assets_data:/var/clossette/assets
+      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/clossette/smplx_models:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
+    restart: unless-stopped
+    profiles:
+      - rigging
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        API_PROXY_TARGET: http://server:8080
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET:-dev-internal-secret}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}
+    depends_on:
+      - server
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clossette-web.rule=Host(`${WEB_DOMAIN:-clossette.localhost}`)"
+      - "traefik.http.services.clossette-web.loadbalancer.server.port=3000"
+    networks:
+      - clossette-net
+      - proxy
+      - default
+
+networks:
+  clossette-net:
+    driver: bridge
+  proxy:
+    external: true
+
+volumes:
+  mysql_data:
+  assets_data:

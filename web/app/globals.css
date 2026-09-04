@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Semantic color tokens — light mode defaults */
+  --color-background: #f5efe8;
+  --color-foreground: #171311;
+  --color-card: #fdf8f3;
+  --color-card-foreground: #171311;
+  --color-muted: #ede4d9;
+  --color-muted-foreground: #78716c;
+  --color-border: rgba(23, 19, 17, 0.12);
+  --color-input: rgba(23, 19, 17, 0.08);
+  --color-ring: #9333ea;
+  --color-primary: #9333ea;
+  --color-primary-foreground: #ffffff;
+  --color-popover: #fdf8f3;
+  --color-popover-foreground: #171311;
+  --color-accent: #ede4d9;
+  --color-accent-foreground: #171311;
+  --color-destructive: #dc2626;
+
+  /* Brand colors (invariant across themes) */
+  --color-brand: #9333ea;
+  --color-brand-hover: #7e22ce;
+
+  /* Typography */
+  --font-display: var(--font-cormorant), serif;
+  --font-body: var(--font-geist-sans), sans-serif;
+
+  /* Border radius */
+  --radius-card: 2rem;
+
+  /* Shadows */
+  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --shadow-heavy-color: rgba(23, 19, 17, 0.08);
+  --gradient-page-start: #f8f2ea;
+  --gradient-page-mid: #f5efe8;
+  --gradient-page-end: #fbf6f1;
+  --gradient-profile-banner-start: #f4d1dc;
+  --gradient-profile-banner-end: #c8b6ff;
+
+  /* Landing page brand colors */
+  --color-landing-surface: #F3E8E2;
+  --color-landing-soft: #E8DDD4;
+  --color-landing-contrast: #1A1A1A;
+  --color-landing-tone: #C4654A;
+  --color-landing-accent: #C4654A;
+  --color-landing-highlight: #C4654A;
+
+  /* Animations */
+  --animate-editorial-float: editorialFloat 12s ease-in-out infinite;
+  --animate-editorial-drift: editorialDrift 16s ease-in-out infinite;
+  --animate-landing-float: landingFloat 6s ease-in-out infinite;
+  --animate-landing-fade-up: landingFadeUp 0.8s ease-out forwards;
+}
+
+/* Dark mode token overrides */
+.dark {
+  --color-background: #1a1614;
+  --color-foreground: #ece6e0;
+  --color-card: #25211f;
+  --color-card-foreground: #ece6e0;
+  --color-muted: #2a2624;
+  --color-muted-foreground: #a8a29e;
+  --color-border: rgba(236, 230, 224, 0.15);
+  --color-input: rgba(236, 230, 224, 0.08);
+  --color-ring: #a855f7;
+  --color-primary: #a855f7;
+  --color-primary-foreground: #ffffff;
+  --color-popover: #25211f;
+  --color-popover-foreground: #ece6e0;
+  --color-accent: #2a2624;
+  --color-accent-foreground: #ece6e0;
+  --color-destructive: #ef4444;
+  --shadow-heavy-color: rgba(0, 0, 0, 0.35);
+  --gradient-page-start: #14110f;
+  --gradient-page-mid: #1a1614;
+  --gradient-page-end: #161311;
+  --gradient-profile-banner-start: #4a2040;
+  --gradient-profile-banner-end: #2d2860;
+  --color-landing-surface: #2a2624;
+  --color-landing-soft: #25211f;
+  --color-landing-contrast: #0f0d0c;
+  --color-landing-tone: #D4785E;
+  --color-landing-accent: #D4785E;
+  --color-landing-highlight: #D4785E;
+}
+
+@keyframes editorialFloat {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-8px); }
+}
+
+@keyframes editorialDrift {
+  0%, 100% { transform: translateX(0); }
+  50%       { transform: translateX(4px); }
+}
+
+@keyframes landingFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes landingFadeUp {
+  0% { opacity: 0; transform: translateY(30px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Staggered entry — respects reduced-motion preferences */
+.animate-stagger-in { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .animate-stagger-in { animation: staggerIn 0.4s ease-out both; }
+}
+
+@keyframes chipPopIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-chip-pop-in { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .animate-chip-pop-in { opacity: 0; animation: chipPopIn 0.3s ease-out both; }
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+/* Hide scrollbar while keeping scroll functionality */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Photo strip marquee */
+@keyframes stripScrollLeft {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes stripScrollRight {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+/* Motion-safe animations only */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

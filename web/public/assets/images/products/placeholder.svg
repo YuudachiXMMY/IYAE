@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="533" viewBox="0 0 400 533">
+  <rect width="400" height="533" fill="#f5f5f4"/>
+  <g transform="translate(200,250)" fill="none" stroke="#a8a29e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Hanger hook -->
+    <path d="M0,-60 C-8,-68 -8,-80 0,-80 C8,-80 8,-68 0,-60"/>
+    <!-- Hanger body -->
+    <path d="M0,-60 L-60,-20 M0,-60 L60,-20"/>
+    <!-- T-shirt outline -->
+    <path d="M-60,-20 L-80,-5 L-60,10 L-45,-5 L-45,60 L45,60 L45,-5 L60,10 L80,-5 L60,-20"/>
+  </g>
+  <text x="200" y="340" text-anchor="middle" fill="#d6d3d1" font-family="system-ui,sans-serif" font-size="14">No image available</text>
+</svg>

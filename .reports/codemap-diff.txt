@@ -1,0 +1,58 @@
+Codemap Update Report
+=====================
+Date: 2026-06-03 (incremental update)
+Previous: 2026-06-01
+Status: INCREMENTAL UPDATE — changes ≤30%, updated in place
+
+Changes Since Last Scan (2026-06-01 → 2026-06-03)
+---------------------------------------------------
+
+### Server
+- NEW: test/AvatarServiceTest.java — 6 tests for gender identity mapping
+- MOD: service/ChatService.java — [SUGGESTIONS] protocol + email verification gate
+- MOD: dto/ChatMessageResponse.java — added suggestions field
+- MOD: dto/SavedLookResponse.java — added items field
+- MOD: ai/MockAIProvider.java — 7-step conversation with suggestions
+- MOD: service/AvatarService.java — gender identity mapping for avatar payload
+- MOD: config/SchedulerConfig.java — 3 scheduled tasks (added processReadyAvatarTasks)
+- MOD: test/ChatServiceTest.java — 4→11 tests (+7 suggestion chip tests)
+- Server tests: 17→18 files, 146→159 methods
+
+### Web
+- NEW: components/PoseSelector.tsx — pose strip with category filtering
+- NEW: components/SuggestionChips.tsx — XSS-safe AI suggestion chip buttons
+- NEW: components/SkeletonContext.tsx — shared skeleton state for viewers
+- NEW: components/outfits/OutfitBuilderPreview.tsx — 3D preview in outfit builder
+- NEW: components/outfits/OutfitSlotSidebarItem.tsx — sidebar slot item
+- NEW: components/outfits/OutfitDetailsForm.tsx — outfit metadata form
+- NEW: lib/pose-config.ts — POSE_PRESETS, POSE_CATEGORIES, getPoseById()
+- NEW: lib/hooks/useOutfitRiggingStatus.ts — polls rigging for outfit items
+- NEW: lib/hooks/usePoseAnimation.ts — animates avatar skeleton to pose
+- MOD: components/outfits/ — redesigned with split-screen layout + 3D preview
+- MOD: lib/api.ts — added rigging helper (getStatus/trigger/retry)
+- Web components: 56→62 app (+ 19 shadcn = 81 total)
+- Web hooks: 8→10
+- Vitest: 10→13 files, 86→195 cases
+- Playwright E2E: 2→3 specs, 16→21 tests (added pose-selector.spec.ts)
+
+### Worker
+- Tests expanded: 255→282 (+27 tests across 4 files)
+- No new provider modules or task queues
+
+### Infrastructure
+- No changes
+
+Codemaps Updated
+----------------
+docs/CODEMAPS/architecture.md  — added suggestions protocol to data flow
+docs/CODEMAPS/backend.md       — tests 17→18; suggestions protocol; avatar route expanded
+docs/CODEMAPS/frontend.md      — components 56→62; hooks 8→10; tests 10→13/2→3 E2E
+docs/CODEMAPS/data.md          — timestamp only (no schema changes)
+docs/CODEMAPS/dependencies.md  — timestamp only (no new dependencies)
+
+Total estimated tokens: ~4,150 (+510 from previous scan)
+
+Staleness Check
+---------------
+All codemaps refreshed 2026-06-03. No files older than 90 days.
+Next scan recommended after next feature addition.

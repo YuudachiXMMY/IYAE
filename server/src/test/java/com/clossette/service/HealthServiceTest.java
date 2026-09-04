@@ -1,0 +1,42 @@
+package com.clossette.service;
+
+import com.clossette.ai.AIProviderFactory;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class HealthServiceTest {
+
+    @Mock
+    AIProviderFactory aiProviderFactory;
+
+    @InjectMocks
+    HealthService healthService;
+
+    @Test
+    void getServerHealth_returnsUpStatus() {
+        Map<String, String> result = healthService.getServerHealth();
+
+        assertThat(result.get("status")).isEqualTo("UP");
+        assertThat(result.get("service")).isEqualTo("clossette-server");
+    }
+
+    @Test
+    void getAiHealth_returnsProviderNameAndStatus() {
+        when(aiProviderFactory.getProviderName()).thenReturn("mock");
+        when(aiProviderFactory.healthCheck()).thenReturn("UP");
+
+        Map<String, String> result = healthService.getAiHealth();
+
+        assertThat(result.get("provider")).isEqualTo("mock");
+        assertThat(result.get("status")).isEqualTo("UP");
+    }
+}

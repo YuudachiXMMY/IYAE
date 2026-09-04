@@ -1,0 +1,40 @@
+{
+  "findings": [
+    {
+      "severity": "Info",
+      "file": "server/src/main/resources/db/migration/V5__profile_social_fields.sql",
+      "description": "Measurement fields shoulder_width_cm and inseam_cm correctly added as DOUBLE to align with existing measurement fields in V1 baseline.",
+      "fix_suggestion": null
+    },
+    {
+      "severity": "Warning",
+      "file": "web/app/profile/body/page.tsx",
+      "description": "Frontend validation only checks for min=\"0\", whereas backend enforces specific ranges (e.g., Height 50-300cm, Weight 20-500kg). Users may receive 400 errors from API without clear UI guidance.",
+      "fix_suggestion": "Sync HTML input min/max attributes with backend @DecimalMin/@DecimalMax values in BodyProfileRequest.java."
+    },
+    {
+      "severity": "Warning",
+      "file": "web/components/register/StepMeasurements.tsx",
+      "description": "Registration wizard measurements step lacks range validation, mirroring the issue in the profile page.",
+      "fix_suggestion": "Add min/max props to NumberField and apply backend-consistent ranges."
+    },
+    {
+      "severity": "Info",
+      "file": "server/src/main/java/com/clossette/dto/UserResponse.java",
+      "description": "Successfully replaced brittle comma-splitting with robust ObjectMapper JSON parsing for list fields (styleAesthetics, etc).",
+      "fix_suggestion": null
+    },
+    {
+      "severity": "Info",
+      "file": "server/src/main/java/com/clossette/config/RateLimitFilter.java",
+      "description": "Method-aware rate limiting correctly targets PUT /api/auth/me (10/min) without affecting GET /api/auth/me hydration calls.",
+      "fix_suggestion": null
+    },
+    {
+      "severity": "Info",
+      "file": "server/src/test/java/com/clossette/service/AuthServiceTest.java",
+      "description": "Tests updated with decimal values (38.5, 76.25) and properly verify BodyProfile persistence via ArgumentCaptor.",
+      "fix_suggestion": null
+    }
+  ]
+}

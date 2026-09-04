@@ -1,0 +1,499 @@
+"use client";
+
+import { useState, useCallback, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { LocalImagePicker } from "@/components/profile/LocalImagePicker";
+import { getBodyMeasurementCoverage } from "@/lib/profile-dashboard";
+import { STYLE_AESTHETICS, FIT_PREFERENCES } from "@/lib/profile-options";
+import { api, auth, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { Lock, Camera } from "lucide-react";
+
+interface ProfileSettingsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: {
+    id: number;
+    name: string | null;
+    email: string;
+    username?: string | null;
+    profileVisibility?: string;
+    styleAesthetics?: string[] | null;
+    fitPreferences?: string[] | null;
+    [key: string]: unknown;
+  };
+  surface: {
+    avatarDataUrl: string | null;
+    bannerDataUrl: string | null;
+    bio: string;
+  };
+  onUpdateSurface: (updates: Partial<{ avatarDataUrl: string; bannerDataUrl: string; bio: string }>) => void;
+  onUserRefresh: () => void;
+}
+
+const MEASUREMENT_FIELDS: Array<{ key: string; label: string }> = [
+  { key: "heightCm", label: "Height (cm)" },
+  { key: "weightKg", label: "Weight (kg)" },
+  { key: "chestCm", label: "Bust/Chest (cm)" },
+  { key: "waistCm", label: "Waist (cm)" },
+  { key: "hipsCm", label: "Hips (cm)" },
+  { key: "shoulderWidthCm", label: "Shoulder Width (cm)" },
+  { key: "inseamCm", label: "Inseam (cm)" },
+  { key: "shoeSize", label: "Shoe Size" },
+  { key: "topSize", label: "Top Size" },
+  { key: "bottomSize", label: "Bottom Size" },
+  { key: "dressSize", label: "Dress Size" },
+  { key: "jacketSize", label: "Jacket Size" },
+];
+
+const NUMERIC_MEASUREMENT_KEYS = new Set([
+  "heightCm", "weightKg", "chestCm", "waistCm",
+  "hipsCm", "shoulderWidthCm", "inseamCm",
+]);
+
+export function ProfileSettingsDialog({
+  open,
+  onOpenChange,
+  user,
+  surface,
+  onUpdateSurface,
+  onUserRefresh,
+}: ProfileSettingsDialogProps) {
+  const [activeTab, setActiveTab] = useState("edit-profile");
+
+  // Tab 1: Edit Profile state
+  const [name, setName] = useState(user.name ?? "");
+  const [username, setUsername] = useState(user.username ?? "");
+  const [bio, setBio] = useState(surface.bio);
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(surface.avatarDataUrl);
+  const [bannerDataUrl, setBannerDataUrl] = useState<string | null>(surface.bannerDataUrl);
+  const [profileVisibility, setProfileVisibility] = useState<"PUBLIC" | "PRIVATE">(
+    (user.profileVisibility as "PUBLIC" | "PRIVATE") ?? "PUBLIC"
+  );
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Tab 2: Style Preferences state
+  const [selectedStyles, setSelectedStyles] = useState<string[]>(
+    user.styleAesthetics ?? []
+  );
+  const [selectedFits, setSelectedFits] = useState<string[]>(
+    user.fitPreferences ?? []
+  );
+  const [savingStyle, setSavingStyle] = useState(false);
+
+  // Tab 3: Body Measurements state (loaded from /api/body-profile)
+  const [measurements, setMeasurements] = useState<Record<string, string>>(() => {
+    const result: Record<string, string> = {};
+    for (const { key } of MEASUREMENT_FIELDS) {
+      result[key] = "";
+    }
+    return result;
+  });
+  const [savingMeasurements, setSavingMeasurements] = useState(false);
+
+  // Re-sync local state when dialog reopens with fresh props
+  useEffect(() => {
+    if (!open) return;
+    setName(user.name ?? "");
+    setUsername(user.username ?? "");
+    setBio(surface.bio);
+    setAvatarDataUrl(surface.avatarDataUrl);
+    setBannerDataUrl(surface.bannerDataUrl);
+    setProfileVisibility((user.profileVisibility as "PUBLIC" | "PRIVATE") ?? "PUBLIC");
+    setSelectedStyles(user.styleAesthetics ?? []);
+    setSelectedFits(user.fitPreferences ?? []);
+
+    // Fetch body measurements from the canonical source
+    api
+      .get<Record<string, unknown>>("/api/body-profile")
+      .then((profile) => {
+        const result: Record<string, string> = {};
+        for (const { key } of MEASUREMENT_FIELDS) {
+          const val = profile[key];
+          result[key] = val !== undefined && val !== null ? String(val) : "";
+        }
+        setMeasurements(result);
+      })
+      .catch((err) => {
+        // 404 means no profile yet — keep empty fields
+        if (!(err instanceof ApiError && err.status === 404)) {
+          console.error("Failed to load body profile", err);
+        }
+        const result: Record<string, string> = {};
+        for (const { key } of MEASUREMENT_FIELDS) {
+          result[key] = "";
+        }
+        setMeasurements(result);
+      });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSaveProfile = useCallback(async () => {
+    setSavingProfile(true);
+    try {
+      await auth.updateProfile({
+        name: name || undefined,
+        username: username.trim() || undefined,
+        profileVisibility,
+      });
+      onUpdateSurface({
+        bio,
+        avatarDataUrl: avatarDataUrl ?? undefined,
+        bannerDataUrl: bannerDataUrl ?? undefined,
+      });
+      onUserRefresh();
+      toast.success("Profile updated");
+    } catch {
+      toast.error("Failed to update profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [name, username, profileVisibility, bio, avatarDataUrl, bannerDataUrl, onUpdateSurface, onUserRefresh]);
+
+  const handleSaveStyle = useCallback(async () => {
+    setSavingStyle(true);
+    try {
+      await auth.updateProfile({ styleAesthetics: selectedStyles, fitPreferences: selectedFits });
+      onUserRefresh();
+      toast.success("Style preferences updated");
+    } catch {
+      toast.error("Failed to update style preferences");
+    } finally {
+      setSavingStyle(false);
+    }
+  }, [selectedStyles, selectedFits, onUserRefresh]);
+
+  const handleSaveMeasurements = useCallback(async () => {
+    setSavingMeasurements(true);
+    try {
+      const payload: Record<string, string | number | null> = {};
+      for (const { key } of MEASUREMENT_FIELDS) {
+        const val = measurements[key];
+        if (val !== "") {
+          if (NUMERIC_MEASUREMENT_KEYS.has(key)) {
+            const num = Number(val);
+            if (Number.isNaN(num)) continue;
+            payload[key] = num;
+          } else {
+            payload[key] = val;
+          }
+        } else {
+          payload[key] = null;
+        }
+      }
+      await api.post("/api/body-profile", payload);
+      toast.success("Measurements updated");
+    } catch {
+      toast.error("Failed to update measurements");
+    } finally {
+      setSavingMeasurements(false);
+    }
+  }, [measurements]);
+
+  const handleActiveTabSave = useCallback(() => {
+    if (activeTab === "edit-profile") return handleSaveProfile();
+    if (activeTab === "style-preferences") return handleSaveStyle();
+    if (activeTab === "body-measurements") return handleSaveMeasurements();
+  }, [activeTab, handleSaveProfile, handleSaveStyle, handleSaveMeasurements]);
+
+  const toggleStyle = useCallback((style: string) => {
+    setSelectedStyles((prev) =>
+      prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style]
+    );
+  }, []);
+
+  const toggleFit = useCallback((fit: string) => {
+    setSelectedFits((prev) =>
+      prev.includes(fit) ? prev.filter((f) => f !== fit) : [...prev, fit]
+    );
+  }, []);
+
+  const measurementCoverage = getBodyMeasurementCoverage(
+    measurements as unknown as Record<string, unknown>
+  );
+
+  const isSaving = savingProfile || savingStyle || savingMeasurements;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2rem] p-0">
+        <DialogHeader className="px-8 pt-8 pb-4">
+          <DialogTitle className="text-xl font-semibold">Settings</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="px-8">
+            <TabsList className="w-full justify-start bg-muted rounded-full p-1 h-auto gap-1">
+              <TabsTrigger value="edit-profile" className="rounded-full text-xs px-4 py-1.5">
+                Edit Profile
+              </TabsTrigger>
+              <TabsTrigger value="style-preferences" className="rounded-full text-xs px-4 py-1.5">
+                Style Preferences
+              </TabsTrigger>
+              <TabsTrigger value="body-measurements" className="rounded-full text-xs px-4 py-1.5">
+                Body Measurements
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* Tab 1: Edit Profile */}
+          <TabsContent value="edit-profile" className="px-8 py-6 space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Identity</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="settings-name" className="text-xs text-muted-foreground">Name</Label>
+                  <Input
+                    id="settings-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your name"
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="settings-username" className="text-xs text-muted-foreground">Username</Label>
+                  <Input
+                    id="settings-username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="@username"
+                    className="rounded-xl"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-bio" className="text-xs text-muted-foreground">Bio</Label>
+                <Textarea
+                  id="settings-bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell people about your style..."
+                  rows={3}
+                  className="rounded-xl resize-none"
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Appearance</h3>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-muted overflow-hidden flex items-center justify-center border border-border">
+                    {avatarDataUrl ? (
+                      <img src={avatarDataUrl} alt="Avatar preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Profile photo</p>
+                    <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP</p>
+                  </div>
+                </div>
+                <LocalImagePicker onSelect={(url) => setAvatarDataUrl(url)} maxDimension={400}>
+                  <Button variant="outline" size="sm" className="rounded-full text-xs" type="button">
+                    Change photo
+                  </Button>
+                </LocalImagePicker>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-10 rounded-lg bg-muted overflow-hidden flex items-center justify-center border border-border">
+                    {bannerDataUrl ? (
+                      <img src={bannerDataUrl} alt="Banner preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="w-4 h-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Banner photo</p>
+                    <p className="text-xs text-muted-foreground">Recommended 1200px wide</p>
+                  </div>
+                </div>
+                <LocalImagePicker onSelect={(url) => setBannerDataUrl(url)} maxDimension={1200}>
+                  <Button variant="outline" size="sm" className="rounded-full text-xs" type="button">
+                    Change banner
+                  </Button>
+                </LocalImagePicker>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Privacy</h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Profile visibility</p>
+                  <p className="text-xs text-muted-foreground">Control who can see your profile</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProfileVisibility("PUBLIC")}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      profileVisibility === "PUBLIC"
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    Public
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfileVisibility("PRIVATE")}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      profileVisibility === "PRIVATE"
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    Private
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Body data</p>
+                  <p className="text-xs text-muted-foreground">Your measurements are never shared</p>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Always private</span>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Tab 2: Style Preferences */}
+          <TabsContent value="style-preferences" className="px-8 py-6 space-y-6">
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Style Aesthetics</h3>
+              <p className="text-xs text-muted-foreground">Select all that resonate with your style</p>
+              <div className="flex flex-wrap gap-2">
+                {STYLE_AESTHETICS.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    onClick={() => toggleStyle(style)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      selectedStyles.includes(style)
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Fit Preferences</h3>
+              <p className="text-xs text-muted-foreground">How do you like your clothes to fit?</p>
+              <div className="flex flex-wrap gap-2">
+                {FIT_PREFERENCES.map((fit) => (
+                  <button
+                    key={fit}
+                    type="button"
+                    onClick={() => toggleFit(fit)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      selectedFits.includes(fit)
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    {fit}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Tab 3: Body Measurements */}
+          <TabsContent value="body-measurements" className="px-8 py-6 space-y-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Measurement Editor</h3>
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                  <Lock className="w-3 h-3" />
+                  Private
+                </Badge>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Profile completeness</span>
+                  <span>{measurementCoverage}%</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-foreground rounded-full transition-all duration-300"
+                    style={{ width: `${measurementCoverage}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-3 gap-4">
+              {MEASUREMENT_FIELDS.map(({ key, label }) => (
+                <div key={key} className="space-y-1.5">
+                  <Label htmlFor={`measurement-${key}`} className="text-xs text-muted-foreground">
+                    {label}
+                  </Label>
+                  <Input
+                    id={`measurement-${key}`}
+                    value={measurements[key]}
+                    onChange={(e) =>
+                      setMeasurements((prev) => ({ ...prev, [key]: e.target.value }))
+                    }
+                    placeholder="—"
+                    className="rounded-xl text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-8 py-5 border-t border-border">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="rounded-full text-sm"
+          >
+            Close
+          </Button>
+          <Button
+            onClick={handleActiveTabSave}
+            disabled={isSaving}
+            className="rounded-full text-sm bg-foreground text-background hover:bg-foreground/90"
+          >
+            {isSaving ? "Saving..." : "Save Settings"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

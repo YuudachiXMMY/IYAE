@@ -1,0 +1,14 @@
+spring:
+  jpa:
+    show-sql: true
+  mail:
+    host: localhost
+    port: 1025
+
+app:
+  auth:
+    require-email-verification: false
+
+logging:
+  level:
+    com.clossette: DEBUG

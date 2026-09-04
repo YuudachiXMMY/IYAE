@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "poses": [
+    {
+      "id": "a-pose",
+      "filename": "a-pose.glb",
+      "label": "A-Pose",
+      "labelZh": "A姿势",
+      "category": "stationary",
+      "isDefault": true,
+      "duration": null,
+      "loop": false
+    },
+    {
+      "id": "standing-relaxed",
+      "filename": "standing-relaxed.glb",
+      "label": "Relaxed",
+      "labelZh": "放松站姿",
+      "category": "stationary",
+      "isDefault": false,
+      "duration": null,
+      "loop": false
+    },
+    {
+      "id": "walking",
+      "filename": "walking.glb",
+      "label": "Walking",
+      "labelZh": "行走",
+      "category": "movement",
+      "isDefault": false,
+      "duration": null,
+      "loop": false
+    },
+    {
+      "id": "sitting",
+      "filename": "sitting.glb",
+      "label": "Sitting",
+      "labelZh": "坐姿",
+      "category": "lifestyle",
+      "isDefault": false,
+      "duration": null,
+      "loop": false
+    },
+    {
+      "id": "contrapposto",
+      "filename": "contrapposto.glb",
+      "label": "Contrapposto",
+      "labelZh": "对立式",
+      "category": "stationary",
+      "isDefault": false,
+      "duration": null,
+      "loop": false
+    },
+    {
+      "id": "breathing-idle",
+      "filename": "breathing-idle.glb",
+      "label": "Breathing Idle",
+      "labelZh": "呼吸待机",
+      "category": "stationary",
+      "isDefault": false,
+      "duration": 0.13,
+      "loop": true
+    }
+  ],
+  "categories": [
+    {
+      "id": "stationary",
+      "label": "Stationary",
+      "labelZh": "静态"
+    },
+    {
+      "id": "movement",
+      "label": "Movement",
+      "labelZh": "动态"
+    },
+    {
+      "id": "lifestyle",
+      "label": "Lifestyle",
+      "labelZh": "生活"
+    }
+  ]
+}

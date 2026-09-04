@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="1080" height="1350">
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#1e1e2a"/>
+      <stop offset="50%" stop-color="#28283a"/>
+      <stop offset="100%" stop-color="#18181e"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="url(#bg4)"/>
+  <!-- Geometric grid overlay -->
+  <line x1="270" y1="0" x2="270" y2="1350" stroke="#ffffff" stroke-width="0.8" stroke-opacity="0.08"/>
+  <line x1="540" y1="0" x2="540" y2="1350" stroke="#ffffff" stroke-width="0.8" stroke-opacity="0.08"/>
+  <line x1="810" y1="0" x2="810" y2="1350" stroke="#ffffff" stroke-width="0.8" stroke-opacity="0.08"/>
+  <line x1="0" y1="337" x2="1080" y2="337" stroke="#ffffff" stroke-width="0.8" stroke-opacity="0.08"/>
+  <line x1="0" y1="675" x2="1080" y2="675" stroke="#ffffff" stroke-width="0.8" stroke-opacity="0.08"/>
+  <line x1="0" y1="1012" x2="1080" y2="1012" stroke="#ffffff" stroke-width="0.8" stroke-opacity="0.08"/>
+  <!-- Large diagonal accent -->
+  <line x1="0" y1="0" x2="1080" y2="1350" stroke="#5050a0" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="1080" y1="0" x2="0" y2="1350" stroke="#5050a0" stroke-width="1.5" stroke-opacity="0.15"/>
+  <!-- Bold geometric shapes: jacket silhouette -->
+  <polygon points="380,280 700,280 740,420 660,420 660,900 420,900 420,420 340,420"
+           fill="#3a3a5a" fill-opacity="0.6" stroke="#6060a8" stroke-width="2" stroke-opacity="0.5"/>
+  <!-- Collar V -->
+  <polygon points="540,280 580,380 540,420 500,380" fill="#1e1e2a" fill-opacity="0.8"/>
+  <!-- Accent rectangles -->
+  <rect x="160" y="960" width="760" height="2" rx="1" fill="#6060a8" fill-opacity="0.4"/>
+  <rect x="160" y="970" width="500" height="1" rx="1" fill="#6060a8" fill-opacity="0.25"/>
+  <!-- Small geometric diamonds -->
+  <polygon points="880,200 900,220 880,240 860,220" fill="#6060a8" fill-opacity="0.5"/>
+  <polygon points="200,1100 215,1115 200,1130 185,1115" fill="#6060a8" fill-opacity="0.4"/>
+  <polygon points="900,1050 910,1060 900,1070 890,1060" fill="#6060a8" fill-opacity="0.3"/>
+  <!-- Label placeholders -->
+  <rect x="160" y="1200" width="340" height="58" rx="29" fill="#5050a0" fill-opacity="0.25"/>
+  <rect x="160" y="1275" width="220" height="30" rx="15" fill="#5050a0" fill-opacity="0.18"/>
+</svg>

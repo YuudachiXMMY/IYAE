@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="1080" height="1350">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c8b8e8"/>
+      <stop offset="50%" stop-color="#e8d8f0"/>
+      <stop offset="100%" stop-color="#b8c8e0"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="url(#bg1)"/>
+  <!-- Soft overlay circles -->
+  <circle cx="200" cy="300" r="320" fill="#e0d0f8" fill-opacity="0.4"/>
+  <circle cx="900" cy="1100" r="280" fill="#a090c0" fill-opacity="0.25"/>
+  <!-- Minimal figure silhouette: head + body -->
+  <ellipse cx="540" cy="380" rx="90" ry="110" fill="#8070a8" fill-opacity="0.3"/>
+  <rect x="470" y="480" width="140" height="340" rx="20" fill="#8070a8" fill-opacity="0.25"/>
+  <!-- Decorative horizontal lines -->
+  <line x1="100" y1="900" x2="980" y2="900" stroke="#9b8fc0" stroke-width="1.5" stroke-opacity="0.4"/>
+  <line x1="100" y1="920" x2="700" y2="920" stroke="#9b8fc0" stroke-width="1" stroke-opacity="0.3"/>
+  <!-- Abstract garment drape shape -->
+  <path d="M400 550 Q540 500 680 550 L700 750 Q540 800 380 750 Z" fill="#7060a0" fill-opacity="0.2"/>
+  <!-- Accent dots -->
+  <circle cx="180" cy="1100" r="8" fill="#9b8fc0" fill-opacity="0.5"/>
+  <circle cx="204" cy="1100" r="4" fill="#9b8fc0" fill-opacity="0.3"/>
+  <circle cx="900" cy="250" r="12" fill="#c8b8e8" fill-opacity="0.6"/>
+  <!-- Label placeholders -->
+  <rect x="160" y="1200" width="280" height="60" rx="30" fill="#8070a8" fill-opacity="0.2"/>
+  <rect x="160" y="1275" width="180" height="30" rx="15" fill="#8070a8" fill-opacity="0.15"/>
+</svg>
