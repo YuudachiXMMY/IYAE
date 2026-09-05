@@ -289,7 +289,7 @@ export default function ARViewer({ glbUrls, onExit }: ARViewerProps) {
           {!arActive && (
             <button
               onClick={handleEnterAR}
-              className="rounded-full bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-purple-700 active:scale-95"
+              className="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg backdrop-blur-sm transition hover:bg-brand-hover active:scale-95"
               type="button"
             >
               Enter AR

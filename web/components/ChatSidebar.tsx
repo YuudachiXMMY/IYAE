@@ -129,7 +129,7 @@ export function ChatSidebar({
                         session.status === "ACTIVE"
                           ? isActive
                             ? "bg-brand"
-                            : "bg-emerald-500"
+                            : "bg-success"
                           : "bg-muted-foreground/30"
                       )}
                     />

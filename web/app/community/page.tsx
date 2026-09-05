@@ -152,8 +152,8 @@ function PostCard({
           className={cn(
             "p-2 rounded-full transition-all duration-200",
             post.likedByCurrentUser
-              ? "scale-110 bg-rose-500/10 text-rose-500"
-              : "text-muted-foreground hover:text-rose-400 active:scale-95"
+              ? "scale-110 bg-brand/10 text-brand"
+              : "text-muted-foreground hover:text-brand active:scale-95"
           )}
         >
           <Heart

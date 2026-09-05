@@ -88,7 +88,7 @@ export function RiggingStatusCard({ productId }: RiggingStatusCardProps) {
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Processing garment fitting...</p>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full w-1/2 animate-[slide_1.5s_ease-in-out_infinite] rounded-full bg-blue-400" />
+              <div className="h-full w-1/2 animate-[slide_1.5s_ease-in-out_infinite] rounded-full bg-info" />
             </div>
           </div>
         )}

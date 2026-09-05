@@ -29,7 +29,7 @@ interface PostDetailDialogProps {
 function AvatarCircle({ handle }: { handle: string }) {
   const initial = handle.replace(/^@/, "").charAt(0).toUpperCase();
   return (
-    <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium text-white bg-gradient-to-br from-purple-300 to-pink-300 shrink-0">
+    <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium text-primary-foreground bg-gradient-to-br from-brand to-brand/60 shrink-0">
       {initial}
     </div>
   );
@@ -99,8 +99,8 @@ function CommentItem({
               size={13}
               className={
                 comment.likedByCurrentUser
-                  ? "text-rose-500 fill-rose-500"
-                  : "text-muted-foreground hover:text-rose-400"
+                  ? "text-brand fill-brand"
+                  : "text-muted-foreground hover:text-brand"
               }
             />
           </button>
@@ -250,7 +250,7 @@ export function PostDetailDialog({
                     <a
                       key={pl.id}
                       href={pl.href}
-                      className="rounded-full bg-purple-50 px-3 py-1 text-xs uppercase text-purple-600 hover:bg-purple-100 transition-colors duration-150"
+                      className="rounded-full bg-brand/10 px-3 py-1 text-xs uppercase text-brand hover:bg-brand/20 transition-colors duration-150"
                     >
                       {pl.label}
                     </a>
@@ -269,8 +269,8 @@ export function PostDetailDialog({
                   size={18}
                   className={
                     post.likedByCurrentUser
-                      ? "text-rose-500 fill-rose-500"
-                      : "text-muted-foreground hover:text-rose-400"
+                      ? "text-brand fill-brand"
+                      : "text-muted-foreground hover:text-brand"
                   }
                 />
                 <span className="text-sm text-muted-foreground">{post.likeCount}</span>

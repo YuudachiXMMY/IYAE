@@ -15,22 +15,22 @@ const statusConfig: Record<
 > = {
   PENDING: {
     label: "Generating...",
-    className: "bg-amber-100 text-amber-800 border-amber-200",
+    className: "bg-warning/10 text-warning border-warning/20",
     icon: "⏳",
   },
   RUNNING: {
     label: "Processing...",
-    className: "bg-blue-100 text-blue-800 border-blue-200",
+    className: "bg-info/10 text-info border-info/20",
     icon: "⟳",
   },
   READY: {
     label: "3D Ready",
-    className: "bg-green-100 text-green-800 border-green-200",
+    className: "bg-success/10 text-success border-success/20",
     icon: "✓",
   },
   FAILED: {
     label: "Failed",
-    className: "bg-red-100 text-red-800 border-red-200",
+    className: "bg-destructive/10 text-destructive border-destructive/20",
     icon: "✗",
   },
   NONE: {
