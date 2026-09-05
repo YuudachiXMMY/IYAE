@@ -1,14 +1,14 @@
 # Implementation Report: Rebrand & Foundation (Clossette → IYAE)
 
 ## Summary
-Executed the mechanical, cross-stack rebrand of the Clossette codebase to **IYAE** plus the CAD single-source-of-truth currency fix and dead-config removal, per `.claude/PRPs/plans/rebrand-and-foundation.plan.md` (PRD Phase 1). ~288 files changed in one atomic relaunch commit. The deterministic renames and content-only literal swaps were applied and verified where a toolchain was available (web fully; worker syntax). Two Java **structural** refactors (BrandConfig DI centralization, email Option-A consolidation) and full **server test execution** were **deferred** because this environment has **no Java runtime** — applying un-compilable Java surgery blind would violate the plan's "never accumulate broken state" rule.
+Executed the mechanical, cross-stack rebrand of the Clossette codebase to **IYAE** plus the CAD single-source-of-truth currency fix and dead-config removal, per `.claude/PRPs/plans/rebrand-and-foundation.plan.md` (PRD Phase 1). ~288 files changed in one atomic relaunch commit. The deterministic renames and content-only literal swaps were applied and verified across all three tiers — **web** (tsc + vitest + build), **worker** (py_compile), and **server** (`./gradlew test`: **338/338 pass**, run once a JDK became available post-impl). Two Java **structural** refactors (BrandConfig DI centralization, email Option-A consolidation) were **deferred** and done as safe literal swaps instead — they were the only surfaces requiring un-compilable new Java structure, which couldn't be verified in the original no-JDK impl environment.
 
 ## Assessment vs Reality
 
 | Metric | Predicted (Plan) | Actual |
 |---|---|---|
 | Complexity | XL | XL (as predicted; mechanical bulk) |
-| Confidence | 8/10 single-pass | ~7/10 delivered — high for verified surfaces, gated by no-JDK |
+| Confidence | 8/10 single-pass | 9/10 — all 3 tiers verified (server 338/338); only 2 optional Java centralizations deferred |
 | Files Changed | ~300 | 288 (1 delete + 67 modified + 220 renamed) |
 
 ## Environment Constraint (root cause of all deviations)
@@ -27,7 +27,7 @@ Executed the mechanical, cross-stack rebrand of the Clossette codebase to **IYAE
 | 5 | BrandConfig + brand strings + dead config | ⚠️ Partial | Brand **literal swaps** applied (server/web/worker/docs) + `tailwind.config.ts` deleted + `components.json` fixed. **Deferred**: BrandProperties DI + web `lib/brand.ts` centralization (needs JDK to verify DI wiring). |
 | 6 | Email consolidation (Option A) | ⚠️ Partial | Email **copy rebranded** (Java + web templates + subjects). **Deferred**: structural consolidation (delete Java `buildEmailHtml`, drop SMTP, delete legacy web route, rewrite `AuthMailServiceTest`) — needs JDK. Email still dual-path but branded. |
 | 7 | DataSeeder + fresh-relaunch seed | ✅ Complete | Seed emails @clossette.com → @iyae.ca; currency CAD. V4 UPDATE is a no-op on fresh DB (left per plan). |
-| 8 | Java package rename (LAST) | ✅ Complete | 220 files git-mv'd (history preserved); 0 `com.clossette` residue; class + gradle coords renamed. **Compilation unverified (no JDK).** |
+| 8 | Java package rename (LAST) | ✅ Complete | 220 files git-mv'd (history preserved); 0 `com.clossette` residue; class + gradle coords renamed. **Verified: compiles + 338/338 tests pass on JDK 22.** |
 | 9 | Full-stack smoke + docs sync | ⚠️ Partial | Web build green; docs synced (CLAUDE.md ×4, README, DESIGN, PRD, CODEMAPS). Docker relaunch smoke + server tests not run (no JDK/Docker). |
 
 ## Validation Results
@@ -36,10 +36,10 @@ Executed the mechanical, cross-stack rebrand of the Clossette codebase to **IYAE
 |---|---|---|
 | Static Analysis (web) | ✅ Pass | `tsc --noEmit`: 0 errors in changed app files. (2 pre-existing errors in `useGenerationStatus.test.ts` + `checkout-flow.spec.ts` — unrelated, not touched.) |
 | Static Analysis (worker) | ✅ Pass | `py_compile` clean on all worker `.py`. |
-| Static Analysis (server) | ⛔ Not run | No JDK. |
+| Static Analysis (server) | ✅ Pass | Compiles clean (JDK 22, Gradle 8.10). BUILD SUCCESSFUL. |
 | Unit Tests (web) | ✅ Pass | vitest **214/227 pass, 0 failures**. 13 un-run = 1 pre-existing OOM-crashing file (`useOutfitRiggingStatus.test.ts`, untouched; crashes standalone). Changed tests (internal-mail ×2, cart-context) re-run isolated: **26/26 pass**. |
 | Unit Tests (worker) | ⚠️ Not run | No ML deps. Asset-path assertions grep-verified in lockstep. |
-| Unit Tests (server) | ⛔ Not run | No JDK (338 tests unverified). |
+| Unit Tests (server) | ✅ Pass | **338/338 pass, 0 failures, 0 errors, 0 skipped** (`./gradlew test`, JDK 22, run post-impl once a JDK was available). |
 | Build (web) | ✅ Pass | `next build` exit 0 — all routes compile; confirms `tailwind.config.ts` delete is safe. |
 | Integration / Docker relaunch | ⛔ Not run | No Docker/JDK in env. |
 | Residue gate | ✅ Pass | `com.clossette`=0, `/var/clossette`=0, infra clossette=0, `"USD"`(server)=0, rendered Clossette=0 (only intentional `clossette:profile-surface-*` events + `clossette_*` keys + picsum seeds remain, per plan). |
@@ -64,7 +64,7 @@ Executed the mechanical, cross-stack rebrand of the Clossette codebase to **IYAE
 None — this is a rebrand refactor. Existing test **assertions** were updated in lockstep (ProductServiceTest, TestProducts, AuthMailServiceTest, Health tests, internal-mail ×2, e2e register/auth) so the regression net still pins the new values.
 
 ## Next Steps
-- [ ] **On a machine with JDK 22**: `cd server && ./gradlew test` to verify the package rename + literal swaps compile and the 338 tests pass. (Expected green — changes are complete-rename + content-only.)
+- [x] **On a machine with JDK 22**: `cd server && ./gradlew test` — **DONE: BUILD SUCCESSFUL, 338/338 pass.** (Wrapper jar was missing/gitignored — restored from `gradle/gradle@v8.10.0`.)
 - [ ] **Complete the two deferred Java refactors** (with JDK): BrandProperties DI centralization; email Option-A consolidation + AuthMailServiceTest rewrite.
 - [ ] `cd worker && pip install -r requirements.txt && pytest` to confirm the 7 asset-path assertions.
 - [ ] `./dev.sh reset && ./dev.sh start` for the Docker relaunch smoke (DB `iyae`, assets under `/var/iyae`, CAD checkout, IYAE emails).
