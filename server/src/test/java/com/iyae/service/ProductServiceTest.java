@@ -3,10 +3,12 @@ package com.iyae.service;
 import com.iyae.dto.CreateProductRequest;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.ProductResponse;
+import com.iyae.dto.UpdateProductRequest;
 import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.GarmentAsset;
 import com.iyae.entity.ModelGenerationTask;
 import com.iyae.entity.Product;
+import com.iyae.entity.ProductSizeMeasurement;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
 import com.iyae.entity.enums.Role;
@@ -346,6 +348,98 @@ class ProductServiceTest {
         assertThatThrownBy(() -> productService.getDesignerProducts("buyer@example.com"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Designer profile not found");
+    }
+
+    @Test
+    void getDesignerProducts_enrichesMeasurements() {
+        // Regression (PR#10 H1): the designer list path must return per-size measurements so the
+        // edit form can round-trip them. Previously measurements were always null here, so the
+        // form saved an empty list and the server wiped the product's measurements.
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findByDesignerProfileId(10L)).thenReturn(List.of(publishedProduct));
+        when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
+                .thenReturn(Collections.emptyList());
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("M")
+                .chestCm(90.0).waistCm(72.0).hipsCm(96.0).lengthCm(60.0)
+                .build();
+        when(productSizeMeasurementRepository.findByProductIdIn(anyList()))
+                .thenReturn(List.of(mRow));
+
+        List<ProductResponse> result = productService.getDesignerProducts("designer@example.com");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).measurements()).hasSize(1);
+        assertThat(result.get(0).measurements().get(0).sizeLabel()).isEqualTo("M");
+        assertThat(result.get(0).measurements().get(0).chestCm()).isEqualTo(90.0);
+    }
+
+    // -------------------------------------------------------------------------
+    // updateProduct — measurement reconciliation (PR#10 H1/L6 regression)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void updateProduct_shrinkSizesOmitMeasurements_prunesOrphanMeasurements() {
+        // Regression (PR#10 L6): shrinking the size list while omitting measurements (null) must
+        // prune measurement rows for sizes no longer offered, so getProductById cannot later
+        // recommend a size the product no longer sells.
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, null, null, null, null, null,
+                List.of("S", "M"), // sizes shrink from [S,M,L] -> [S,M]
+                null, null, null,
+                null); // measurements omitted
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        ProductSizeMeasurement sRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("S").chestCm(84.0).build();
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(2L).product(publishedProduct).sizeLabel("M").chestCm(90.0).build();
+        ProductSizeMeasurement lRow = ProductSizeMeasurement.builder()
+                .id(3L).product(publishedProduct).sizeLabel("L").chestCm(96.0).build();
+        when(productSizeMeasurementRepository.findByProductId(100L))
+                .thenReturn(List.of(sRow, mRow, lRow));
+
+        productService.updateProduct("designer@example.com", 100L, request);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProductSizeMeasurement>> captor = ArgumentCaptor.forClass(List.class);
+        verify(productSizeMeasurementRepository).deleteAll(captor.capture());
+        assertThat(captor.getValue())
+                .extracting(ProductSizeMeasurement::getSizeLabel)
+                .containsExactly("L");
+        // Null measurements must NOT trigger the delete-all "clear" path.
+        verify(productSizeMeasurementRepository, never()).deleteByProductId(anyLong());
+    }
+
+    @Test
+    void updateProduct_priceOnlyOmitMeasurements_keepsAllMeasurements() {
+        // Guard against over-deletion: a price-only edit (sizes unchanged, measurements omitted)
+        // must not prune or clear any measurement rows.
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, new BigDecimal("99.99"), null, null, null, null,
+                null, // sizes unchanged
+                null, null, null,
+                null); // measurements omitted
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        ProductSizeMeasurement sRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("S").chestCm(84.0).build();
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(2L).product(publishedProduct).sizeLabel("M").chestCm(90.0).build();
+        ProductSizeMeasurement lRow = ProductSizeMeasurement.builder()
+                .id(3L).product(publishedProduct).sizeLabel("L").chestCm(96.0).build();
+        when(productSizeMeasurementRepository.findByProductId(100L))
+                .thenReturn(List.of(sRow, mRow, lRow));
+
+        productService.updateProduct("designer@example.com", 100L, request);
+
+        verify(productSizeMeasurementRepository, never()).deleteAll(any());
+        verify(productSizeMeasurementRepository, never()).deleteByProductId(anyLong());
     }
 
     // -------------------------------------------------------------------------
