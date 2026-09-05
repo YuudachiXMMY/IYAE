@@ -8,7 +8,7 @@ Help shoppers go from "I have nothing to wear" to "I feel great about this look"
 
 ## Architecture Overview
 
-Five-service architecture orchestrated via Docker Compose, sharing a MySQL 8 database. Production adds Nginx reverse proxy + Certbot SSL.
+Four-service architecture orchestrated via Docker Compose, sharing a MySQL 8 database. Production adds Nginx reverse proxy + Certbot SSL.
 
 ```
 Next.js 16 (web :3000)  ---REST/JSON + JWT--->  Spring Boot 3.4 (server :8080)  ---JDBC--->  MySQL 8 (:3306)
@@ -21,7 +21,7 @@ Next.js 16 (web :3000)  ---REST/JSON + JWT--->  Spring Boot 3.4 (server :8080)  
                                                  Python 3.12 (worker)
                                            3D model + avatar + rigging generation
 
-Mailpit (dev SMTP :1025, WebUI :8025)  <--- server (transactional emails)
+Resend (transactional email) <--- Next.js web (/api/internal/mail/send) <--- server (HTTP POST)
 ```
 
 The `rigging-worker` service (optional, enabled via `--profile rigging`) runs the garment rigging pipeline as a separate container using `Dockerfile.rigging`.
@@ -40,15 +40,15 @@ graph TD
     B --> B3["entity (22 + 9 enums)"]
     B --> B4["ai (7: interface + factory + exception + 4 impls)"]
     B --> B5["security (JWT + RateLimitFilter)"]
-    B --> B6["config (9)"]
+    B --> B6["config (10, incl. BrandProperties)"]
     B --> B7["db/migration (Flyway, 10 files)"]
-    B --> B8["test (48 test files, 338 methods + 4 test support)"]
+    B --> B8["test (48 test files, 336 methods + 4 test support)"]
     B --> B9["util (GlbPlaceholderGenerator)"]
 
-    C --> C1["app/ (37 page routes + 2 API routes + error boundaries)"]
+    C --> C1["app/ (37 page routes + 1 internal API route + error boundaries)"]
     C --> C2["components/ (74 app + 19 shadcn/ui)"]
-    C --> C3["lib/ (api, auth, cart, 11 hooks, 13 domain modules)"]
-    C --> C4["__tests__/ (vitest, 17 test files, 227 cases)"]
+    C --> C3["lib/ (api, auth, cart, 11 hooks, 14 domain modules incl. brand.ts)"]
+    C --> C4["__tests__/ (vitest, 16 test files, 222 cases)"]
     C --> C5["e2e/ (Playwright, 8 spec files, 60 tests)"]
 
     D --> D1["task_queue + avatar_task_queue + rigging_task_queue (3 queues)"]
@@ -68,8 +68,8 @@ graph TD
 
 | Module | Language | Purpose | Entry Point |
 |--------|----------|---------|-------------|
-| [server](./server/CLAUDE.md) | Java 22 / Spring Boot 3.4 | REST API, business logic, auth (email verification + password reset + multi-step registration with profile/preference/measurement fields + public profiles), AI chat, outfit generation, 3D model orchestration, garment rigging orchestration, community posts/follows, Stripe checkout, rate limiting, Resend email integration with SMTP fallback, guest avatar generation, cloth size selection | `ClossettApplication.java` |
-| [web](./web/CLAUDE.md) | TypeScript / Next.js 16 | Frontend SPA (all CSR), 37 page routes + 2 internal API routes, 3D/AR viewers with pose animation, CSP middleware, community feed, user profiles, multi-step registration wizard, manual outfit builder, AI chat suggestion chips, designer studio/promotions, Resend email templates, cloth size selector, E2E tests | `app/layout.tsx` |
+| [server](./server/CLAUDE.md) | Java 22 / Spring Boot 3.4 | REST API, business logic, auth (email verification + password reset + multi-step registration with profile/preference/measurement fields + public profiles), AI chat, outfit generation, 3D model orchestration, garment rigging orchestration, community posts/follows, Stripe checkout, rate limiting, Resend-only email delivery (POSTs to the Next.js internal mail route; no SMTP), guest avatar generation, cloth size selection | `IyaeApplication.java` |
+| [web](./web/CLAUDE.md) | TypeScript / Next.js 16 | Frontend SPA (all CSR), 37 page routes + 1 internal API route, 3D/AR viewers with pose animation, CSP middleware, community feed, user profiles, multi-step registration wizard, manual outfit builder, AI chat suggestion chips, designer studio/promotions, Resend email templates, cloth size selector, E2E tests | `app/layout.tsx` |
 | [worker](./worker/CLAUDE.md) | Python 3.12 | 3D model + avatar generation daemon (polls MySQL task queues, validates GLB metadata, retries failed tasks, reclaims stale tasks, SMPL-X avatar generation, garment rigging (weight transfer)) | `main.py` |
 | nginx | Config only | Reverse proxy (production), SSL termination, static asset serving | `nginx/conf.d/default.conf` |
 
@@ -86,7 +86,7 @@ graph TD
 
 ```bash
 ./dev.sh setup                 # First-time: check prereqs, generate .env, create JWT_SECRET
-./dev.sh start                 # Start all services (MySQL + Server + Mailpit + Worker + Web)
+./dev.sh start                 # Start all services (MySQL + Server + Worker + Web)
 ./dev.sh status                # Show container states and health checks
 ./dev.sh web                   # Run frontend on host with hot reload (alternative to container)
 ```
@@ -100,8 +100,6 @@ Docker Compose maps host ports to avoid conflicts with local services:
 | Web (Frontend) | `${WEB_PORT:-3000}` | 3000 | `http://localhost:3000` |
 | Server (API) | `${API_PORT:-3001}` | 8080 | `http://localhost:3001/api/health` |
 | MySQL | `${DB_PORT:-3002}` | 3306 | -- |
-| Mailpit (SMTP) | `1025` | 1025 | -- |
-| Mailpit (WebUI) | `8025` | 8025 | `http://localhost:8025` |
 
 ### dev.sh Commands
 
@@ -178,13 +176,6 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `WORKER_MESHY_API_KEY` | For meshy | -- | Meshy.ai API key |
 | `WORKER_POLL_INTERVAL` | No | `5` | Seconds between task queue polls |
 | `WORKER_OUTPUT_DIR` | No | `/var/iyae/assets` | Directory for generated 3D model output |
-| `SPRING_MAIL_HOST` | No | `localhost` | SMTP server host |
-| `SPRING_MAIL_PORT` | No | `1025` | SMTP server port |
-| `SMTP_HOST` | Prod only | -- | Production SMTP host (overrides SPRING_MAIL_HOST) |
-| `SMTP_PORT` | Prod only | `587` | Production SMTP port |
-| `SMTP_USERNAME` | Prod only | -- | Production SMTP username |
-| `SMTP_PASSWORD` | Prod only | -- | Production SMTP password |
-| `MAIL_FROM` | No | `noreply@iyae.ca` | Sender address for system emails |
 | `FRONTEND_BASE_URL` | No | `http://localhost:3000` | Base URL for email links (verification, password reset) |
 | `AVATAR_GENERATION_PROVIDER` | No | `mock` | `mock` / `smplx` (avatar body model provider) |
 | `SMPLX_MODELS_PATH` | For smplx | `./smplx_models` | Host path to SMPL-X model files (mounted read-only into worker container) |
@@ -192,6 +183,7 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `BLENDER_PATH` | For blender | `blender` | Path to Blender executable (only when RIGGING_PROVIDER=blender) |
 | `JAVA_TOOL_OPTIONS` | No | `-Xmx384m -Xms128m` | JVM memory tuning (dev docker-compose only) |
 | `RESEND_API_KEY` | No | -- | Resend API key for transactional email delivery (web container) |
+| `RESEND_MAIL_ENDPOINT` | No | -- | URL of the Next.js internal mail route the server POSTs to (dev docker: `http://web:3000/api/internal/mail/send`) |
 | `INTERNAL_MAIL_SECRET` | No | `dev-internal-secret` | Shared secret for server->web internal mail API calls |
 | `RESEND_FROM_EMAIL` | No | `onboarding@resend.dev` | Resend sender email address (use verified domain in production) |
 
@@ -199,8 +191,8 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 
 | Module | Framework | Tests Present | Test Files | Coverage |
 |--------|-----------|---------------|------------|----------|
-| server | JUnit 5 + Mockito + MockMvc | Yes | 48 files (338 test methods + 4 test support) | Comprehensive (24 service tests + 20 controller tests + 4 other: auth, cart w/ size selection, JWT, health, generation, product, GLB util, secure token, rate limit, email w/ Resend fallback, rigging, chat w/ suggestions, body profile, saved looks, reviews, outfits, avatar, checkout w/ Stripe, promotions, orders, posts, follows, designer profile, file storage, garment asset, user, model orchestration; all controllers WebMvcTest with security config) |
-| web | Vitest + Testing Library + jsdom | Yes | 17 files (227 test cases) | Partial (API client, AuthContext, CartContext w/ size, community feed, profile surface, profile dashboard, middleware CSP, useDebounce, useRequireAuth, useGenerationStatus, useRedirectIfAuthenticated, FittingHelper, SizeSelector, useOutfitRiggingStatus, pose-config, internal mail API routes) |
+| server | JUnit 5 + Mockito + MockMvc | Yes | 48 files (336 test methods + 4 test support) | Comprehensive (24 service tests + 20 controller tests + 4 other: auth, cart w/ size selection, JWT, health, generation, product, GLB util, secure token, rate limit, email (Resend-only), rigging, chat w/ suggestions, body profile, saved looks, reviews, outfits, avatar, checkout w/ Stripe, promotions, orders, posts, follows, designer profile, file storage, garment asset, user, model orchestration; all controllers WebMvcTest with security config) |
+| web | Vitest + Testing Library + jsdom | Yes | 16 files (222 test cases) | Partial (API client, AuthContext, CartContext w/ size, community feed, profile surface, profile dashboard, middleware CSP, useDebounce, useRequireAuth, useGenerationStatus, useRedirectIfAuthenticated, FittingHelper, SizeSelector, useOutfitRiggingStatus, pose-config, internal mail send route) |
 | web (E2E) | Playwright | Yes | 8 specs (60 tests) | Moderate (auth flows, registration wizard, pose selector, AI stylist, cart w/ size, checkout flow, community, designer CRUD) |
 | worker | pytest | Yes | 15 files (292 tests) | Partial (task_queue claim/retry/reclaim, validator GLB/USDZ/metadata/bbox/NaN/rigged-GLB/skin/bones, StubGenerator output/payload/integration, MeshyGenerator init/generate/errors/payload/image-url-resolve, AvatarTaskQueue claim/complete/fail/reclaim, SmplxProvider generate/measurements/errors/stub/gender/LFS/caching, RiggingTaskQueue claim/complete/fail/reclaim, PythonRiggingProvider validation/output/call-chain/scale-normalization, BlenderRiggingProvider, weight transfer surface-match/inpainting/prune-normalize, mesh preflight/garment-size-warnings, skinned GLB writer/joint-hierarchy/positioning, A-pose vector, scale normalizer, pose GLB generation) |
 
@@ -214,7 +206,7 @@ cd worker && pytest                    # Worker (unit tests)
 
 ### Server Test Details
 
-**Service Tests (24 files, 215 methods):**
+**Service Tests (24 files, 213 methods):**
 
 | Test File | Tests | Covers |
 |-----------|-------|--------|
@@ -229,7 +221,7 @@ cd worker && pytest                    # Worker (unit tests)
 | `ReviewServiceTest` | 9 | Review create/delete + ownership + summary |
 | `BodyProfileServiceTest` | 6 | Body profile CRUD + ownership |
 | `AvatarServiceTest` | 6 | Gender identity mapping for avatar payload |
-| `AuthMailServiceTest` | 8 | Email sending (Resend + SMTP fallback) + exception handling |
+| `AuthMailServiceTest` | 6 | Email sending via Resend POST to the Next.js internal route (verified with an in-process HttpServer) + EmailDeliveryException on failure |
 | `SecureTokenServiceTest` | 5 | Token generation + SHA-256 hashing |
 | `CheckoutServiceTest` | 14 | Stripe checkout (session creation, webhook handling, order fulfillment, size in line items) |
 | `PostServiceTest` | 13 | Community post CRUD, feed, like, comment |
@@ -275,7 +267,7 @@ cd worker && pytest                    # Worker (unit tests)
 | `RateLimitFilterTest` | 10 | Per-IP rate limiting + XFF proxy support |
 | `JwtTokenProviderTest` | 7 | Token generate/validate/extract |
 | `GlbPlaceholderGeneratorTest` | 5 | GLB generation, file writing, directory creation |
-| `ClossettApplicationTests` | 1 | Application context load |
+| `IyaeApplicationTests` | 1 | Application context load |
 
 **Test Support (4 files):** `MockAuthenticationFactory`, `TestUsers`, `TestProducts`, `WebMvcSecurityConfig`
 
@@ -299,7 +291,6 @@ cd worker && pytest                    # Worker (unit tests)
 | `__tests__/lib/hooks/useOutfitRiggingStatus.test.ts` | 13 | useOutfitRiggingStatus hook (polling lifecycle, rigging status sync, AbortController) |
 | `__tests__/lib/pose-config.test.ts` | 14 | pose-config (manifest-driven presets, categories, getPoseById, animated pose fields) |
 | `__tests__/api/internal-mail-send.test.ts` | 11 | Internal mail send API route (auth secret validation, Resend integration, error handling) |
-| `__tests__/api/internal-mail.test.ts` | 5 | Internal mail password-reset API route (secret validation, template rendering) |
 
 ### E2E Test Details
 
@@ -336,8 +327,8 @@ cd worker && pytest                    # Worker (unit tests)
 
 ## Coding Conventions
 
-- **Server (Java)**: Lombok annotations (`@RequiredArgsConstructor`, `@Slf4j`, `@Builder`), Jakarta Bean Validation (`@Valid`) at controller layer, ownership checks in service layer, records for DTOs, `GlobalExceptionHandler` maps exceptions to HTTP status codes (400 for IllegalArgumentException, 403 for AccessDeniedException, 503 for AIProviderException and EmailDeliveryException), `@Max(100)` on cart item quantities
-- **Web (TypeScript)**: All pages `"use client"` (no RSC), shadcn/ui primitives in `components/ui/` (CLI-generated, do not edit by hand), `api.ts` wrapper for typed fetch with auto JWT injection, AbortSignal support, `auth` helper object (register/login/me/updateProfile), and `rigging` helper object (getStatus/trigger/retry), Suspense boundaries on pages using `useSearchParams`, CSP headers via `middleware.ts` with environment-aware `script-src` policy, community/profile data modules use immutable update patterns and localStorage persistence, all colors use semantic tokens (`bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-muted`, `shadow-heavy`) for dark mode compatibility -- avoid hardcoded `stone-*` or `bg-white` classes, CSS gradient variables (`--gradient-page-*`, `--gradient-profile-banner-*`) with dark mode overrides in `globals.css`
+- **Server (Java)**: Lombok annotations (`@RequiredArgsConstructor`, `@Slf4j`, `@Builder`), Jakarta Bean Validation (`@Valid`) at controller layer, ownership checks in service layer, records for DTOs, `GlobalExceptionHandler` maps exceptions to HTTP status codes (400 for IllegalArgumentException, 403 for AccessDeniedException, 503 for AIProviderException and EmailDeliveryException), `@Max(100)` on cart item quantities, brand-derived server values (health service id, guest sentinel email, seed-email domain) bound from `app.brand.*` via the `BrandProperties` `@ConfigurationProperties` record; transactional email is Resend-only -- `AuthMailService` POSTs to the Next.js internal mail route (no JavaMailSender/SMTP)
+- **Web (TypeScript)**: All pages `"use client"` (no RSC), shadcn/ui primitives in `components/ui/` (CLI-generated, do not edit by hand), `api.ts` wrapper for typed fetch with auto JWT injection, AbortSignal support, `auth` helper object (register/login/me/updateProfile), and `rigging` helper object (getStatus/trigger/retry), Suspense boundaries on pages using `useSearchParams`, CSP headers via `middleware.ts` with environment-aware `script-src` policy, community/profile data modules use immutable update patterns and localStorage persistence, all colors use semantic tokens (`bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-muted`, `shadow-heavy`) for dark mode compatibility -- avoid hardcoded `stone-*` or `bg-white` classes, CSS gradient variables (`--gradient-page-*`, `--gradient-profile-banner-*`) with dark mode overrides in `globals.css`, all brand values (wordmark, domain, canonical URL, mail-from) sourced from `web/lib/brand.ts` (`BRAND`) rather than hardcoded per component
 - **Worker (Python)**: Standard library + mysql-connector-python + requests; no ORM; connection-per-poll-cycle pattern; stale task reclamation every 12 poll cycles (approx. 1 minute); GLB metadata validation (triangle count, bounding box, NaN checks) in addition to header validation; rigging output uses schemaVersion=2 payload format (distinct from model generation schemaVersion=1); MeshyGenerator auto-converts local file paths to base64 data URIs via `_resolve_image_url()`
 - **Database**: Flyway migrations only (Hibernate `ddl-auto: validate`); add tables via `V{N}__description.sql` in `server/src/main/resources/db/migration/`; 10 migrations (V1-V10)
 - **Shared contract**: `model_generation_tasks`, `avatar_generation_tasks`, and `rigging_tasks` MySQL tables are the integration points between server and worker; `TaskStatus` enum includes `MATERIALIZED` (internal status mapped to `READY` in API responses)
@@ -362,7 +353,7 @@ cd worker && pytest                    # Worker (unit tests)
 |------|---------|
 | `PRD.md` | Canonical product specification |
 | `.env.example` | Environment variable template (copy to `.env`) |
-| `docker-compose.yml` | Dev orchestration (5 services: mysql, server, mailpit, worker, web) |
+| `docker-compose.yml` | Dev orchestration (4 services: mysql, server, worker, web) |
 | `docker-compose.prod.yml` | Production orchestration (6 services incl. nginx + certbot) |
 | `dev.sh` | Development helper commands |
 | `prod_deploy.sh` | Production deployment helper |
@@ -385,3 +376,4 @@ cd worker && pytest                    # Worker (unit tests)
 | 2026-06-14 | Doc sync: guest avatar API (+GuestAvatarController/Service), cloth size selection (V10 migration, cart_items.selected_size), +5 home components (LifestyleGrid, PhotoStrip, MagneticCTALink, TryOnViewer, motion-presets), SizeSelector component; server 333->339 tests, web 221->227 tests + SizeSelector test file; controllers 20->21, services 26->27, DTOs 44->46 |
 | 2026-06-14 | Count audit: server tests 339->338 (service 220->215, controller 105->100 -- corrected sum errors from 2026-06-07 sync); AuthMailServiceTest 5->8 (3 Resend fallback tests were undercounted); web components 98->91 total (79->72 app-specific -- previous count inflated by 7); lib domain modules 10->13 (added demo-looks.ts, email-templates.ts, utils.ts to count); Mermaid diagram updated |
 | 2026-06-19 | Doc sync: fixed web component count 72->74 app-specific / 91->93 total (section sums 31+18+1+9+6+2+7=74 were correct; Mermaid header was understated by 2) |
+| 2026-09-05 | Email consolidated onto Resend (removed spring-boot-starter-mail + Mailpit + all SMTP config; dev now 4 services; server tests 338->336, AuthMailServiceTest 8->6); added BrandProperties (`app.brand.*`) + `web/lib/brand.ts` for brand centralization; web tests 227->222 / 17->16 files (internal-mail.test.ts removed) |

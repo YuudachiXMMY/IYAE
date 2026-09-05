@@ -10,9 +10,9 @@ The server is the central backend service. It exposes all REST endpoints, manage
 
 ## Entry & Startup
 
-- **Main class**: `com.iyae.ClossettApplication` (standard Spring Boot `@SpringBootApplication`)
+- **Main class**: `com.iyae.IyaeApplication` (standard Spring Boot `@SpringBootApplication` + `@ConfigurationPropertiesScan`)
 - **Port**: 8080 (configurable via `server.port`)
-- **Profile**: `application.yml` (base), `application-dev.yml` (dev overrides with SQL logging), `application-prod.yml` (production: INFO logging, no SQL, SMTP auth+TLS), `application-test.yml` (H2 in-memory, Flyway disabled)
+- **Profile**: `application.yml` (base), `application-dev.yml` (dev overrides with SQL logging), `application-prod.yml` (production: INFO logging, no SQL), `application-test.yml` (H2 in-memory, Flyway disabled)
 - **On startup**: `DataSeeder` (CommandLineRunner) seeds initial data if the database is empty (5 users, 3 designer profiles, 2 body profiles, 36 products, 10 promotions, 10 garment assets)
 
 ## Commands
@@ -35,9 +35,9 @@ entity/enums/ (9) --> Role, ProductStatus, TaskStatus (incl. MATERIALIZED), Sess
 dto/        (46)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse)
 ai/          (7)  --> Pluggable AI provider system (interface, factory, exception, 4 impls)
 security/    (3)  --> JWT filter + token provider + UserDetailsService
-config/      (9)  --> SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig
+config/     (10)  --> SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig, BrandProperties (@ConfigurationProperties "app.brand")
 util/        (1)  --> GlbPlaceholderGenerator (minimal GLB file generation)
-test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controller WebMvcTest + 4 other) + 4 test support (338 methods total)
+test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controller WebMvcTest + 4 other) + 4 test support (336 methods total)
 ```
 
 ## API Endpoints (External Interface)
@@ -101,7 +101,7 @@ test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controlle
 ### Build (Gradle/Kotlin DSL)
 
 - Spring Boot 3.4.1, Java 22
-- `spring-boot-starter-web`, `spring-boot-starter-data-jpa`, `spring-boot-starter-security`, `spring-boot-starter-validation`, `spring-boot-starter-mail`
+- `spring-boot-starter-web`, `spring-boot-starter-data-jpa`, `spring-boot-starter-security`, `spring-boot-starter-validation` (no `spring-boot-starter-mail` -- email goes through the Next.js Resend route via `java.net.http.HttpClient`)
 - Flyway (`flyway-core`, `flyway-mysql`)
 - MySQL Connector/J
 - JJWT 0.12.6 (JWT API + impl + Jackson)
@@ -116,27 +116,22 @@ test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controlle
 | `spring.datasource.password` | `DB_PASSWORD` | -- | DB password |
 | `spring.jpa.hibernate.ddl-auto` | -- | `validate` | Schema validation only |
 | `spring.jpa.open-in-view` | -- | `false` | No lazy loading outside tx |
-| `spring.mail.host` | `SPRING_MAIL_HOST` | `localhost` | SMTP server host |
-| `spring.mail.port` | `SPRING_MAIL_PORT` | `1025` | SMTP server port |
 | `app.jwt.secret` | `JWT_SECRET` | -- | HS256 signing key |
 | `app.jwt.expiration-ms` | -- | `86400000` (24h) | Token TTL |
 | `app.ai.provider` | `AI_PROVIDER` | `mock` | AI provider selection |
 | `app.cors.origins` | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001,http://iyae.localhost` | CORS allowlist |
 | `app.frontend.base-url` | `FRONTEND_BASE_URL` | `http://localhost:3000` | Base URL for email links |
-| `app.mail.from` | `MAIL_FROM` | `noreply@iyae.ca` | Sender email address |
+| `app.mail.resend-endpoint` | `RESEND_MAIL_ENDPOINT` | -- | URL of the Next.js internal mail route (server POSTs here; empty = delivery fails) |
+| `app.mail.internal-secret` | `INTERNAL_MAIL_SECRET` | -- | Shared secret sent as `x-internal-mail-secret` header to the mail route |
+| `app.brand.domain` | `BRAND_DOMAIN` | `iyae.ca` | Brand domain (backs seed-user emails) |
+| `app.brand.service-id` | `BRAND_SERVICE_ID` | `iyae-server` | Service id reported by `/api/health` |
+| `app.brand.guest-email` | `BRAND_GUEST_EMAIL` | `guest@iyae.internal` | Internal sentinel email for guest avatar generation |
 | `app.auth.verification-token-ttl` | -- | `24h` | Email verification token expiry |
 | `app.auth.password-reset-ttl` | -- | `1h` | Password reset token expiry |
 
-### Production Mail Configuration (`application-prod.yml`)
+### Mail Delivery (Resend-only)
 
-Production overrides mail settings with authenticated SMTP:
-
-| Env Var | Default | Purpose |
-|---------|---------|---------|
-| `SMTP_HOST` | -- | Production SMTP host (overrides `SPRING_MAIL_HOST`) |
-| `SMTP_PORT` | `587` | Production SMTP port with STARTTLS |
-| `SMTP_USERNAME` | -- | SMTP authentication username |
-| `SMTP_PASSWORD` | -- | SMTP authentication password |
+There is no SMTP path in any profile. `AuthMailService` POSTs the mail `{type, toEmail, name, actionUrl}` to the Next.js internal route (`app.mail.resend-endpoint`, e.g. `http://web:3000/api/internal/mail/send`) with the `app.mail.internal-secret` shared secret; the web route renders the template and calls Resend. Dev and prod use the same mechanism -- set `RESEND_API_KEY` (web container) for delivery to actually occur. The former `spring-boot-starter-mail` / JavaMailSender / `SMTP_*` configuration has been removed.
 
 ### Test Configuration (`application-test.yml`)
 
@@ -205,7 +200,7 @@ On first startup (empty database), `DataSeeder` creates:
 |---------|---------|
 | AuthService | Registration (with email verification token, designer profile auto-creation for DESIGNER role), login, JWT issuance, email verification, password reset, public profile lookup |
 | SecureTokenService | Cryptographic token generation (SecureRandom) and SHA-256 hashing |
-| AuthMailService | Transactional email delivery (verification + password reset) via JavaMailSender with Resend fallback |
+| AuthMailService | Transactional email delivery (verification + password reset) -- Resend-only; POSTs `{type,toEmail,name,actionUrl}` to the Next.js internal mail route via `java.net.http.HttpClient` (no JavaMailSender/SMTP); throws `EmailDeliveryException` on any non-2xx / transport failure / unconfigured endpoint |
 | ProductService | Product catalog CRUD, search, and category listing |
 | CartService | Shopping cart operations with ownership checks and cloth size selection (selectedSize field, unique per cart+product+size) |
 | ChatService | AI conversational styling + outfit generation protocol + suggestion chips (`[SUGGESTIONS]` extraction, fallback, XSS-safe truncation) + email verification gate |
@@ -249,7 +244,7 @@ Returns HTTP 429 with JSON `{"message":"Too many requests. Please try again late
 ### Email Verification Flow
 
 1. `AuthService.register()` generates a raw token via `SecureTokenService`, stores SHA-256 hash in `users.verification_token`, sets `emailVerified=false`
-2. `AuthMailService.sendVerificationEmail()` sends branded HTML email with link: `{FRONTEND_BASE_URL}/verify-email?token={rawToken}`
+2. `AuthMailService.sendVerificationEmail()` POSTs `{type:"verification", toEmail, name, actionUrl}` (where `actionUrl` = `{FRONTEND_BASE_URL}/verify-email?token={rawToken}`) to the Next.js/Resend internal route, which renders the template and sends via Resend
 3. Registration succeeds even if email delivery fails (logged as warning)
 4. `POST /api/auth/verify-email` hashes the submitted token, looks up user, verifies expiry, sets `emailVerified=true`, clears token fields
 
@@ -364,29 +359,29 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - **Framework**: JUnit 5 + Mockito + MockMvc + AssertJ (via `spring-boot-starter-test`)
 - **Test profile**: `application-test.yml` (H2 in-memory, Flyway disabled, mock AI)
 - **Test directory**: `server/src/test/java/com/iyae/`
-- **Current state**: 48 test files, 338 test methods (+ 4 test support files)
+- **Current state**: 48 test files, 336 test methods (+ 4 test support files)
 
 ### Test Inventory
 
 | Test File | Type | Tests | What It Covers |
 |-----------|------|-------|----------------|
-| `ClossettApplicationTests` | `@SpringBootTest` (no web, mocked repos) | 1 | Application context loads |
+| `IyaeApplicationTests` | `@SpringBootTest` (no web, mocked repos) | 1 | Application context loads |
 | `AuthServiceTest` | `@ExtendWith(MockitoExtension)` | 19 | Register success/duplicate-email/with-measurements/duplicate-username/designer-role-creates-designer-profile/buyer-role-no-designer-profile, login success/wrong-password/nonexistent-user, updateProfile success/duplicate-username, verifyEmail success/invalid-token/expired-token, forgotPassword existing-user/non-existent-user, resetPassword success/expired-token/already-used-token |
 | `CartServiceTest` | `@ExtendWith(MockitoExtension)` | 11 | Get cart (existing/new), add item (new/existing/with-size), remove item (owned/not-owned), unknown user, size selection (same product different sizes, update size) |
 | `JwtTokenProviderTest` | Unit (no Spring) | 7 | Generate token, extract email, validate (valid/tampered/expired), different emails, round-trip |
-| `HealthControllerTest` | `@WebMvcTest` (security excluded) | 3 | Health endpoint, AI health (mock/down) |
+| `HealthControllerTest` | `@WebMvcTest` (security excluded) | 3 | Health endpoint, AI health (mock/down); declares a `BrandProperties` mock |
 | `GenerationServiceTest` | `@ExtendWith(MockitoExtension)` | 8 | Status (none/not-found/MATERIALIZED->READY), ownership checks (getStatus/regenerate/retry), regenerate (supersede pending), regenerate (no image) |
 | `ProductServiceTest` | `@ExtendWith(MockitoExtension)` | 22 | Catalog (no filters/category/search/both/page-size clamp), product detail (published/draft-owner/draft-nonowner/draft-anon/nonexistent/with-asset/with-pending-task), designer products (list/unknown-user/no-profile), create product (success/default-currency), delete product (owner/non-owner/nonexistent), categories (populated/empty) |
 | `GlbPlaceholderGeneratorTest` | Unit (no Spring) | 5 | GLB magic header, version 2, total length matches array size, writeGlbFile creates file, writeGlbFile creates parent directories |
 | `SecureTokenServiceTest` | Unit (no Spring) | 5 | generateRawToken (Base64 URL-safe, unique per call), hashToken (64-char hex, idempotent, different inputs produce different hashes) |
 | `RateLimitFilterTest` | Unit (MockHttpServlet) | 10 | Non-matching path passes, login allows up to limit, login blocks after limit, register blocks after limit, different IPs isolated counters, 429 response body JSON, 429 content-type application/json, chat endpoint any-method limit, X-Forwarded-For trusted proxy parses client IP, X-Forwarded-For untrusted proxy uses remoteAddr |
-| `AuthMailServiceTest` | `@ExtendWith(MockitoExtension)` | 8 | sendVerificationEmail calls mailSender, verification email correct recipient+subject, sendPasswordResetEmail calls mailSender, reset email correct subject+recipient, mail exception throws EmailDeliveryException, Resend fails falls back to SMTP, both Resend and SMTP fail throws EmailDeliveryException, no Resend endpoint falls back to SMTP |
+| `AuthMailServiceTest` | `@ExtendWith(MockitoExtension)` + in-process `HttpServer` | 6 | Resend POST for verification (correct path/headers/body), Resend POST for password-reset, secret header sent, non-2xx response throws EmailDeliveryException, transport failure throws EmailDeliveryException, unconfigured endpoint throws EmailDeliveryException |
 | `RiggingServiceTest` | `@ExtendWith(MockitoExtension)` | 15 | requestRigging success/not-found/not-owner/no-asset/no-glb/supersede, getStatus ready/materialized-to-ready/none-no-task/none-no-asset, retry success/no-failed-task/backfill-input-payload, processReadyTasks materialize/skip-non-latest |
 | `ChatServiceTest` | `@ExtendWith(MockitoExtension)` | 11 | AI provider fallback (error response, session remains active, fallback persisted), normal message save, suggestion extraction (valid/malformed/empty), suggestion marker stripping from persisted content, suggestion truncation (max 3, max 100 chars), blank/whitespace filtering |
 | `BodyProfileServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | Get profile (existing/new), upsert (create/update), ownership checks |
 | `SavedLookServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | List looks, save/update/delete look, ownership checks, invalid outfit |
 | `ReviewServiceTest` | `@ExtendWith(MockitoExtension)` | 9 | Create review, delete review, get reviews, summary, ownership, duplicate prevention |
-| `AvatarServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | Gender identity mapping for avatar payload (null/blank->neutral, Male->male, Female->female, Non-binary->neutral, Prefer-not-to-say->neutral) |
+| `AvatarServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | Gender identity mapping for avatar payload (null/blank->neutral, Male->male, Female->female, Non-binary->neutral, Prefer-not-to-say->neutral); declares a `BrandProperties` mock (guest email) |
 | `OutfitServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | Generate outfit (slot matching, scoring), manual outfit builder, get outfits, ownership |
 | `CheckoutServiceTest` | `@ExtendWith(MockitoExtension)` | 14 | Stripe checkout (session creation, webhook handling, order fulfillment, size in line items) |
 | `PostServiceTest` | `@ExtendWith(MockitoExtension)` | 13 | Community post CRUD, feed, like, comment |
@@ -398,7 +393,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `DesignerProfileServiceTest` | `@ExtendWith(MockitoExtension)` | 5 | Designer profile management |
 | `FileStorageServiceTest` | `@ExtendWith(MockitoExtension)` | 5 | File upload (JPEG/PNG/WebP, atomic write) |
 | `GarmentAssetServiceTest` | `@ExtendWith(MockitoExtension)` | 4 | Garment asset retrieval |
-| `HealthServiceTest` | `@ExtendWith(MockitoExtension)` | 2 | Server and AI health probes |
+| `HealthServiceTest` | `@ExtendWith(MockitoExtension)` | 2 | Server and AI health probes; declares a `BrandProperties` mock (service id) |
 
 ### Untested Areas (coverage gaps)
 
@@ -425,7 +420,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - Email delivery failures during registration are swallowed (logged as warning) so registration still succeeds
 - Forgot-password swallows email delivery failures to prevent account enumeration via 503 vs 200 side-channel
 - `PasswordResetToken.consumeToken()` uses an atomic UPDATE query to prevent race conditions
-- Production mail config (`application-prod.yml`) requires `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD` env vars for authenticated SMTP with STARTTLS
+- Email is Resend-only in every profile -- `AuthMailService` POSTs to the Next.js internal route (`app.mail.resend-endpoint`); there is no JavaMailSender/SMTP anywhere. There is **no Mailpit** in dev: without `RESEND_API_KEY` set on the web container, delivery fails and is logged (no local inbox to inspect)
 - Registration with `DESIGNER` role auto-creates a `DesignerProfile` entity; `BUYER` role registration does not
 - `ChatService` requires email verification before AI stylist access (configurable via `app.auth.require-email-verification`, default `true`)
 - `ChatService` persists cleaned AI responses (no `[SUGGESTIONS]` markers) but keeps `[GENERATE_OUTFIT]` markers (frontend handles stripping)
@@ -440,9 +435,9 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `build.gradle.kts` | Gradle build config (dependencies, Java 22) |
 | `settings.gradle.kts` | Project name |
 | `Dockerfile` | Multi-stage build (gradle -> temurin JRE 22) |
-| `src/main/resources/application.yml` | Main config (incl. mail and auth token TTLs) |
-| `src/main/resources/application-dev.yml` | Dev overrides (SQL logging, DEBUG, local Mailpit SMTP) |
-| `src/main/resources/application-prod.yml` | Production overrides (INFO logging, no SQL, authenticated SMTP with STARTTLS) |
+| `src/main/resources/application.yml` | Main config (incl. `app.brand.*`, Resend mail route, and auth token TTLs) |
+| `src/main/resources/application-dev.yml` | Dev overrides (SQL logging, DEBUG, `require-email-verification: false`) |
+| `src/main/resources/application-prod.yml` | Production overrides (INFO logging, no SQL) |
 | `src/test/resources/application-test.yml` | Test overrides (H2 in-memory, Flyway off) |
 | `src/main/resources/db/migration/V1__baseline_schema.sql` | 15-table baseline |
 | `src/main/resources/db/migration/V2__indexes_and_constraints.sql` | Performance indexes |
@@ -464,3 +459,4 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | 2026-06-08 | Quality audit: corrected MAIL_FROM default `.com`->`.ca`, trimmed changelog |
 | 2026-06-14 | Doc sync: +GuestAvatarController/Service (public avatar API), cart size selection (V10 migration), V9+V10 migration refs, services 26->27, controllers 20->21, DTOs 44->46, tests 333->339 |
 | 2026-06-14 | Count audit: tests 339->338 (service header 220->215, controller header 105->100 -- corrected sum errors); AuthMailServiceTest 5->8 (Resend fallback tests were undercounted); added GuestAvatar to untested areas |
+| 2026-09-05 | Email consolidated onto Resend: removed `spring-boot-starter-mail` + all `spring.mail.*`/`SMTP_*` config; `AuthMailService` is Resend-only (POSTs to Next.js internal route). Added `BrandProperties` (`app.brand.*`, config 9->10). Main class/context test renamed Clossett->Iyae. Tests 338->336 (AuthMailServiceTest 8->6; Health*/Avatar now mock BrandProperties) |

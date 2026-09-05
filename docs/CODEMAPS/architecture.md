@@ -36,7 +36,6 @@
 | mysql | MySQL 8 data store | 3002→3306 | internal only |
 | worker | Python 3.12 3D model + avatar generation daemon | none | none |
 | rigging-worker | Python 3.12 garment rigging (weight transfer) daemon | none | none |
-| mailpit | Dev SMTP + WebUI | 1025/8025 | replaced by real SMTP |
 | nginx | Reverse proxy, SSL, static assets (prod only) | -- | 80/443 |
 
 ## Data Flow
@@ -57,8 +56,8 @@ Rigging:  Server creates rigging_task for garment asset (PENDING)
           Rigging worker polls → claims → weight transfer → skinned GLB → completes (READY)
 Checkout: Browser → POST /api/checkout → CheckoutService → Stripe → Order created
           Stripe → POST /api/webhooks/stripe → StripeWebhookController → order fulfillment
-Email:    Server → AuthMailService → JavaMailSender → Mailpit (dev) / SMTP (prod)
-          Server → internal API → Web (Resend SDK) → Resend API (prod)
+Email:    Server → AuthMailService → HTTP POST → Web (/api/internal/mail/send) → Resend API
+                    (Resend-only; no JavaMailSender/SMTP/Mailpit in any profile)
 Community:Browser → POST /api/posts → PostService → PostRepo → DB
           Browser → POST /api/follows/{userId} → FollowService → FollowRepo → DB
 ```
@@ -71,5 +70,5 @@ Community:Browser → POST /api/posts → PostService → PostRepo → DB
 - **Server ↔ Stripe**: CheckoutService → StripeCheckoutGateway, StripeWebhookController
 - **Server → Web (internal mail)**: Internal API with shared secret for Resend email delivery
 - **Web → Server**: REST/JSON + JWT Bearer token via `/api/*` proxy
-- **Server → Email**: JavaMailSender (Mailpit dev, authenticated SMTP prod, Resend fallback via web)
+- **Server → Email**: HTTP POST to the Web internal mail route → Resend (no SMTP/JavaMailSender)
 - **Nginx → All**: Reverse proxy with security headers (prod)

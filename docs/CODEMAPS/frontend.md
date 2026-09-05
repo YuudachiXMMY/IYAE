@@ -47,10 +47,9 @@ app/
 └── designer/promotions/page.tsx      # /designer/promotions
 ```
 
-### Internal API Routes (2)
+### Internal API Routes (1)
 ```
-app/api/internal/mail/send/route.ts          # Resend email delivery (server→web internal)
-app/api/internal/mail/password-reset/route.ts # Resend password reset template
+app/api/internal/mail/send/route.ts          # Resend email delivery (server→web internal); subjects from BRAND
 ```
 
 ## Component Hierarchy
@@ -117,7 +116,8 @@ AuthProvider (layout.tsx)
 - `pose-config.ts` — POSE_PRESETS, POSE_CATEGORIES, getPoseById() for avatar pose system
 - `outfit-slots.ts` — outfit slot configuration and constants
 - `demo-looks.ts` — demo saved looks data
-- `email-templates.ts` — email template utilities for Resend integration
+- `brand.ts` — single source of brand values (`BRAND`: name, tagline, domain, url, mailFrom) for wordmarks + email subjects/templates
+- `email-templates.ts` — email template utilities for Resend integration (reads copy/sender from `BRAND`)
 
 ## Custom Hooks (`lib/hooks/`)
 - `useRequireAuth(role?)` — auth guard, redirects to /login or /dashboard
@@ -148,5 +148,5 @@ CSP headers (env-aware script-src + wasm-unsafe-eval for Three.js Draco), X-Fram
 - `public/models/demo-outfit.glb` — demo 3D mannequin (436 bytes)
 
 ## Tests
-- Vitest: 17 files, 227 cases (api, auth-context, cart-context w/ size, community-feed, profile-dashboard, profile-surface, middleware, useDebounce, useRequireAuth, useGenerationStatus, useRedirectIfAuthenticated, FittingHelper, SizeSelector, useOutfitRiggingStatus, pose-config, internal-mail-send, internal-mail)
+- Vitest: 16 files, 222 cases (api, auth-context, cart-context w/ size, community-feed, profile-dashboard, profile-surface, middleware, useDebounce, useRequireAuth, useGenerationStatus, useRedirectIfAuthenticated, FittingHelper, SizeSelector, useOutfitRiggingStatus, pose-config, internal-mail-send)
 - Playwright E2E: 8 specs, 60 tests (auth flows, registration wizard, pose selector, AI stylist, cart w/ size, checkout flow, community, designer CRUD)

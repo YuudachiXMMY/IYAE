@@ -138,7 +138,7 @@ Suggestion chips protocol: ChatService detects `[SUGGESTIONS]...[/SUGGESTIONS]` 
 
 ```
 server/src/main/java/com/iyae/
-├── ClossettApplication.java        # Entry point
+├── IyaeApplication.java            # Entry point (@ConfigurationPropertiesScan for BrandProperties)
 ├── controller/ (21 files)          # REST endpoints (incl. GuestAvatarController, StripeWebhookController)
 ├── service/ (27 files)             # Business logic + ownership checks (incl. GuestAvatarService, StripeCheckoutGateway, DefaultStripeCheckoutGateway)
 ├── repository/ (22 files)          # Spring Data JPA
@@ -146,7 +146,7 @@ server/src/main/java/com/iyae/
 ├── dto/ (46 files)                 # Request/response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse)
 ├── ai/ (7 files)                   # AIProvider interface + 4 impls + factory + exception
 ├── security/ (3 files)             # JwtAuthenticationFilter + JwtTokenProvider + UserDetailsServiceImpl
-├── config/ (9 files)               # SecurityConfig, RateLimitFilter, CORS, Mail, Scheduler, DataSeeder, AI, WebMvc, GlbAssetInitializer
+├── config/ (10 files)              # SecurityConfig, RateLimitFilter, CORS, BrandProperties, Scheduler, DataSeeder, AI, WebMvc, GlbAssetInitializer, GlobalExceptionHandler
 ├── util/ (1 file)                  # GlbPlaceholderGenerator
 └── src/test/ (48 files, 339 methods + 4 test support)
 ```
