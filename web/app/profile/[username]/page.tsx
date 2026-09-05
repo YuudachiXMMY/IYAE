@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 import { NavBar } from "@/components/NavBar";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { BRAND } from "@/lib/brand";
 
 interface PublicProfileResponse {
   username: string;
@@ -105,7 +106,7 @@ export default function ProfilePage() {
     ? {
         displayName: user.name ?? username,
         username: username,
-        bio: "Fashion enthusiast on IYAE",
+        bio: `Fashion enthusiast on ${BRAND.name}`,
         avatarTone: ["#e2d9d7", "#d7efe7"] as [string, string],
         bannerTone: ["#f5efe8", "#e8e0d5"] as [string, string],
         location: "",

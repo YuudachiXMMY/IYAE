@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.iyae.config.BrandProperties;
 import com.iyae.entity.AvatarGenerationTask;
 import com.iyae.entity.BodyProfile;
 import com.iyae.entity.User;
@@ -32,6 +33,7 @@ class AvatarServiceTest {
     @Mock AvatarGenerationTaskRepository avatarTaskRepository;
     @Mock BodyProfileRepository bodyProfileRepository;
     @Mock UserRepository userRepository;
+    @Mock BrandProperties brandProperties;
 
     @Spy ObjectMapper objectMapper = new ObjectMapper();
 

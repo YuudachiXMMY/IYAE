@@ -1,6 +1,7 @@
 package com.iyae.service;
 
 import com.iyae.ai.AIProviderFactory;
+import com.iyae.config.BrandProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -18,11 +19,16 @@ class HealthServiceTest {
     @Mock
     AIProviderFactory aiProviderFactory;
 
+    @Mock
+    BrandProperties brandProperties;
+
     @InjectMocks
     HealthService healthService;
 
     @Test
     void getServerHealth_returnsUpStatus() {
+        when(brandProperties.serviceId()).thenReturn("iyae-server");
+
         Map<String, String> result = healthService.getServerHealth();
 
         assertThat(result.get("status")).isEqualTo("UP");

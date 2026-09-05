@@ -1,11 +1,12 @@
 import { Resend } from 'resend';
 import { buildPasswordResetEmailHtml, buildVerificationEmailHtml } from '@/lib/email-templates';
+import { BRAND } from '@/lib/brand';
 
 type MailType = 'verification' | 'password-reset';
 
 const SUBJECT_MAP: Record<MailType, string> = {
-  verification: 'Verify your IYAE account',
-  'password-reset': 'Reset your IYAE password',
+  verification: `Verify your ${BRAND.name} account`,
+  'password-reset': `Reset your ${BRAND.name} password`,
 };
 
 const TEMPLATE_MAP: Record<MailType, (name: string, actionUrl: string) => string> = {
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   const mailType = type as MailType;
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { data, error } = await resend.emails.send({
-    from: process.env.MAIL_FROM || 'onboarding@resend.dev',
+    from: process.env.MAIL_FROM || BRAND.mailFrom,
     to: toEmail,
     subject: SUBJECT_MAP[mailType],
     html: TEMPLATE_MAP[mailType](name, actionUrl),

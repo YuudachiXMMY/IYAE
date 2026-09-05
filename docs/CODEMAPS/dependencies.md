@@ -12,15 +12,13 @@
 | Tripo3D API | worker (TripoGenerator) | `WORKER_TRIPO_API_KEY` | Image-to-3D model generation |
 | Meshy API | worker (MeshyGenerator) | `WORKER_MESHY_API_KEY` | Image-to-3D generation (GLB + USDZ) |
 | Stripe API | server (CheckoutService) | `STRIPE_SECRET_KEY` | Payment processing (checkout sessions, webhooks) |
-| Resend API | web (internal mail routes) | `RESEND_API_KEY` | Transactional email delivery (verification, password reset) |
-| SMTP (prod) | server (AuthMailService) | `SMTP_HOST/PORT/USERNAME/PASSWORD` | Transactional email (fallback to Resend) |
+| Resend API | web (internal mail route) | `RESEND_API_KEY` | Sole transactional email path -- server POSTs to `/api/internal/mail/send`, which renders + sends (verification, password reset) |
 
 ## Infrastructure Services
 
 | Service | Role | Dev | Prod |
 |---------|------|-----|------|
 | MySQL 8 | Primary data store | Docker :3002 | Docker (internal) |
-| Mailpit | Dev SMTP capture | Docker :1025/:8025 | Not used |
 | Nginx | Reverse proxy + SSL | Not used | Docker :80/:443 |
 | Certbot | SSL provisioning | Not used | Docker (on-demand) |
 | rigging-worker | Garment rigging pipeline | Docker (profile: rigging) | Docker (profile: rigging) |
@@ -32,7 +30,6 @@ spring-boot-starter-web          # REST framework
 spring-boot-starter-data-jpa     # Hibernate + Spring Data
 spring-boot-starter-security     # Auth framework
 spring-boot-starter-validation   # Jakarta Bean Validation
-spring-boot-starter-mail         # JavaMailSender
 mysql-connector-j                # MySQL JDBC driver
 flyway-core + flyway-mysql       # Database migrations
 lombok                           # Boilerplate reduction

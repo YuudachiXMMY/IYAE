@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth-context";
 import { useProfileSurface } from "@/lib/profile-surface";
+import { BRAND } from "@/lib/brand";
 
 interface NavAnchorProps {
   href: string;
@@ -150,7 +151,7 @@ export function LandingNav() {
           href="/"
           className="font-display text-2xl font-bold tracking-tight text-foreground"
         >
-          IYAE
+          {BRAND.name}
         </Link>
 
         <div className="hidden md:flex items-center space-x-10">

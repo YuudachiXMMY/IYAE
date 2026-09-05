@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/lib/auth-context";
 import { useProfileSurface } from "@/lib/profile-surface";
@@ -125,7 +126,7 @@ export function NavBar({ className }: NavBarProps) {
           href="/"
           className="font-display text-2xl font-semibold text-foreground"
         >
-          IYAE
+          {BRAND.name}
         </Link>
 
         {/* Desktop nav links */}

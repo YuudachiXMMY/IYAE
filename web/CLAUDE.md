@@ -55,12 +55,13 @@ lib/profile-dashboard.ts         --> Profile tab filtering, stats, body measurem
 lib/outfit-slots.ts              --> Outfit slot constants (top/bottom/shoes/accessory), types (Slot, SlotMap), empty slot factory
 lib/pose-config.ts               --> Pose preset definitions (5 poses, 3 categories), PoseDef type, getPoseById() lookup
 lib/demo-looks.ts                --> Demo saved looks data for development
-lib/email-templates.ts           --> Email template utilities for Resend integration
+lib/brand.ts                     --> Single source of brand values (BRAND: name, tagline, url, mailFrom); consumed by wordmark sites, document title/metadataBase, email subjects, and email-templates.ts
+lib/email-templates.ts           --> Email template utilities for Resend integration (reads copy/sender from BRAND)
 lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation (11 hooks)
 middleware.ts                    --> CSP headers + Permissions-Policy (camera on AR routes only)
 public/assets/                   --> Static assets (product placeholder SVG)
 public/models/                   --> 3D model files (demo-outfit.glb for DemoOutfitModel, default-avatar.glb for guest avatar, poses/ directory for pose animation GLBs)
-__tests__/                       --> Vitest test suite (17 files, 227 cases, jsdom environment)
+__tests__/                       --> Vitest test suite (16 files, 222 cases, jsdom environment)
 e2e/                             --> Playwright E2E specs
 ```
 
@@ -347,7 +348,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Test directory**: `__tests__/` (not `__tests__` inside `app/` or `lib/`)
 - **Pattern**: `__tests__/**/*.test.{ts,tsx}`
 - **Lint**: ESLint via `npm run lint`
-- **Current state**: 17 test files, 227 test cases
+- **Current state**: 16 test files, 222 test cases
 
 ### Test Inventory
 
@@ -368,8 +369,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `__tests__/components/FittingHelper.test.ts` | 13 | FittingHelper: LAYER_MAP constants, applyLayeredAntiPenetration material offset, applyLayeredAntiPenetrationToScene scene traversal |
 | `__tests__/lib/hooks/useOutfitRiggingStatus.test.ts` | 13 | useOutfitRiggingStatus: initial items passthrough, polling lifecycle, rigging status sync, AbortController cleanup |
 | `__tests__/lib/pose-config.test.ts` | 14 | pose-config: POSE_PRESETS count and field validation, POSE_CATEGORIES structure, getPoseById lookup/miss, default pose flag |
-| `__tests__/api/internal-mail-send.test.ts` | 11 | Internal mail send API route: auth secret validation, Resend integration, error handling |
-| `__tests__/api/internal-mail.test.ts` | 5 | Internal mail password-reset API route: secret validation, template rendering |
+| `__tests__/api/internal-mail-send.test.ts` | 11 | Internal mail send API route: auth secret validation, Resend integration (subjects from BRAND), error handling |
 
 ### E2E Tests (Playwright)
 
@@ -392,7 +392,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - All app-specific components (most -- FittingHelper now tested)
 - Custom hooks (useARSupport, useCommunityState, useAvatarStatus, useReveal, useRiggingStatus, usePoseAnimation -- useRequireAuth, useDebounce, useGenerationStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated now tested)
 - 3D/AR components (AvatarViewer, ARViewer, SmartARViewer, ModelViewer, DemoOutfitModel)
-- Community/profile lib modules (social-graph.ts, profile-options.ts, demo-looks.ts, email-templates.ts -- profile-surface.ts, profile-dashboard.ts, community-feed.ts now tested; middleware now tested)
+- Community/profile lib modules (social-graph.ts, profile-options.ts, demo-looks.ts, email-templates.ts, brand.ts -- profile-surface.ts, profile-dashboard.ts, community-feed.ts now tested; middleware now tested)
 - E2E: cart flow, checkout, chat, designer studio, 3D/AR features, community (registration wizard and pose selector now tested)
 
 ## Gotchas
@@ -436,7 +436,8 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `lib/community-feed.ts` | Community feed state management (posts, likes, follows, comments, create/archive/restore) |
 | `lib/profile-dashboard.ts` | Profile tab filtering, stats, body measurement coverage |
 | `lib/demo-looks.ts` | Demo saved looks data for development |
-| `lib/email-templates.ts` | Email template utilities for Resend integration |
+| `lib/brand.ts` | Single source of brand values (`BRAND`: name, tagline, url, mailFrom) for wordmarks, document title/metadataBase, email subjects, and templates |
+| `lib/email-templates.ts` | Email template utilities for Resend integration (reads copy/sender from `BRAND`) |
 | `lib/hooks/useCommunityState.ts` | Community state management hook (load, save, CRUD, follow, archive/restore) |
 | `lib/hooks/useRiggingStatus.ts` | Rigging status polling hook (AbortController-based, for designer product edit) |
 | `lib/hooks/useOutfitRiggingStatus.ts` | Outfit-level rigging status polling (syncs riggedGlbUrl for all items) |
@@ -473,3 +474,4 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | 2026-06-14 | Doc sync: +SizeSelector component, +5 home components (LifestyleGrid, PhotoStrip, MagneticCTALink, TryOnViewer, motion-presets), +3 page routes (designer/promotions, designer/studio, reset redirect), default-avatar.glb; home/ 13->18, components 93->98, tests 16->17 / 221->227; cart size selection support |
 | 2026-06-14 | Count audit: components 98->91 total (79->72 app-specific -- previous count inflated by 7; accurate recount from glob); hooks 10->11 (useRedirectIfAuthenticated was missing from count); lib domain modules documented: +demo-looks.ts, +email-templates.ts; designer/ (2) subdirectory explicitly listed; component sections restructured for accuracy |
 | 2026-06-19 | Count fix: components 91->93 total (72->74 app-specific -- section sums 31+18+1+9+6+2+7=74 were correct; architecture header was understated by 2) |
+| 2026-09-05 | Email consolidation: added `lib/brand.ts` (single source of brand values, read by wordmarks + email subjects + email-templates.ts); removed dead `app/api/internal/mail/password-reset` route + `internal-mail.test.ts`; tests 227->222 / 17->16 files |

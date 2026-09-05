@@ -1,3 +1,5 @@
+import { BRAND } from '@/lib/brand';
+
 function escapeHtml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -37,7 +39,7 @@ function buildEmailHtml(options: EmailTemplateOptions): string {
           <!-- Header -->
           <tr>
             <td style="background:#9333ea;padding:32px 40px;text-align:center;">
-              <span style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">IYAE</span>
+              <span style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">${BRAND.name}</span>
             </td>
           </tr>
           <!-- Body -->
@@ -63,7 +65,7 @@ function buildEmailHtml(options: EmailTemplateOptions): string {
           <tr>
             <td style="background:#fdf8f6;padding:20px 40px;text-align:center;">
               <p style="margin:0;font-size:12px;color:#a8a29e;">
-                &copy; 2026 IYAE. All rights reserved.
+                &copy; 2026 ${BRAND.name}. All rights reserved.
               </p>
             </td>
           </tr>
@@ -77,7 +79,7 @@ function buildEmailHtml(options: EmailTemplateOptions): string {
 
 export function buildPasswordResetEmailHtml(name: string, resetUrl: string): string {
   return buildEmailHtml({
-    title: 'Reset your IYAE password',
+    title: `Reset your ${BRAND.name} password`,
     greeting: `Hi ${escapeHtml(name)},`,
     bodyText: 'We received a request to reset your password. Click the button below to choose a new one.',
     actionUrl: resetUrl,
@@ -88,9 +90,9 @@ export function buildPasswordResetEmailHtml(name: string, resetUrl: string): str
 
 export function buildVerificationEmailHtml(name: string, verifyUrl: string): string {
   return buildEmailHtml({
-    title: 'Verify your IYAE account',
+    title: `Verify your ${BRAND.name} account`,
     greeting: `Hi ${escapeHtml(name)},`,
-    bodyText: 'Thanks for joining IYAE! Please verify your email address to complete your registration.',
+    bodyText: `Thanks for joining ${BRAND.name}! Please verify your email address to complete your registration.`,
     actionUrl: verifyUrl,
     actionText: 'Verify Email Address',
   });

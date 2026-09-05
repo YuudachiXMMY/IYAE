@@ -9,6 +9,7 @@ vi.mock('resend', () => ({
 }));
 
 import { POST } from '@/app/api/internal/mail/send/route';
+import { BRAND } from '@/lib/brand';
 
 const VALID_SECRET = 'test-secret';
 
@@ -170,7 +171,7 @@ describe('POST /api/internal/mail/send', () => {
     expect(body.error).toBe('Failed to send email');
   });
 
-  it('uses default from address when MAIL_FROM is not set', async () => {
+  it('falls back to BRAND.mailFrom when MAIL_FROM is not set', async () => {
     delete process.env.MAIL_FROM;
     const req = makeRequest(
       { type: 'verification', toEmail: 'user@example.com', name: 'Test User', actionUrl: 'https://example.com/verify' },
@@ -178,6 +179,6 @@ describe('POST /api/internal/mail/send', () => {
     );
     await POST(req);
     const sendArgs = mockSend.mock.calls[0][0];
-    expect(sendArgs.from).toBe('onboarding@resend.dev');
+    expect(sendArgs.from).toBe(BRAND.mailFrom);
   });
 });

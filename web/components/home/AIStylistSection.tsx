@@ -10,6 +10,7 @@ import {
   AnimatePresence,
 } from "motion/react";
 import Link from "next/link";
+import { BRAND } from "@/lib/brand";
 import MagneticCTALink from "./MagneticCTALink";
 import { CTA_SPRING, EASE_OUT_EXPO, textStagger, textChild } from "./motion-presets";
 import { useRouter } from "next/navigation";
@@ -402,7 +403,7 @@ export default function AIStylistSection() {
                     }}
                   />
                   <span className="text-xs font-semibold text-white/60 tracking-wide">
-                    IYAE AI
+                    {BRAND.name} AI
                   </span>
                 </div>
 

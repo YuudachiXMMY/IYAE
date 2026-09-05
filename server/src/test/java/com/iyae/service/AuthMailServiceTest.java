@@ -1,147 +1,151 @@
 package com.iyae.service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.Session;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mail.MailSendException;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+/**
+ * Verifies the Resend-only delivery path (Option A): {@link AuthMailService} POSTs to the
+ * Next.js internal mail route and never sends HTML itself. Spins up an in-process
+ * {@link HttpServer} that stands in for the Next.js route so the real HTTP call is exercised.
+ */
 class AuthMailServiceTest {
 
-    @Mock
-    JavaMailSender mailSender;
+    private AuthMailService authMailService;
+    private HttpServer server;
 
-    @InjectMocks
-    AuthMailService authMailService;
+    private volatile int responseStatus = 200;
+    private final AtomicInteger requestCount = new AtomicInteger();
+    private final AtomicReference<String> capturedMethod = new AtomicReference<>();
+    private final AtomicReference<String> capturedPath = new AtomicReference<>();
+    private final AtomicReference<String> capturedSecret = new AtomicReference<>();
+    private final AtomicReference<String> capturedBody = new AtomicReference<>();
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/api/internal/mail/send", exchange -> {
+            requestCount.incrementAndGet();
+            capturedMethod.set(exchange.getRequestMethod());
+            capturedPath.set(exchange.getRequestURI().getPath());
+            capturedSecret.set(exchange.getRequestHeaders().getFirst("x-internal-mail-secret"));
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(responseStatus, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        String endpointUrl = "http://localhost:" + server.getAddress().getPort() + "/api/internal/mail/send";
+
+        authMailService = new AuthMailService(new ObjectMapper());
         ReflectionTestUtils.setField(authMailService, "frontendBaseUrl", "http://localhost:3000");
-        ReflectionTestUtils.setField(authMailService, "fromAddress", "noreply@iyae.ca");
+        ReflectionTestUtils.setField(authMailService, "resendEndpoint", endpointUrl);
+        ReflectionTestUtils.setField(authMailService, "internalMailSecret", "test-secret");
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (server != null) {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void sendVerificationEmail_postsVerificationPayloadToResendEndpoint() {
+        authMailService.sendVerificationEmail("user@example.com", "Test User", "rawtoken123");
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(capturedMethod.get()).isEqualTo("POST");
+        assertThat(capturedPath.get()).isEqualTo("/api/internal/mail/send");
+        assertThat(capturedSecret.get()).isEqualTo("test-secret");
+        assertThat(capturedBody.get())
+                .contains("\"type\":\"verification\"")
+                .contains("\"toEmail\":\"user@example.com\"")
+                .contains("\"name\":\"Test User\"")
+                .contains("/verify-email?token=rawtoken123");
+    }
+
+    @Test
+    void sendPasswordResetEmail_postsPasswordResetPayloadToResendEndpoint() {
+        authMailService.sendPasswordResetEmail("user@example.com", "Test User", "resettoken456");
+
+        assertThat(requestCount.get()).isEqualTo(1);
+        assertThat(capturedMethod.get()).isEqualTo("POST");
+        assertThat(capturedBody.get())
+                .contains("\"type\":\"password-reset\"")
+                .contains("\"toEmail\":\"user@example.com\"")
+                .contains("/reset-password?token=resettoken456");
+    }
+
+    @Test
+    void sendViaResend_escapesQuotesInName() {
+        authMailService.sendVerificationEmail("user@example.com", "Ann \"Q\" Lee", "tok");
+
+        // Embedded quotes must be JSON-escaped so the serialized payload stays valid.
+        assertThat(capturedBody.get()).contains("\"name\":\"Ann \\\"Q\\\" Lee\"");
+    }
+
+    @Test
+    void sendVerificationEmail_non2xxResponse_throwsEmailDeliveryException() {
+        responseStatus = 500;
+
+        assertThatThrownBy(() ->
+                authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
+                .isInstanceOf(AuthMailService.EmailDeliveryException.class);
+    }
+
+    @Test
+    void sendVerificationEmail_endpointUnreachable_throwsEmailDeliveryException() {
+        // Point at a closed port so the HTTP client cannot connect.
+        ReflectionTestUtils.setField(authMailService, "resendEndpoint",
+                "http://localhost:1/api/internal/mail/send");
+
+        assertThatThrownBy(() ->
+                authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
+                .isInstanceOf(AuthMailService.EmailDeliveryException.class);
+    }
+
+    @Test
+    void sendVerificationEmail_blankEndpoint_throwsEmailDeliveryException() {
+        // Option A removes the SMTP fallback: an unconfigured endpoint must fail loudly,
+        // never silently no-op.
         ReflectionTestUtils.setField(authMailService, "resendEndpoint", "");
-        ReflectionTestUtils.setField(authMailService, "internalMailSecret", "");
-    }
-
-    @Test
-    void sendVerificationEmail_callsMailSender() {
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-
-        authMailService.sendVerificationEmail("user@example.com", "Test User", "rawtoken123");
-
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
-    }
-
-    @Test
-    void sendVerificationEmail_setsCorrectRecipientAndSubject() throws MessagingException {
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
-
-        authMailService.sendVerificationEmail("user@example.com", "Test User", "rawtoken123");
-
-        verify(mailSender).send(captor.capture());
-        MimeMessage sent = captor.getValue();
-        assertThat(sent.getSubject()).isEqualTo("Verify your IYAE account");
-        InternetAddress[] recipients = (InternetAddress[]) sent.getRecipients(MimeMessage.RecipientType.TO);
-        assertThat(recipients).hasSize(1);
-        assertThat(recipients[0].getAddress()).isEqualTo("user@example.com");
-    }
-
-    @Test
-    void sendPasswordResetEmail_callsMailSender() {
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-
-        authMailService.sendPasswordResetEmail("user@example.com", "Test User", "resettoken456");
-
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
-    }
-
-    @Test
-    void sendPasswordResetEmail_setsCorrectSubjectAndRecipient() throws MessagingException {
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
-
-        authMailService.sendPasswordResetEmail("user@example.com", "Test User", "resettoken456");
-
-        verify(mailSender).send(captor.capture());
-        MimeMessage sent = captor.getValue();
-        assertThat(sent.getSubject()).isEqualTo("Reset your IYAE password");
-        InternetAddress[] recipients = (InternetAddress[]) sent.getRecipients(MimeMessage.RecipientType.TO);
-        assertThat(recipients).hasSize(1);
-        assertThat(recipients[0].getAddress()).isEqualTo("user@example.com");
-    }
-
-    @Test
-    void sendHtmlEmail_onMailException_throwsEmailDeliveryException() {
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-        doThrow(new MailSendException("SMTP connection failed")).when(mailSender).send(any(MimeMessage.class));
 
         assertThatThrownBy(() ->
-                authMailService.sendVerificationEmail("user@example.com", "Test User", "token"))
-                .isInstanceOf(AuthMailService.EmailDeliveryException.class);
-    }
-
-    // ----- Resend path tests -----
-
-    @Test
-    void sendPasswordResetEmail_resendFails_fallsBackToSmtp() {
-        // When Resend endpoint is set but the HTTP call fails (no real server),
-        // the method should fall back to SMTP instead of throwing.
-        ReflectionTestUtils.setField(authMailService, "resendEndpoint",
-                "http://localhost:19999/api/internal/mail/password-reset");
-        ReflectionTestUtils.setField(authMailService, "internalMailSecret", "test-secret");
-
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-
-        authMailService.sendPasswordResetEmail("user@example.com", "Test User", "tok");
-
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
-    }
-
-    @Test
-    void sendPasswordResetEmail_resendFails_smtpAlsoFails_throwsEmailDeliveryException() {
-        // When both Resend and SMTP fail, the method should throw.
-        ReflectionTestUtils.setField(authMailService, "resendEndpoint",
-                "http://localhost:19999/no-such-endpoint");
-        ReflectionTestUtils.setField(authMailService, "internalMailSecret", "test-secret");
-
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
-        doThrow(new MailSendException("SMTP also failed")).when(mailSender).send(any(MimeMessage.class));
-
-        assertThatThrownBy(() ->
-                authMailService.sendPasswordResetEmail("user@example.com", "Test User", "tok"))
+                authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
                 .isInstanceOf(AuthMailService.EmailDeliveryException.class);
     }
 
     @Test
-    void sendPasswordResetEmail_noResendEndpoint_fallsBackToSmtp() {
-        // resendEndpoint is blank (set in setUp) — must fall back to JavaMailSender
-        MimeMessage mimeMessage = new MimeMessage((Session) null);
-        when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
+    void sendVerificationEmail_slowEndpoint_timesOut_throwsEmailDeliveryException() {
+        // A hung route must fail via the request timeout, never block the caller indefinitely.
+        server.removeContext("/api/internal/mail/send");
+        server.createContext("/api/internal/mail/send", exchange -> {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        ReflectionTestUtils.setField(authMailService, "requestTimeout", Duration.ofMillis(200));
 
-        authMailService.sendPasswordResetEmail("user@example.com", "Test User", "tok");
-
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
+        assertThatThrownBy(() ->
+                authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
+                .isInstanceOf(AuthMailService.EmailDeliveryException.class);
     }
 }

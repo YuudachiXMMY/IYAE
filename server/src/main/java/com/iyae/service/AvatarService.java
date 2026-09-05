@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.iyae.config.BrandProperties;
 import com.iyae.dto.AvatarResponse;
 import com.iyae.dto.AvatarStatusResponse;
 import com.iyae.entity.AvatarGenerationTask;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -30,6 +32,7 @@ public class AvatarService {
     private final BodyProfileRepository bodyProfileRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final BrandProperties brandProperties;
 
     @Value("${AVATAR_GENERATION_PROVIDER:mock}")
     private String avatarProvider;
@@ -149,7 +152,7 @@ public class AvatarService {
         User user = task.getUser();
 
         // Guest user tasks: mark MATERIALIZED but skip writing to User.avatarGlbUrl
-        boolean isGuest = "guest@iyae.internal".equals(user.getEmail());
+        boolean isGuest = Objects.equals(brandProperties.guestEmail(), user.getEmail());
         if (!isGuest) {
             user.setAvatarGlbUrl(glbUrl);
             userRepository.save(user);
