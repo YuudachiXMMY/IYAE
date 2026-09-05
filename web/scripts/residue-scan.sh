@@ -27,7 +27,7 @@ check() { # <label> <grep-output>
 check "no purple-*"  "$(grep -rnE 'purple-[0-9]' app components lib --include='*.tsx' --include='*.ts')"
 check "no rose-*"    "$(grep -rnE 'rose-[0-9]'   app components lib --include='*.tsx' --include='*.ts')"
 check "no stone-*"   "$(grep -rnE 'stone-[0-9]'  app components lib --include='*.tsx' --include='*.ts')"
-check "no status colors" "$(grep -rnE '(green|amber|blue|yellow|emerald)-[0-9]{2,3}' app components lib --include='*.tsx')"
+check "no palette colors" "$(grep -rnE '(slate|gray|zinc|neutral|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|fuchsia|pink)-[0-9]{2,3}' app components lib --include='*.tsx' --include='*.ts')"
 check "no bg-white"  "$(grep -rn 'bg-white' app components lib --include='*.tsx' --include='*.ts' | grep -viE "$BGWHITE_ALLOW")"
 check "no stray hex" "$(grep -rnE '#[0-9a-fA-F]{3,8}' app components lib --include='*.tsx' --include='*.ts' | grep -viE "$HEX_ALLOW")"
 

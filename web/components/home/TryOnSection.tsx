@@ -891,7 +891,7 @@ export default function TryOnSection() {
                                       onChange={setInseamCm}
                                     />
                                     {generateError && (
-                                      <p className="text-[11px] text-red-400/90 text-center leading-snug">
+                                      <p className="text-[11px] text-destructive/90 text-center leading-snug">
                                         {generateError}
                                       </p>
                                     )}
@@ -1062,7 +1062,7 @@ export default function TryOnSection() {
                                 onChange={setInseamCm}
                               />
                               {generateError && (
-                                <p className="text-[11px] text-red-400/90 text-center leading-snug">
+                                <p className="text-[11px] text-destructive/90 text-center leading-snug">
                                   {generateError}
                                 </p>
                               )}

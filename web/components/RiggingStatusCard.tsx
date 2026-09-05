@@ -114,7 +114,7 @@ export function RiggingStatusCard({ productId }: RiggingStatusCardProps) {
               size="sm"
               onClick={() => void retryRigging()}
               disabled={isActionLoading}
-              className="border-red-200 text-red-700 hover:bg-red-50"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10"
             >
               Retry Rigging
             </Button>
