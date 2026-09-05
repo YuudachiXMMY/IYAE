@@ -180,6 +180,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 - **Goal**: The 8 Figma screens and all token-driven routes render in IYAE's editorial language.
 - **Scope**: `@theme` tokens (White/Burgundy/Ink, serif+sans); shadcn regen; reskin shop/PDP/cart/checkout/profile/auth/onboarding; rebuild `home/` from Figma.
 - **Success signal**: Visual parity with Figma; zero hardcoded legacy colors; dark mode intact.
+- **Open question (Brand constants)**: The exact burgundy/serif/tracking are Figma-only (no export in repo). The initial reskin shipped a PROVISIONAL editorial-burgundy palette in `web/app/globals.css` — primary/brand `#7a2e3a` (hover `#5e1f2b`, dark `#c15563`), status success `#2f7d5b` / warning `#b8791f` / info `#2563eb`, serif = Cormorant Garamond with `--tracking-display: -0.015em`. Token **names are stable**; **values need owner sign-off against Figma** (swap in `globals.css` only).
 
 **Phase 3: AI Stylist + Inline Suggestions**
 - **Goal**: A trustworthy, human-centered stylist that returns few, decisive, context-aware picks rendered inline.
