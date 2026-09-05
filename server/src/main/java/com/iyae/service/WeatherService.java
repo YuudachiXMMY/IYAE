@@ -14,9 +14,14 @@ import java.util.Optional;
 
 /**
  * Fetches current Toronto weather from Open-Meteo (keyless, free) and formats it
- * for the AI stylist prompt. Designed to NEVER throw: a weather outage must not
- * break a stylist turn — {@link #getCurrentToronto()} returns the cached snapshot
- * or {@link Optional#empty()} on any failure.
+ * for the AI stylist prompt.
+ * <p>
+ * The blocking HTTP fetch is kept OFF the chat hot path: {@link #refresh()} runs on
+ * a schedule (see {@code SchedulerConfig}) to warm an in-memory cache, and
+ * {@link #getCurrentToronto()} is a fast, non-blocking read of that cache. This
+ * guarantees a slow or unreachable Open-Meteo can never add latency to a user's
+ * stylist turn. Both methods are designed to NEVER throw — a weather outage returns
+ * the last good (possibly stale) snapshot, or {@link Optional#empty()}.
  */
 @Slf4j
 @Service
@@ -49,29 +54,43 @@ public class WeatherService {
     public record WeatherSnapshot(double temperatureC, double feelsLikeC, String condition, Instant fetchedAt) {}
 
     /**
-     * Returns the current Toronto weather, using an in-memory cache with TTL.
-     * Never throws — on failure returns the last good snapshot (if any) or empty.
-     * Returns empty when {@code app.weather.enabled=false}.
+     * Returns the current Toronto weather from the in-memory cache — a fast,
+     * non-blocking read safe to call on the chat hot path. The cache is warmed
+     * off-path by {@link #refresh()} (scheduled), so this method never performs a
+     * blocking HTTP call. Returns empty when {@code app.weather.enabled=false} or
+     * before the cache has been warmed for the first time.
      */
     public Optional<WeatherSnapshot> getCurrentToronto() {
         if (!enabled) {
             return Optional.empty();
         }
+        return Optional.ofNullable(cached);
+    }
+
+    /**
+     * Refreshes the cached weather snapshot from Open-Meteo. Intended to run on a
+     * schedule, OFF the request path (see {@code SchedulerConfig}), so that
+     * {@link #getCurrentToronto()} stays a non-blocking cache read. Skips the network
+     * call while the cached snapshot is still within its TTL, and NEVER throws — a
+     * fetch failure leaves the previous (stale) snapshot in place. No-op when
+     * {@code app.weather.enabled=false}.
+     */
+    public void refresh() {
+        if (!enabled) {
+            return;
+        }
         WeatherSnapshot snapshot = cached;
         if (snapshot != null && !isStale(snapshot)) {
-            return Optional.of(snapshot);
+            return;
         }
         try {
             WeatherSnapshot fresh = fetch();
             if (fresh != null) {
                 cached = fresh;
-                return Optional.of(fresh);
             }
         } catch (Exception e) {
-            log.warn("Weather fetch failed, using cached/empty. Reason: {}", e.getClass().getSimpleName());
+            log.warn("Weather refresh failed, keeping cached snapshot. Reason: {}", e.getClass().getSimpleName());
         }
-        // Fall back to stale cache (still better than nothing) or empty.
-        return Optional.ofNullable(cached);
     }
 
     private boolean isStale(WeatherSnapshot snapshot) {

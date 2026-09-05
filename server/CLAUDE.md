@@ -332,10 +332,11 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 
 ## Scheduled Tasks
 
-`SchedulerConfig` enables `@EnableScheduling` and runs three fixed-delay tasks every 5 seconds:
-- `processReadyGenerationTasks()` calls `GenerationService.processReadyTasks()` to materialize READY `ModelGenerationTask` rows into `GarmentAsset` entries, then marks them as `MATERIALIZED`
-- `processReadyAvatarTasks()` calls `AvatarService.processReadyTasks()` to materialize READY `AvatarGenerationTask` rows into `User.avatarGlbUrl`, then marks them as `MATERIALIZED`
-- `processReadyRiggingTasks()` calls `RiggingService.processReadyTasks()` to materialize READY `RiggingTask` rows into `GarmentAsset` rigging columns (riggedGlbUrl, riggingStatus, riggedAt), then marks them as `MATERIALIZED`
+`SchedulerConfig` enables `@EnableScheduling`, provides a multi-threaded `TaskScheduler` bean (pool size 3, `iyae-sched-` threads) so a slow task can never starve the others, and runs four tasks:
+- `processReadyGenerationTasks()` (every 5s) calls `GenerationService.processReadyTasks()` to materialize READY `ModelGenerationTask` rows into `GarmentAsset` entries, then marks them as `MATERIALIZED`
+- `processReadyAvatarTasks()` (every 5s) calls `AvatarService.processReadyTasks()` to materialize READY `AvatarGenerationTask` rows into `User.avatarGlbUrl`, then marks them as `MATERIALIZED`
+- `processReadyRiggingTasks()` (every 5s) calls `RiggingService.processReadyTasks()` to materialize READY `RiggingTask` rows into `GarmentAsset` rigging columns (riggedGlbUrl, riggingStatus, riggedAt), then marks them as `MATERIALIZED`
+- `refreshWeatherCache()` (every `app.weather.cache-ttl-seconds`, default 30 min, first run 5s after boot) calls `WeatherService.refresh()` to pre-warm the Toronto weather cache OFF the chat hot path, so `WeatherService.getCurrentToronto()` stays a non-blocking in-memory read (a slow/unreachable Open-Meteo never adds latency to a stylist turn)
 - Errors are caught and logged (no propagation)
 
 ## Security

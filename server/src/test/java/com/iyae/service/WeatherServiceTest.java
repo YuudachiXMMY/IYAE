@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,9 +51,19 @@ class WeatherServiceTest {
     }
 
     @Test
-    void getCurrentToronto_parsesSnapshotFromOpenMeteoBody() {
+    void getCurrentToronto_beforeRefresh_returnsEmptyWithoutHittingNetwork() {
+        // The hot-path read must never trigger a blocking HTTP fetch (PR #9 review, M1).
+        Optional<WeatherSnapshot> result = weatherService.getCurrentToronto();
+
+        assertThat(result).isEmpty();
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void refresh_thenGetCurrentToronto_returnsSnapshotParsedFromOpenMeteoBody() {
         when(restTemplate.getForObject(anyString(), eq(Map.class))).thenReturn(cannedBody(71));
 
+        weatherService.refresh();
         Optional<WeatherSnapshot> result = weatherService.getCurrentToronto();
 
         assertThat(result).isPresent();
@@ -77,49 +88,56 @@ class WeatherServiceTest {
     }
 
     @Test
-    void getCurrentToronto_cachesWithinTtl_fetchesOnlyOnce() {
+    void refresh_withinTtl_fetchesOnlyOnce() {
         when(restTemplate.getForObject(anyString(), eq(Map.class))).thenReturn(cannedBody(0));
 
-        weatherService.getCurrentToronto();
-        weatherService.getCurrentToronto();
+        weatherService.refresh();
+        weatherService.refresh();
 
         verify(restTemplate, times(1)).getForObject(anyString(), eq(Map.class));
     }
 
     @Test
-    void getCurrentToronto_onFailure_returnsEmptyWithoutThrowing() {
+    void refresh_onFailure_doesNotThrow_andLeavesCacheEmpty() {
         when(restTemplate.getForObject(anyString(), eq(Map.class)))
             .thenThrow(new RestClientException("Open-Meteo down"));
 
-        Optional<WeatherSnapshot> result = weatherService.getCurrentToronto();
+        weatherService.refresh();
 
-        assertThat(result).isEmpty();
+        assertThat(weatherService.getCurrentToronto()).isEmpty();
     }
 
     @Test
-    void getCurrentToronto_afterSuccess_thenFailure_returnsStaleCache() {
+    void refresh_afterSuccessThenFailure_keepsStaleSnapshot() {
         when(restTemplate.getForObject(anyString(), eq(Map.class)))
             .thenReturn(cannedBody(71))
             .thenThrow(new RestClientException("Open-Meteo down"));
 
-        Optional<WeatherSnapshot> first = weatherService.getCurrentToronto();
-        // Force TTL expiry so the second call re-fetches (and fails)
+        weatherService.refresh();
+        // Force TTL expiry so the second refresh re-fetches (and fails)
         ReflectionTestUtils.setField(weatherService, "cacheTtlSeconds", 0L);
-        Optional<WeatherSnapshot> second = weatherService.getCurrentToronto();
+        weatherService.refresh();
 
-        assertThat(first).isPresent();
-        assertThat(second).isPresent();
-        assertThat(second.get().condition()).isEqualTo("snow");
+        Optional<WeatherSnapshot> result = weatherService.getCurrentToronto();
+        assertThat(result).isPresent();
+        assertThat(result.get().condition()).isEqualTo("snow");
     }
 
     @Test
-    void getCurrentToronto_whenDisabled_returnsEmptyAndSkipsHttp() {
+    void refresh_whenDisabled_skipsHttp() {
         ReflectionTestUtils.setField(weatherService, "enabled", false);
 
-        Optional<WeatherSnapshot> result = weatherService.getCurrentToronto();
+        weatherService.refresh();
 
-        assertThat(result).isEmpty();
         verify(restTemplate, never()).getForObject(anyString(), eq(Map.class));
+        assertThat(weatherService.getCurrentToronto()).isEmpty();
+    }
+
+    @Test
+    void getCurrentToronto_whenDisabled_returnsEmpty() {
+        ReflectionTestUtils.setField(weatherService, "enabled", false);
+
+        assertThat(weatherService.getCurrentToronto()).isEmpty();
     }
 
     @Test
