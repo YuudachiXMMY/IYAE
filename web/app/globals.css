@@ -1,27 +1,28 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Semantic color tokens — light mode defaults (White / Burgundy / Ink)
-     PROVISIONAL editorial-burgundy palette — exact burgundy/serif/tracking pending
-     Figma sign-off (flagged in the PR + PRD Open Questions). Token NAMES are stable;
-     only VALUES change once Figma is confirmed. */
+  /* Semantic color tokens — light mode defaults (Pure White / Burgundy / Ink)
+     Brand colors SIGNED OFF against FORME Figma (2026-09-05 audit): brand #8A0F2D,
+     ink #171717, pure-white surfaces, neutral border/muted-foreground. Typography
+     (DM Sans body + tracking tokens) and radius (12px) alignment are tracked separately;
+     dark mode has no Figma source and remains a code-side theme. */
   --color-background: #ffffff;
-  --color-foreground: #1c1917;
-  --color-card: #faf7f5;
-  --color-card-foreground: #1c1917;
+  --color-foreground: #171717;
+  --color-card: #ffffff;
+  --color-card-foreground: #171717;
   --color-muted: #f4f1ee;
-  --color-muted-foreground: #6b625c;
-  --color-border: rgba(28, 25, 23, 0.12);
-  --color-input: rgba(28, 25, 23, 0.08);
-  --color-ring: #7a2e3a;
-  --color-primary: #7a2e3a;
+  --color-muted-foreground: #6f6f6f;
+  --color-border: rgba(23, 23, 23, 0.18);
+  --color-input: rgba(23, 23, 23, 0.08);
+  --color-ring: #8a0f2d;
+  --color-primary: #8a0f2d;
   --color-primary-foreground: #ffffff;
   --color-secondary: #f4f1ee;
-  --color-secondary-foreground: #1c1917;
+  --color-secondary-foreground: #171717;
   --color-popover: #ffffff;
-  --color-popover-foreground: #1c1917;
+  --color-popover-foreground: #171717;
   --color-accent: #f4f1ee;
-  --color-accent-foreground: #1c1917;
+  --color-accent-foreground: #171717;
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
 
@@ -34,8 +35,8 @@
   --color-info-foreground: #ffffff;
 
   /* Brand colors (burgundy) */
-  --color-brand: #7a2e3a;
-  --color-brand-hover: #5e1f2b;
+  --color-brand: #8a0f2d;
+  --color-brand-hover: #6d0b23;
 
   /* Paper — warm editorial cream used on dark home sections (centralizes inline #F5F0EB) */
   --color-paper: #F5F0EB;
@@ -50,24 +51,24 @@
 
   /* Shadows */
   --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.04);
-  --shadow-heavy-color: rgba(28, 25, 23, 0.08);
+  --shadow-heavy-color: rgba(23, 23, 23, 0.08);
   --gradient-page-start: #ffffff;
   --gradient-page-mid: #fbfaf9;
   --gradient-page-end: #f6f3f0;
   --gradient-profile-banner-start: #f0dce0;
   --gradient-profile-banner-end: #e4dad3;
   /* Hero / immersive dark sections — burgundy-tinted ink, theme-invariant dark */
-  --gradient-hero-start: #1c1917;
+  --gradient-hero-start: #171717;
   --gradient-hero-mid: #3a1c22;
   --gradient-hero-end: #14110f;
 
   /* Landing page brand colors (White / Burgundy / Ink) */
   --color-landing-surface: #ffffff;
   --color-landing-soft: #f4f1ee;
-  --color-landing-contrast: #1A1A1A;
-  --color-landing-tone: #7a2e3a;
-  --color-landing-accent: #7a2e3a;
-  --color-landing-highlight: #7a2e3a;
+  --color-landing-contrast: #171717;
+  --color-landing-tone: #8a0f2d;
+  --color-landing-accent: #8a0f2d;
+  --color-landing-highlight: #8a0f2d;
 
   /* Animations */
   --animate-editorial-float: editorialFloat 12s ease-in-out infinite;
