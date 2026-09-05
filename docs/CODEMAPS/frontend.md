@@ -101,7 +101,7 @@ AuthProvider (layout.tsx)
 ```
 
 **AuthContext** — `useAuth()`: user, loading, login(), register(), updateProfile(), logout(), refreshUser()
-  - Hydrates from `localStorage.clossette_token`, calls GET /api/auth/me
+  - Hydrates from `localStorage.iyae_token`, calls GET /api/auth/me
   - On 401: auto-clears token + redirects /login
 
 **CartContext** — `useCart()`: serverItems, demoItems, totalCount, add/update/remove operations
@@ -109,7 +109,7 @@ AuthProvider (layout.tsx)
   - Cart items include `selectedSize` field
 
 ### Client-Side Modules (localStorage, immutable updates)
-- `community-feed.ts` — posts, likes, saves, reposts, comments, create/archive/restore (key: `clossette-community-state-{userId}`)
+- `community-feed.ts` — posts, likes, saves, reposts, comments, create/archive/restore (key: `iyae-community-state-{userId}`)
 - `profile-surface.ts` — cross-tab profile sync via CustomEvent
 - `social-graph.ts` — static demo social profiles
 - `profile-options.ts` — constants for style/color/brand/fit/price options

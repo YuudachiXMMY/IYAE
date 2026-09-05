@@ -24,7 +24,7 @@ test.describe('Registration Wizard', () => {
   test('renders step 1 (Basics) with required fields', async ({ page }) => {
     await page.goto('/register');
 
-    await expect(page.getByRole('heading', { name: 'Join Clossette' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Join IYAE' })).toBeVisible();
 
     // WizardProgress step labels
     await expect(page.getByText('Basics')).toBeVisible();
@@ -104,7 +104,7 @@ test.describe('Registration Wizard', () => {
     await page.goto('/register');
 
     // Step 0: Basics
-    await expect(page.getByRole('heading', { name: 'Join Clossette' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Join IYAE' })).toBeVisible();
     await page.getByLabel('Email').fill(`testuser+${Date.now()}@example.com`);
     await page.getByLabel('Password').fill('testpassword123');
     await page.getByRole('button', { name: 'Next' }).click();

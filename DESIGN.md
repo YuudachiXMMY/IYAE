@@ -1,4 +1,4 @@
-# Clossette Design Document
+# IYAE Design Document
 
 ## Design Goals
 
@@ -27,7 +27,7 @@ graph TD
     Server -->|JDBC| MySQL["MySQL 8<br/>:3306"]
     Server -->|Insert tasks| TaskTables["model_generation_tasks<br/>avatar_generation_tasks<br/>rigging_tasks"]
     Worker["Python 3.12 Worker"] -->|Poll + Update| TaskTables
-    Worker -->|Store GLB| Assets["Shared Volume<br/>/var/clossette/assets"]
+    Worker -->|Store GLB| Assets["Shared Volume<br/>/var/iyae/assets"]
     Server -->|Serve| Assets
     Server -->|SMTP| Mail["Mailpit (dev)<br/>Resend (prod)"]
     Nginx["Nginx (prod)"] -->|Reverse Proxy| Web

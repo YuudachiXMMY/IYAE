@@ -59,7 +59,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-soft rounded-card">
         <CardHeader className="text-center">
           <CardTitle className="font-display text-3xl">Welcome Back</CardTitle>
-          <CardDescription>Sign in to your Clossette account</CardDescription>
+          <CardDescription>Sign in to your IYAE account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

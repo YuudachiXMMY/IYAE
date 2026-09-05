@@ -1,4 +1,4 @@
-# Clossette
+# IYAE
 
 AI-powered fashion marketplace combining conversational AI styling, 3D/AR virtual try-on, and an independent designer marketplace. Targets Gen Z and young millennial shoppers (18-30) to eliminate decision fatigue and reduce fashion returns.
 
@@ -30,7 +30,7 @@ The `rigging-worker` service (optional, enabled via `--profile rigging`) runs th
 
 ```mermaid
 graph TD
-    A["Clossette"] --> B["server"]
+    A["IYAE"] --> B["server"]
     A --> C["web"]
     A --> D["worker"]
     A --> E["nginx"]
@@ -165,26 +165,26 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `ANTHROPIC_API_KEY` | When claude | -- | Claude API key |
 | `DEEPSEEK_API_KEY` | When deepseek | -- | DeepSeek API key |
 | `MINIMAX_API_KEY` | When minimax | -- | MiniMax API key |
-| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost:3001,http://clossette.localhost` | Allowed CORS origins |
+| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost:3001,http://iyae.localhost` | Allowed CORS origins |
 | `API_PROXY_TARGET` | No | `http://localhost:3001` | Next.js API proxy (runtime for local dev, build-time arg in container) |
 | `WEB_PORT` | No | `3000` | Host port for web frontend |
 | `API_PORT` | No | `3001` | Host port for API server |
 | `DB_PORT` | No | `3002` | Host port for MySQL |
-| `WEB_DOMAIN` | No | `clossette.localhost` | Traefik domain for web |
-| `API_DOMAIN` | No | `api.clossette.localhost` | Traefik domain for API |
+| `WEB_DOMAIN` | No | `iyae.localhost` | Traefik domain for web |
+| `API_DOMAIN` | No | `api.iyae.localhost` | Traefik domain for API |
 | `NEXT_PUBLIC_API_URL` | No | `""` | Frontend API base URL (production) |
 | `MODEL_GENERATION_PROVIDER` | No | `mock` | `mock` / `tripo3d` / `meshy` |
 | `WORKER_TRIPO_API_KEY` | For tripo3d | -- | Tripo3D API key |
 | `WORKER_MESHY_API_KEY` | For meshy | -- | Meshy.ai API key |
 | `WORKER_POLL_INTERVAL` | No | `5` | Seconds between task queue polls |
-| `WORKER_OUTPUT_DIR` | No | `/var/clossette/assets` | Directory for generated 3D model output |
+| `WORKER_OUTPUT_DIR` | No | `/var/iyae/assets` | Directory for generated 3D model output |
 | `SPRING_MAIL_HOST` | No | `localhost` | SMTP server host |
 | `SPRING_MAIL_PORT` | No | `1025` | SMTP server port |
 | `SMTP_HOST` | Prod only | -- | Production SMTP host (overrides SPRING_MAIL_HOST) |
 | `SMTP_PORT` | Prod only | `587` | Production SMTP port |
 | `SMTP_USERNAME` | Prod only | -- | Production SMTP username |
 | `SMTP_PASSWORD` | Prod only | -- | Production SMTP password |
-| `MAIL_FROM` | No | `noreply@clossette.ca` | Sender address for system emails |
+| `MAIL_FROM` | No | `noreply@iyae.ca` | Sender address for system emails |
 | `FRONTEND_BASE_URL` | No | `http://localhost:3000` | Base URL for email links (verification, password reset) |
 | `AVATAR_GENERATION_PROVIDER` | No | `mock` | `mock` / `smplx` (avatar body model provider) |
 | `SMPLX_MODELS_PATH` | For smplx | `./smplx_models` | Host path to SMPL-X model files (mounted read-only into worker container) |

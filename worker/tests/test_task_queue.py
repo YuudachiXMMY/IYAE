@@ -9,7 +9,7 @@ class TestTaskQueue:
         self.db_config = {
             "host": "localhost",
             "port": 3306,
-            "database": "clossette_test",
+            "database": "iyae_test",
             "user": "test",
             "password": "test",
         }

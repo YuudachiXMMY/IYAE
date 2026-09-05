@@ -20,4 +20,4 @@ app:
 logging:
   level:
     root: INFO
-    com.clossette: INFO
+    com.iyae: INFO

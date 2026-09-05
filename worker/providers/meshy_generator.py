@@ -14,7 +14,7 @@ MESHY_API_BASE = "https://api.meshy.ai/openapi/v1"
 class MeshyGenerator:
     """Generates 3D models via Meshy.ai API."""
 
-    def __init__(self, api_key: str, output_base_dir: str = "/var/clossette/assets"):
+    def __init__(self, api_key: str, output_base_dir: str = "/var/iyae/assets"):
         self.api_key = api_key
         self.output_base_dir = output_base_dir
         self.headers = {

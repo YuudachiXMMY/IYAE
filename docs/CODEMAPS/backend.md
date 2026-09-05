@@ -137,7 +137,7 @@ Suggestion chips protocol: ChatService detects `[SUGGESTIONS]...[/SUGGESTIONS]` 
 ## Key Files
 
 ```
-server/src/main/java/com/clossette/
+server/src/main/java/com/iyae/
 ├── ClossettApplication.java        # Entry point
 ├── controller/ (21 files)          # REST endpoints (incl. GuestAvatarController, StripeWebhookController)
 ├── service/ (27 files)             # Business logic + ownership checks (incl. GuestAvatarService, StripeCheckoutGateway, DefaultStripeCheckoutGateway)

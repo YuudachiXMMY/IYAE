@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def create_minimal_glb() -> bytes:
     """Create a minimal valid GLB file with empty scene."""
     scene_json = json.dumps({
-        "asset": {"version": "2.0", "generator": "clossette-stub"},
+        "asset": {"version": "2.0", "generator": "iyae-stub"},
         "scene": 0,
         "scenes": [{"nodes": []}],
     }).encode("utf-8")
@@ -33,7 +33,7 @@ def create_minimal_glb() -> bytes:
 class StubGenerator:
     """Generates placeholder GLB/USDZ files for development."""
 
-    def __init__(self, output_base_dir: str = "/var/clossette/assets"):
+    def __init__(self, output_base_dir: str = "/var/iyae/assets"):
         self.output_base_dir = output_base_dir
 
     def generate(self, task_id: int, product_id: int, input_payload: dict | None) -> dict:

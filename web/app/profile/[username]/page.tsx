@@ -105,7 +105,7 @@ export default function ProfilePage() {
     ? {
         displayName: user.name ?? username,
         username: username,
-        bio: "Fashion enthusiast on Clossette",
+        bio: "Fashion enthusiast on IYAE",
         avatarTone: ["#e2d9d7", "#d7efe7"] as [string, string],
         bannerTone: ["#f5efe8", "#e8e0d5"] as [string, string],
         location: "",

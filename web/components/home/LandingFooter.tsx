@@ -9,7 +9,7 @@ export function LandingFooter() {
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
             <span className="font-display text-xl font-bold text-foreground">
-              CLOSSETTE
+              IYAE
             </span>
             <span className="text-muted-foreground text-sm">&copy; 2026</span>
           </div>
@@ -35,7 +35,7 @@ export function LandingFooter() {
               <XLogo size={20} weight="bold" />
             </a>
             <a
-              href="https://instagram.com/clossette.official/"
+              href="https://instagram.com/iyae.official/"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"

@@ -120,7 +120,7 @@ export default function StatusPage() {
               System Status
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Real-time status of Clossette services.
+              Real-time status of IYAE services.
             </p>
           </div>
 

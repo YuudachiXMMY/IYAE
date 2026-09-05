@@ -28,7 +28,7 @@ describe('POST /api/internal/mail/password-reset', () => {
   beforeEach(() => {
     process.env.INTERNAL_MAIL_SECRET = VALID_SECRET
     process.env.RESEND_API_KEY = 'test-resend-key'
-    process.env.MAIL_FROM = 'noreply@clossette.com'
+    process.env.MAIL_FROM = 'noreply@iyae.ca'
     mockSend.mockResolvedValue({ data: { id: 'test-email-id' }, error: null })
   })
 

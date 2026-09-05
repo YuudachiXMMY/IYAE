@@ -1,7 +1,7 @@
 spring:
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:clossette}?useSSL=false&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME:clossette}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:iyae}?useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:iyae}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
@@ -36,11 +36,11 @@ app:
     minimax:
       api-key: ${MINIMAX_API_KEY:}
   cors:
-    origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:3001,http://clossette.localhost}
+    origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:3001,http://iyae.localhost}
   frontend:
     base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
   mail:
-    from: ${MAIL_FROM:noreply@clossette.com}
+    from: ${MAIL_FROM:noreply@iyae.ca}
     resend-endpoint: ${RESEND_MAIL_ENDPOINT:}
     internal-secret: ${INTERNAL_MAIL_SECRET:}
   auth:

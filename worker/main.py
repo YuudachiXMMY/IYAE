@@ -1,4 +1,4 @@
-"""Clossette 3D Model Generation Worker."""
+"""IYAE 3D Model Generation Worker."""
 import os
 import time
 import json
@@ -20,15 +20,15 @@ logging.basicConfig(
 logger = logging.getLogger("worker")
 
 POLL_INTERVAL = int(os.environ.get("WORKER_POLL_INTERVAL", "5"))
-OUTPUT_BASE_DIR = os.environ.get("WORKER_OUTPUT_DIR", "/var/clossette/assets")
+OUTPUT_BASE_DIR = os.environ.get("WORKER_OUTPUT_DIR", "/var/iyae/assets")
 
 
 def get_db_config() -> dict:
     return {
         "host": os.environ.get("DB_HOST", "localhost"),
         "port": int(os.environ.get("DB_PORT", "3306")),
-        "database": os.environ.get("DB_NAME", "clossette"),
-        "user": os.environ.get("DB_USERNAME", "clossette"),
+        "database": os.environ.get("DB_NAME", "iyae"),
+        "user": os.environ.get("DB_USERNAME", "iyae"),
         "password": os.environ.get("DB_PASSWORD", ""),
     }
 
@@ -76,7 +76,7 @@ def get_rigging_provider(output_dir: str):
 
 
 def run():
-    logger.info("Starting Clossette 3D generation worker")
+    logger.info("Starting IYAE 3D generation worker")
     db_config = get_db_config()
     queue = TaskQueue(db_config)
     avatar_queue = AvatarTaskQueue(db_config)

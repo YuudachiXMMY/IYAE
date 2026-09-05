@@ -60,7 +60,7 @@ def _failed_result(failure_code: str = "BLENDER_EXPORT_FAILED", errors: list[str
 class TestBlenderRiggingProviderInit:
     def test_default_output_dir(self):
         provider = BlenderRiggingProvider()
-        assert provider.output_dir == "/var/clossette/assets"
+        assert provider.output_dir == "/var/iyae/assets"
 
     def test_default_blender_path(self):
         provider = BlenderRiggingProvider()
@@ -81,11 +81,11 @@ class TestBlenderRiggingProviderInit:
 
 class TestResolvePathBlender:
     def setup_method(self):
-        self.provider = BlenderRiggingProvider(output_dir="/var/clossette/assets")
+        self.provider = BlenderRiggingProvider(output_dir="/var/iyae/assets")
 
     def test_assets_prefix_resolved_to_output_dir(self):
         result = self.provider._resolve_path("/assets/products/5/preview.glb")
-        assert result == "/var/clossette/assets/products/5/preview.glb"
+        assert result == "/var/iyae/assets/products/5/preview.glb"
 
     def test_http_url_returned_unchanged(self):
         url = "http://example.com/model.glb"
@@ -356,7 +356,7 @@ class TestRiggingError:
 class TestStubRiggingProviderInit:
     def test_default_output_dir(self):
         provider = StubRiggingProvider()
-        assert provider.output_dir == "/var/clossette/assets"
+        assert provider.output_dir == "/var/iyae/assets"
 
     def test_custom_output_dir(self, tmp_path):
         provider = StubRiggingProvider(output_dir=str(tmp_path))
@@ -365,11 +365,11 @@ class TestStubRiggingProviderInit:
 
 class TestStubRiggingProviderResolvePath:
     def setup_method(self):
-        self.provider = StubRiggingProvider(output_dir="/var/clossette/assets")
+        self.provider = StubRiggingProvider(output_dir="/var/iyae/assets")
 
     def test_assets_prefix_resolved(self):
         result = self.provider._resolve_path("/assets/products/1/preview.glb")
-        assert result == "/var/clossette/assets/products/1/preview.glb"
+        assert result == "/var/iyae/assets/products/1/preview.glb"
 
     def test_https_url_unchanged(self):
         url = "https://cdn.example.com/garment.glb"

@@ -175,7 +175,7 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="pf-price">
-                Price (USD) <span className="text-destructive">*</span>
+                Price (CAD) <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="pf-price"

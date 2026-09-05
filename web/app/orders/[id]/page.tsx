@@ -242,10 +242,10 @@ export default function OrderDetailPage() {
                       </div>
                       {item.price !== undefined && (
                         <p className="text-sm font-semibold text-foreground">
-                          {new Intl.NumberFormat("en-US", {
+                          {new Intl.NumberFormat("en-CA", {
                             style: "currency",
                             currency:
-                              item.currency || order.currency || "USD",
+                              item.currency || order.currency || "CAD",
                           }).format(item.price * item.quantity)}
                         </p>
                       )}
@@ -257,9 +257,9 @@ export default function OrderDetailPage() {
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                 <p className="text-sm font-semibold text-foreground">Total</p>
                 <p className="text-base font-semibold text-foreground">
-                  {new Intl.NumberFormat("en-US", {
+                  {new Intl.NumberFormat("en-CA", {
                     style: "currency",
-                    currency: order.currency || "USD",
+                    currency: order.currency || "CAD",
                   }).format(order.total)}
                 </p>
               </div>
