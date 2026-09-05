@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { api, ApiError } from "@/lib/api";
+import { ApiError, chat, type ChatMessage, type ChatSession } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
+import { useAvatar } from "@/lib/hooks/useAvatar";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
+import { ChatWeatherChip } from "@/components/ChatWeatherChip";
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { Button } from "@/components/ui/button";
@@ -18,39 +20,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// Types (ChatSession, ChatMessage) are imported from "@/lib/api".
 
-interface ChatSession {
-  id: number;
-  status: "ACTIVE" | "COMPLETED";
-  createdAt: string;
-}
+// ── Occasion & mood quick-picks (welcome state) ────────────────────────────
 
-interface OutfitItem {
-  slot: "top" | "bottom" | "shoes" | "accessory";
-  productId: number;
-  productName: string;
-  productPrice: number;
-  category: string;
-  media: string[];
-  glbUrl?: string;
-}
-
-interface OutfitResponse {
-  id: number | null;
-  items: OutfitItem[];
-  explanation: string;
-}
-
-interface ChatMessage {
-  id: number;
-  role: "USER" | "ASSISTANT";
-  content: string;
-  outfit?: OutfitResponse | null;
-  outfitRecommendationId?: number | null;
-  suggestions?: string[];
-  createdAt: string;
-}
+const OCCASION_CHIPS = ["Brunch", "Date night", "Work", "Party"];
+const MOOD_CHIPS = ["Cozy", "Bold", "Minimal", "Romantic"];
 
 // ── Initial suggestions for new conversations ──────────────────────────────
 
@@ -146,6 +121,7 @@ function SparkleIcon({ size = 16, className = "" }: { size?: number; className?:
 
 export default function ChatPage() {
   const { user, loading: authLoading } = useRequireAuth();
+  const { avatarUrl } = useAvatar();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
@@ -176,8 +152,8 @@ export default function ChatPage() {
   useEffect(() => {
     if (authLoading || !user) return;
 
-    api
-      .get<ChatSession[]>("/api/chat/sessions")
+    chat
+      .listSessions()
       .then((data) => {
         setSessions(data);
         if (data.length > 0) {
@@ -199,8 +175,8 @@ export default function ChatPage() {
     setCurrentSuggestions([]);
     setError(null);
 
-    api
-      .get<ChatMessage[]>(`/api/chat/sessions/${activeSessionId}/messages`)
+    chat
+      .getMessages(activeSessionId)
       .then((msgs) => {
         setMessages(msgs);
         if (msgs.length === 0) {
@@ -220,7 +196,7 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      const session = await api.post<ChatSession>("/api/chat/sessions");
+      const session = await chat.createSession();
       setSessions((prev) => [session, ...prev]);
       setActiveSessionId(session.id);
       setMessages([]);
@@ -258,10 +234,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, optimisticUserMsg]);
 
       try {
-        const response = await api.post<ChatMessage>(
-          `/api/chat/sessions/${sessionId}/messages`,
-          { content: text }
-        );
+        const response = await chat.sendMessage(sessionId, text);
         setMessages((prev) => [...prev, response]);
         setCurrentSuggestions(response.suggestions ?? []);
       } catch (err: unknown) {
@@ -284,7 +257,7 @@ export default function ChatPage() {
       setError(null);
 
       try {
-        const session = await api.post<ChatSession>("/api/chat/sessions");
+        const session = await chat.createSession();
         setSessions((prev) => [session, ...prev]);
         setActiveSessionId(session.id);
         setMessages([]);
@@ -404,6 +377,14 @@ export default function ChatPage() {
               AI Stylist
             </span>
           </div>
+          <div className="ml-auto">
+            <ChatWeatherChip />
+          </div>
+        </div>
+
+        {/* Desktop header — weather chip */}
+        <div className="hidden md:flex items-center justify-end border-b border-border/60 bg-card/40 px-4 py-2">
+          <ChatWeatherChip />
         </div>
 
         {/* Messages area */}
@@ -445,6 +426,29 @@ export default function ChatPage() {
                       </div>
                     </button>
                   ))}
+                </div>
+
+                <div className="mt-8 flex flex-col gap-4 text-left">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                      Occasion
+                    </span>
+                    <SuggestionChips
+                      suggestions={OCCASION_CHIPS}
+                      onSelect={(o) => handleQuickStart(`Occasion: ${o}.`)}
+                      disabled={isCreatingSession || isSending}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                      Mood
+                    </span>
+                    <SuggestionChips
+                      suggestions={MOOD_CHIPS}
+                      onSelect={(m) => handleQuickStart(`Mood: ${m}.`)}
+                      disabled={isCreatingSession || isSending}
+                    />
+                  </div>
                 </div>
 
                 <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground/60">
@@ -489,7 +493,7 @@ export default function ChatPage() {
                   className="animate-stagger-in"
                   style={{ animationDelay: `${Math.min(index * 50, 300)}ms` }}
                 >
-                  <ChatMessageBubble message={message} />
+                  <ChatMessageBubble message={message} avatarUrl={avatarUrl} />
                 </div>
               ))}
               {isTyping && (

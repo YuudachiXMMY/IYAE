@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,7 +102,7 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenReturn("Great combo!");
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of("black"), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of("black"), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         // top/bottom/accessory are required; shoes slot is optional (skipped if no candidates)
@@ -124,7 +126,7 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenReturn("Nice!");
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("evening", "minimal,clean-lines,structured", List.of(), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("evening", "minimal,clean-lines,structured", List.of(), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         // highScoreTop has 3 style matches (+3 each = 9) vs topProduct (2 matches = 6)
@@ -149,7 +151,7 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenReturn("Stylish!");
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("day-out", "", List.of("black", "charcoal"), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("day-out", "", List.of("black", "charcoal"), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         assertThat(response.items().stream().filter(s -> "top".equals(s.slot())).findFirst())
@@ -166,7 +168,7 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenReturn("Seeded!");
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("party", "bold", List.of(), List.of(10L));
+        GenerateOutfitRequest request = new GenerateOutfitRequest("party", "bold", List.of(), null, null, List.of(10L));
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         assertThat(response.items().stream().filter(s -> "top".equals(s.slot())).findFirst())
@@ -182,7 +184,7 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenReturn("Minimal look!");
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         assertThat(response.items()).hasSize(1);
@@ -199,7 +201,7 @@ class OutfitServiceTest {
         // No selected products -> garmentAssetRepository not called (empty selectedProductIds)
         when(productRepository.findAll()).thenReturn(List.of(draft));
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         assertThat(response.items()).isEmpty();
@@ -215,11 +217,31 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenThrow(new RuntimeException("AI down"));
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("weekend", "casual", List.of(), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("weekend", "casual", List.of(), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         assertThat(response.items()).isNotEmpty();
         assertThat(response.explanation()).contains("weekend");
+    }
+
+    @Test
+    void generateOutfitAnonymous_withWeatherAndMood_includedInAiUserMessage() {
+        when(productRepository.findAll()).thenReturn(
+                List.of(topProduct, bottomProduct, shoesProduct, accessoryProduct));
+        when(garmentAssetRepository.findByProductIdIn(anyList())).thenReturn(List.of());
+        when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Map<String, String>>> captor = ArgumentCaptor.forClass(List.class);
+        when(aiProvider.sendMessage(any(), captor.capture())).thenReturn("Great combo!");
+
+        GenerateOutfitRequest request = new GenerateOutfitRequest(
+                "dinner date", "elegant", List.of("black"), "cold, light snow", "confident", null);
+        outfitService.generateOutfitAnonymous(request);
+
+        String userMessage = captor.getValue().get(0).get("content");
+        assertThat(userMessage).contains("Weather: cold, light snow");
+        assertThat(userMessage).contains("Mood: confident");
     }
 
     @Test
@@ -235,7 +257,7 @@ class OutfitServiceTest {
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
         when(aiProvider.sendMessage(any(), any())).thenReturn("Great!");
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null, null, null);
         OutfitResponse response = outfitService.generateOutfitAnonymous(request);
 
         assertThat(response.items().stream().filter(s -> "top".equals(s.slot())).findFirst())
@@ -247,7 +269,7 @@ class OutfitServiceTest {
     void generateOutfit_userNotFound_throwsIllegalArgumentException() {
         when(userRepository.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null);
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimal", List.of(), null, null, null);
         assertThatThrownBy(() -> outfitService.generateOutfit(request, "ghost@example.com"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("User not found");

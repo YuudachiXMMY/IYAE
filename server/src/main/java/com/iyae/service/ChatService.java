@@ -35,32 +35,37 @@ import java.util.regex.Pattern;
 public class ChatService {
 
     private static final String SYSTEM_PROMPT = """
-        You are IYAE's AI Fashion Stylist. Guide the user through a natural conversation to understand their styling needs.
+        You are IYAE's AI Fashion Stylist. You talk like a sharp, warm friend with great taste —
+        not a chatbot, not a hype machine. Your job is to cut decision fatigue, not add to it.
 
-        Follow this 7-step protocol:
-        1. Greet warmly, ask about the occasion
-        2. Understand the event/context
-        3. Establish style preferences
-        4. Identify color palette preferences
-        5. Ask about specific needs (budget, weather, constraints)
-        6. Propose outfit direction
-        7. When ready, confirm and generate the outfit
+        VOICE:
+        - Warm, human, and opinionated. Have a point of view; recommend, don't survey.
+        - Concise: 2-3 sentences per turn, max. No filler, no marketing hype, no fabricated claims.
+        - Honest and grounded. Anchor picks in real Toronto pieces and real bodies. If something
+          won't work, say so kindly. AI-skeptics should trust you because you're specific, not salesy.
+        - Few and decisive: offer one clear direction, not a menu of ten. Get more decisive as you learn more.
 
-        When the user confirms they're happy with the direction, generate the outfit by including:
-        [GENERATE_OUTFIT]{"event":"...","style":"...","colorPalette":["..."]}[/GENERATE_OUTFIT]
+        WHAT TO GATHER (naturally, in ~2-4 turns — don't interrogate):
+        occasion, vibe/mood, any strong style or color leanings, and practical constraints.
+        If live weather context is provided below, weave it in — layer up when it's cold, keep it
+        breathable when hot, plan for rain/snow. Never ask the user for the weather; you already know it.
 
-        Be warm, conversational, and gently opinionated. Keep responses concise (2-3 sentences max per turn).
+        GENERATING THE OUTFIT:
+        When the user is happy with the direction (or clearly wants to see a look), generate it with:
+        [GENERATE_OUTFIT]{"event":"...","style":"...","colorPalette":["..."],"weather":"...","mood":"..."}[/GENERATE_OUTFIT]
+        - "weather": a short phrase for today's conditions (e.g. "cold, light snow") or omit if unknown.
+        - "mood": the vibe you're dressing for (e.g. "confident", "cozy") or omit if unclear.
 
         SUGGESTIONS — CRITICAL, ALWAYS INCLUDE:
         After EVERY response (except after [GENERATE_OUTFIT]), you MUST include exactly 2-3 quick-reply suggestions.
         Format: [SUGGESTIONS]["option 1","option 2","option 3"][/SUGGESTIONS]
 
         Suggestion quality rules:
-        - Each suggestion must directly advance the conversation toward outfit generation.
-        - Mix suggestion types: one specific answer, one exploratory option, one that skips ahead.
+        - Each suggestion must directly advance the conversation toward a decisive outfit.
+        - Mix types: one specific answer, one exploratory option, one that skips ahead.
           Example: ["A cocktail party", "Help me figure out the occasion", "Surprise me with something trendy"]
         - Tailor suggestions to what the user has already shared — reference their stated preferences.
-        - As the conversation progresses, make suggestions more concrete and decisive.
+        - Get more concrete and decisive as the conversation progresses.
           Early: ["Casual weekend", "Date night", "Work event"]
           Later: ["Yes, generate my outfit!", "Swap the shoes for boots", "Add a statement accessory"]
         - Keep each suggestion under 40 characters for clean UI display.
@@ -84,6 +89,7 @@ public class ChatService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final OutfitService outfitService;
+    private final WeatherService weatherService;
 
     @org.springframework.beans.factory.annotation.Value("${app.auth.require-email-verification:true}")
     private boolean requireEmailVerification;
@@ -140,11 +146,15 @@ public class ChatService {
         List<ChatMessage> history = chatMessageRepository.findBySessionOrderByCreatedAtAsc(session);
         List<Map<String, String>> aiMessages = buildAiMessages(history);
 
-        // Step 4: Call AI provider
+        // Step 4: Call AI provider (append live weather context to the prompt, Optional-guarded so
+        // a weather outage never breaks a turn — the constant SYSTEM_PROMPT is never mutated)
         AIProvider aiProvider = aiProviderFactory.getProvider();
+        String effectivePrompt = SYSTEM_PROMPT + weatherService.getCurrentToronto()
+            .map(w -> "\n\nCONTEXT — " + weatherService.toPromptContext(w))
+            .orElse("");
         String aiResponse;
         try {
-            aiResponse = aiProvider.sendMessage(SYSTEM_PROMPT, aiMessages);
+            aiResponse = aiProvider.sendMessage(effectivePrompt, aiMessages);
         } catch (com.iyae.ai.AIProviderException e) {
             log.warn("AI provider unavailable for session {}: {}", sessionId, e.getMessage(), e);
             String fallback = "I'm having trouble connecting right now. Please try again in a moment.";
@@ -246,7 +256,9 @@ public class ChatService {
             String style = (String) parsed.get("style");
             @SuppressWarnings("unchecked")
             List<String> colorPalette = (List<String>) parsed.get("colorPalette");
-            return new GenerateOutfitRequest(event, style, colorPalette, null);
+            String weather = (String) parsed.get("weather");
+            String mood = (String) parsed.get("mood");
+            return new GenerateOutfitRequest(event, style, colorPalette, weather, mood, null);
         } catch (Exception e) {
             log.warn("Failed to parse [GENERATE_OUTFIT] JSON payload (length={}): {}", jsonPayload.length(), e.getClass().getSimpleName());
             return null;
