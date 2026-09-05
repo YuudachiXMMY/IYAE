@@ -8,6 +8,29 @@ from providers.a_pose import get_a_pose_body_pose
 
 logger = logging.getLogger(__name__)
 
+# Approximate population means per gender. ``neutral`` reproduces the original
+# hand-authored reference values exactly, so neutral betas are unchanged (the
+# near-zero regression test still holds). ``male``/``female`` shift the means to
+# gender-condition the shape estimate.
+_POPULATION_MEANS = {
+    "neutral": {
+        "height": 170.0, "weight": 70.0, "chest": 90.0, "waist": 75.0,
+        "hips": 95.0, "shoulders": 40.0, "inseam": 80.0,
+    },
+    "male": {
+        "height": 175.0, "weight": 78.0, "chest": 98.0, "waist": 83.0,
+        "hips": 98.0, "shoulders": 45.0, "inseam": 83.0,
+    },
+    "female": {
+        "height": 162.0, "weight": 62.0, "chest": 86.0, "waist": 70.0,
+        "hips": 97.0, "shoulders": 36.0, "inseam": 76.0,
+    },
+}
+
+# Safe SMPL-X shape-parameter range; betas beyond this produce degenerate bodies.
+BETA_MIN = -4.0
+BETA_MAX = 4.0
+
 
 def _is_lfs_pointer(path: str, max_bytes: int = 512) -> bool:
     """Return True when path appears to be a Git LFS pointer file."""
@@ -163,7 +186,7 @@ class SmplxProvider:
             ) from e
 
     @staticmethod
-    def measurements_to_betas(measurements: dict) -> list[float]:
+    def measurements_to_betas(measurements: dict, gender: str = "neutral") -> list[float]:
         """Simple linear regression from 7 body measurements to 10 beta params.
 
         Maps: heightCm, weightKg, chestCm, waistCm, hipsCm, shoulderWidthCm, inseamCm
@@ -171,23 +194,38 @@ class SmplxProvider:
 
         This is a simplified approximation. A production system would use a trained
         regression model (e.g., from Measurements2SMPL).
-        """
-        height = measurements.get("heightCm", 170.0)
-        weight = measurements.get("weightKg", 70.0)
-        chest = measurements.get("chestCm", 90.0)
-        waist = measurements.get("waistCm", 75.0)
-        hips = measurements.get("hipsCm", 95.0)
-        shoulders = measurements.get("shoulderWidthCm", 40.0)
-        inseam = measurements.get("inseamCm", 80.0)
 
-        # Normalize to zero-mean (approximate population averages)
-        h_norm = (height - 170.0) / 10.0
-        w_norm = (weight - 70.0) / 15.0
-        c_norm = (chest - 90.0) / 10.0
-        wa_norm = (waist - 75.0) / 10.0
-        hi_norm = (hips - 95.0) / 10.0
-        s_norm = (shoulders - 40.0) / 5.0
-        i_norm = (inseam - 80.0) / 5.0
+        Args:
+            measurements: Body measurements dict.
+            gender: ``neutral`` (default) reproduces the original mapping exactly;
+                ``male``/``female`` shift the population means used for normalization
+                so the shape is gender-conditioned. Unknown values fall back to
+                ``neutral``.
+
+        Each returned beta is clamped to ``[BETA_MIN, BETA_MAX]`` to guard against
+        degenerate SMPL-X shapes from extreme/out-of-distribution measurements.
+        """
+        gender = (gender or "neutral").lower()
+        if gender not in ("male", "female", "neutral"):
+            gender = "neutral"
+        means = _POPULATION_MEANS[gender]
+
+        height = measurements.get("heightCm", means["height"])
+        weight = measurements.get("weightKg", means["weight"])
+        chest = measurements.get("chestCm", means["chest"])
+        waist = measurements.get("waistCm", means["waist"])
+        hips = measurements.get("hipsCm", means["hips"])
+        shoulders = measurements.get("shoulderWidthCm", means["shoulders"])
+        inseam = measurements.get("inseamCm", means["inseam"])
+
+        # Normalize to zero-mean (gender-specific approximate population averages)
+        h_norm = (height - means["height"]) / 10.0
+        w_norm = (weight - means["weight"]) / 15.0
+        c_norm = (chest - means["chest"]) / 10.0
+        wa_norm = (waist - means["waist"]) / 10.0
+        hi_norm = (hips - means["hips"]) / 10.0
+        s_norm = (shoulders - means["shoulders"]) / 5.0
+        i_norm = (inseam - means["inseam"]) / 5.0
 
         # Approximate beta mapping (simplified linear regression coefficients)
         betas = [
@@ -202,7 +240,8 @@ class SmplxProvider:
             h_norm * 0.3 - w_norm * 0.2,   # beta8: height-weight ratio
             0.0,                            # beta9: reserved
         ]
-        return betas
+        # Clamp to a safe range (near-zero neutral values are unaffected).
+        return [max(BETA_MIN, min(BETA_MAX, b)) for b in betas]
 
     def generate(self, task_id: int, user_id: int, input_payload: dict | None) -> dict:
         """Generate SMPL-X avatar from body measurements.
@@ -220,7 +259,7 @@ class SmplxProvider:
         measurements = input_payload or {}
         gender = (measurements.get("gender") or "neutral").lower()
         model = self._get_model(gender)
-        betas = self.measurements_to_betas(measurements)
+        betas = self.measurements_to_betas(measurements, gender)
 
         torch = self._torch
         betas_tensor = torch.tensor([betas], dtype=torch.float32)
@@ -269,6 +308,14 @@ class SmplxProvider:
         bbox_max = vertices.max(axis=0).tolist()
         has_nan = bool(__import__("numpy").isnan(vertices).any())
 
+        # Tracked fit accuracy: reconstruct the requested height from the mesh's
+        # Y-extent and report the error, plus whether the shape betas stayed in
+        # the safe range. Observable proxy for how measurement-true the body is.
+        input_height_cm = float(measurements.get("heightCm", 170.0))
+        mesh_height_cm = (bbox_max[1] - bbox_min[1]) * 100.0
+        height_error_cm = abs(mesh_height_cm - input_height_cm)
+        betas_in_range = all(BETA_MIN <= b <= BETA_MAX for b in betas)
+
         return {
             "schemaVersion": 1,
             "provider_used": "SMPLX",
@@ -277,6 +324,10 @@ class SmplxProvider:
             "triangle_count": len(faces),
             "bbox": {"min": bbox_min, "max": bbox_max},
             "sanity": {"glb_size_bytes": glb_size, "has_nan_vertices": has_nan},
+            "fit_accuracy": {
+                "height_error_cm": round(height_error_cm, 2),
+                "betas_in_range": betas_in_range,
+            },
             "elapsed_ms": elapsed_ms,
             "glb_url": f"/assets/avatars/{user_id}/avatar.glb",
             "skin": {"has_skin": True, "joint_count": 55},

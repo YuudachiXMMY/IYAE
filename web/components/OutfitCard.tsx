@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useMemo, useCallback } from "react";
 import Image from "next/image";
-import { api, ApiError } from "@/lib/api";
+import dynamic from "next/dynamic";
+import { api, ApiError, avatar } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
+
+// R3F must be dynamically imported with ssr:false. Lazy-mounted only when the
+// user taps "Try on" so a chat stream never mounts a viewer per message.
+const AvatarViewer = dynamic(() => import("@/components/AvatarViewer"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse bg-muted" />,
+});
 
 interface OutfitItem {
   slot: "top" | "bottom" | "shoes" | "accessory";
@@ -41,8 +49,36 @@ const SLOT_ORDER: OutfitItem["slot"][] = ["top", "bottom", "shoes", "accessory"]
 export function OutfitCard({ outfit, outfitId }: OutfitCardProps) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tryOn, setTryOn] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
   const linkId = outfitId ?? outfit.id;
   const itemsBySlot = new Map(outfit.items.map((item) => [item.slot, item]));
+
+  // Assemble garment GLBs the same way outfits/[id]/view does (chat outfits only
+  // carry static glbUrl per item — no rigged variants).
+  const glbUrls = useMemo(
+    () =>
+      outfit.items
+        .map((item) => item.glbUrl)
+        .filter((url): url is string => Boolean(url)),
+    [outfit.items]
+  );
+
+  const previewImageUrl = outfit.items[0]?.media?.[0];
+
+  const handleTryOn = useCallback(async () => {
+    setTryOn(true);
+    if (avatarLoaded) return;
+    setAvatarLoaded(true);
+    try {
+      const res = await avatar.getAvatar();
+      setAvatarUrl(res.avatarUrl);
+    } catch {
+      // No avatar yet / unauthenticated — viewer falls back to garments-only.
+      setAvatarUrl(null);
+    }
+  }, [avatarLoaded]);
 
   return (
     <div className="bg-card rounded-card shadow-soft p-4 mt-2 max-w-sm" aria-label={`Outfit suggestion with ${outfit.items.length} item${outfit.items.length !== 1 ? "s" : ""}`}>
@@ -107,13 +143,33 @@ export function OutfitCard({ outfit, outfitId }: OutfitCardProps) {
         </p>
       )}
 
+      {/* Inline try-on — lazy-mounted only after the user taps "Try on" */}
+      {tryOn && (
+        <div className="mt-3 h-80 w-full overflow-hidden rounded-xl bg-muted">
+          <ViewerErrorBoundary
+            fallback={
+              <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground italic">
+                3D preview unavailable
+              </div>
+            }
+          >
+            <AvatarViewer
+              avatarUrl={avatarUrl ?? undefined}
+              glbUrls={glbUrls}
+              previewImageUrl={previewImageUrl}
+            />
+          </ViewerErrorBoundary>
+        </div>
+      )}
+
       <div className="mt-3 flex gap-2">
         <Button
-          asChild
           size="sm"
           className="flex-1 rounded-full bg-brand hover:bg-brand-hover text-primary-foreground text-xs"
+          aria-pressed={tryOn}
+          onClick={() => (tryOn ? setTryOn(false) : handleTryOn())}
         >
-          <Link href={linkId != null ? `/outfits/${linkId}/view` : "/outfits"}>View in 3D</Link>
+          {tryOn ? "Hide try-on" : "Try on"}
         </Button>
         <Button
           size="sm"

@@ -11,6 +11,96 @@ logger = logging.getLogger(__name__)
 MESHY_API_BASE = "https://api.meshy.ai/openapi/v1"
 
 
+def _compute_glb_metadata(glb_path: str) -> dict:
+    """Compute real geometry metadata (triangle_count, bbox, has_nan) from a GLB.
+
+    The Meshy API does not return the finished mesh's triangle count or bounds,
+    so we derive them from the downloaded file itself. Prefers ``pygltflib`` to
+    read the POSITION accessor ``min``/``max`` (unioned across meshes) and index
+    accessor counts without decoding buffers; falls back to ``trimesh.load`` when
+    accessor bounds are absent. Both imports are lazy (module style) so the base
+    worker starts fast when Meshy is not the active provider.
+
+    Returns ``{"triangle_count": int|None, "bbox": {"min","max"}|None, "has_nan": bool}``.
+    A parse failure yields safe defaults (``None``/``None``/``False``) so metadata
+    computation never crashes generation -- ``validate_glb_geometry`` in the worker
+    loop is the authoritative gate against malformed GLBs.
+    """
+    import math
+
+    # --- Tier 1: pygltflib accessor min/max + index counts (no buffer decode) ---
+    try:
+        from pygltflib import GLTF2
+
+        gltf = GLTF2.load(glb_path)
+        accessors = gltf.accessors or []
+        triangle_count = 0
+        mins = [math.inf, math.inf, math.inf]
+        maxs = [-math.inf, -math.inf, -math.inf]
+        bounds_found = False
+
+        for mesh in (gltf.meshes or []):
+            for prim in (mesh.primitives or []):
+                attrs = prim.attributes
+                pos = getattr(attrs, "POSITION", None) if attrs else None
+                idx = prim.indices
+                if idx is not None and idx < len(accessors):
+                    triangle_count += accessors[idx].count // 3
+                elif pos is not None and pos < len(accessors):
+                    triangle_count += accessors[pos].count // 3
+                if pos is not None and pos < len(accessors):
+                    acc = accessors[pos]
+                    if acc.min and acc.max and len(acc.min) >= 3 and len(acc.max) >= 3:
+                        bounds_found = True
+                        for i in range(3):
+                            mins[i] = min(mins[i], float(acc.min[i]))
+                            maxs[i] = max(maxs[i], float(acc.max[i]))
+
+        if bounds_found:
+            has_nan = any(
+                math.isnan(v) or math.isinf(v) for v in (*mins, *maxs)
+            )
+            return {
+                "triangle_count": triangle_count,
+                "bbox": {"min": mins, "max": maxs},
+                "has_nan": has_nan,
+            }
+    except Exception as e:
+        logger.warning("pygltflib metadata read failed for %s: %s", glb_path, e)
+
+    # --- Tier 2: trimesh fallback -- decode geometry when accessor bounds absent ---
+    try:
+        import trimesh
+        import numpy as np
+
+        loaded = trimesh.load(glb_path, process=False)
+        geoms = (
+            list(loaded.geometry.values())
+            if isinstance(loaded, trimesh.Scene)
+            else [loaded]
+        )
+        verts_list = [
+            np.asarray(g.vertices)
+            for g in geoms
+            if hasattr(g, "vertices") and len(g.vertices)
+        ]
+        tri = int(sum(len(g.faces) for g in geoms if hasattr(g, "faces")))
+        if verts_list:
+            verts = np.vstack(verts_list)
+            return {
+                "triangle_count": tri,
+                "bbox": {
+                    "min": verts.min(axis=0).tolist(),
+                    "max": verts.max(axis=0).tolist(),
+                },
+                "has_nan": bool(np.isnan(verts).any()),
+            }
+    except Exception as e:
+        logger.warning("trimesh metadata fallback failed for %s: %s", glb_path, e)
+
+    return {"triangle_count": None, "bbox": None, "has_nan": False}
+
+
 class MeshyGenerator:
     """Generates 3D models via Meshy.ai API."""
 
@@ -123,6 +213,10 @@ class MeshyGenerator:
             usdz_path_str = f"products/{product_id}/tasks/{task_id}/preview.usdz"
             usdz_url_str = f"/assets/products/{product_id}/tasks/{task_id}/preview.usdz"
 
+        # Meshy does not return the finished mesh's geometry stats, so compute
+        # real triangle_count / bbox / NaN flag from the downloaded GLB itself.
+        glb_metadata = _compute_glb_metadata(glb_path)
+
         elapsed_ms = int((time.time() - start_time) * 1000)
 
         return {
@@ -131,11 +225,11 @@ class MeshyGenerator:
             "provider_request_id": meshy_task_id,
             "glb_path": f"products/{product_id}/tasks/{task_id}/preview.glb",
             "usdz_path": usdz_path_str,
-            "triangle_count": 30000,  # target_polycount estimate; Meshy API doesn't return actual count
-            "bbox": None,  # Meshy API doesn't return bounding box
+            "triangle_count": glb_metadata["triangle_count"],
+            "bbox": glb_metadata["bbox"],
             "sanity": {
                 "glb_size_bytes": len(glb_resp.content),
-                "has_nan_vertices": False,
+                "has_nan_vertices": glb_metadata["has_nan"],
             },
             "elapsed_ms": elapsed_ms,
             "glb_url": f"/assets/products/{product_id}/tasks/{task_id}/preview.glb",

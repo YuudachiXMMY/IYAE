@@ -11,7 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useAvatarStatus } from "@/lib/hooks/useAvatarStatus";
-import { api } from "@/lib/api";
+import { api, avatar } from "@/lib/api";
+import { toast } from "sonner";
 
 const DEFAULT_AVATAR_URL = "/models/default-avatar.glb";
 
@@ -173,11 +174,14 @@ export default function AvatarPage() {
     generate,
     regenerate,
     clearActionError,
+    refresh,
   } = useAvatarStatus();
 
   const [profile, setProfile] = useState<BodyProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [bodyType, setBodyType] = useState<string>("neutral");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingData, setDeletingData] = useState(false);
 
   // Derive initial body type from user.genderIdentity
   useEffect(() => {
@@ -204,6 +208,21 @@ export default function AvatarPage() {
       await api.put("/api/auth/profile", { genderIdentity: type });
     } catch {
       // Silently fail — local state already updated, will persist on next profile save
+    }
+  }
+
+  async function handleDeleteBodyData() {
+    setDeletingData(true);
+    try {
+      await avatar.delete();
+      toast.success("Your body data was deleted");
+      setConfirmingDelete(false);
+      setProfile(null);
+      refresh();
+    } catch {
+      toast.error("Failed to delete body data");
+    } finally {
+      setDeletingData(false);
     }
   }
 
@@ -424,6 +443,51 @@ export default function AvatarPage() {
                   </Button>
                 )}
               </div>
+
+              {/* Privacy: one-tap delete of avatar + body data (two-step confirm) */}
+              {(hasProfile || isReady || glbUrl) && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Delete avatar &amp; body data
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Permanently removes your 3D avatar and measurements.
+                    </p>
+                  </div>
+                  {confirmingDelete ? (
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full text-xs"
+                        disabled={deletingData}
+                        onClick={() => setConfirmingDelete(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="rounded-full text-xs"
+                        disabled={deletingData}
+                        onClick={handleDeleteBodyData}
+                      >
+                        {deletingData ? "Deleting..." : "Confirm"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="shrink-0 rounded-full text-xs"
+                      onClick={() => setConfirmingDelete(true)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ── Right: Profile Panel ─────────────────────── */}

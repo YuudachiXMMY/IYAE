@@ -21,6 +21,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -138,5 +139,43 @@ class AvatarServiceTest {
         avatarService.generateAvatar("buyer@example.com");
 
         assertThat(captureGenderFromPayload()).isEqualTo("neutral");
+    }
+
+    // --- deleteAvatarData ---
+
+    @Test
+    void deleteAvatarData_clearsAvatarProfileAndTasks() {
+        testUser.setAvatarGlbUrl("https://example.com/avatar.glb");
+        AvatarGenerationTask task = AvatarGenerationTask.builder()
+                .id(200L).user(testUser).status(TaskStatus.MATERIALIZED).attemptCount(1).build();
+
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(testUser));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(testProfile));
+        when(avatarTaskRepository.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(task));
+
+        avatarService.deleteAvatarData("buyer@example.com");
+
+        assertThat(testUser.getAvatarGlbUrl()).isNull();
+        verify(userRepository).save(testUser);
+        verify(bodyProfileRepository).delete(testProfile);
+        verify(avatarTaskRepository).deleteAll(List.of(task));
+    }
+
+    @Test
+    void deleteAvatarData_idempotentWhenNoProfileOrTasks() {
+        testUser.setAvatarGlbUrl("https://example.com/avatar.glb");
+
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(testUser));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.empty());
+        when(avatarTaskRepository.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(Collections.emptyList());
+
+        avatarService.deleteAvatarData("buyer@example.com");
+
+        assertThat(testUser.getAvatarGlbUrl()).isNull();
+        verify(userRepository).save(testUser);
+        verify(bodyProfileRepository, never()).delete(any());
+        verify(avatarTaskRepository, never()).deleteAll(any());
     }
 }

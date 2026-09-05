@@ -5,6 +5,18 @@ from unittest.mock import MagicMock, patch
 from providers.meshy_generator import MeshyGenerator, MESHY_API_BASE
 
 
+def _real_box_glb_bytes(extents=(0.4, 1.0, 0.3)):
+    """Build a real, parseable box GLB and return ``(glb_bytes, trimesh_box)``.
+
+    A trimesh box has 12 triangles and POSITION accessor min/max equal to its
+    bounds, so tests can assert the *computed* metadata against known values.
+    """
+    import trimesh
+
+    box = trimesh.creation.box(extents=extents)
+    return box.export(file_type="glb"), box
+
+
 class TestResolveImageUrl:
     """Tests for _resolve_image_url: converts relative paths to base64 data URIs."""
 
@@ -320,16 +332,63 @@ class TestMeshyGeneratorPayload:
         assert "42" in payload["usdz_path"]
         assert "1" in payload["usdz_path"]
 
-    def test_triangle_count_is_30000(self, tmp_path):
-        payload = self._run_generate(tmp_path)
-        assert payload["triangle_count"] == 30000
+    def _run_generate_with_glb(self, tmp_path, glb_bytes):
+        """Run generate() while serving real GLB bytes for the .glb download."""
+        with patch("providers.meshy_generator.time.sleep"), \
+             patch("providers.meshy_generator.requests.post") as mock_post, \
+             patch("providers.meshy_generator.requests.get") as mock_get:
+            mock_post.return_value.json.return_value = {"result": "meshy-real"}
+            status_mock = MagicMock()
+            status_mock.json.return_value = {
+                "status": "SUCCEEDED",
+                "consumed_credits": 3,
+                "model_urls": {
+                    "glb": "https://cdn.meshy.ai/models/preview.glb",
+                    "usdz": "https://cdn.meshy.ai/models/preview.usdz",
+                },
+            }
 
-    def test_bbox_is_none(self, tmp_path):
+            def get_side_effect(url, **kwargs):
+                if "image-to-3d" in url:
+                    return status_mock
+                m = MagicMock()
+                m.content = glb_bytes if url.endswith(".glb") else b"usdz-stub"
+                return m
+
+            mock_get.side_effect = get_side_effect
+
+            gen = MeshyGenerator(api_key="test-key", output_base_dir=str(tmp_path))
+            return gen.generate(
+                task_id=1,
+                product_id=42,
+                input_payload={"image_url": "https://example.com/img.jpg"},
+            )
+
+    def test_triangle_count_computed_from_downloaded_glb(self, tmp_path):
+        # triangle_count must be the real count read from the GLB, not a hardcoded estimate.
+        glb_bytes, box = _real_box_glb_bytes()
+        payload = self._run_generate_with_glb(tmp_path, glb_bytes)
+        assert payload["triangle_count"] == len(box.faces)
+
+    def test_bbox_computed_from_downloaded_glb(self, tmp_path):
+        # bbox min/max must match the GLB's POSITION accessor bounds, not None.
+        glb_bytes, box = _real_box_glb_bytes(extents=(0.4, 1.0, 0.3))
+        payload = self._run_generate_with_glb(tmp_path, glb_bytes)
+        bbox = payload["bbox"]
+        assert bbox is not None
+        assert bbox["min"] == pytest.approx(box.bounds[0].tolist(), abs=1e-3)
+        assert bbox["max"] == pytest.approx(box.bounds[1].tolist(), abs=1e-3)
+
+    def test_sanity_has_nan_vertices_false_for_valid_glb(self, tmp_path):
+        glb_bytes, _ = _real_box_glb_bytes()
+        payload = self._run_generate_with_glb(tmp_path, glb_bytes)
+        assert payload["sanity"]["has_nan_vertices"] is False
+
+    def test_metadata_none_when_glb_unparseable(self, tmp_path):
+        # A non-parseable download must not crash generate(); metadata degrades to None.
         payload = self._run_generate(tmp_path)
+        assert payload["triangle_count"] is None
         assert payload["bbox"] is None
-
-    def test_sanity_has_nan_vertices_false(self, tmp_path):
-        payload = self._run_generate(tmp_path)
         assert payload["sanity"]["has_nan_vertices"] is False
 
     def test_elapsed_ms_is_positive_integer(self, tmp_path):

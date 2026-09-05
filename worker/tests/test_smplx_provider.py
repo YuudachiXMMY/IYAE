@@ -277,6 +277,64 @@ class TestMeasurementsToBetas:
             betas = SmplxProvider.measurements_to_betas(measurements)
             assert betas[9] == 0.0, f"beta9 should be reserved/zero, got {betas[9]}"
 
+    def test_extreme_measurements_clamped_to_range(self):
+        """Very large measurements must not produce betas outside [-4, 4]."""
+        extreme = {
+            "heightCm": 230.0,
+            "weightKg": 200.0,
+            "chestCm": 150.0,
+            "waistCm": 140.0,
+            "hipsCm": 160.0,
+            "shoulderWidthCm": 70.0,
+            "inseamCm": 120.0,
+        }
+        betas = SmplxProvider.measurements_to_betas(extreme)
+        for i, b in enumerate(betas):
+            assert -4.0 <= b <= 4.0, f"beta[{i}]={b} not clamped to [-4, 4]"
+        # At least one beta is saturated at the clamp bound (proves clamping is active).
+        assert any(b == 4.0 for b in betas)
+
+    def test_extreme_low_measurements_clamped_to_range(self):
+        """Very small measurements must not produce betas below -4."""
+        tiny = {
+            "heightCm": 120.0,
+            "weightKg": 30.0,
+            "chestCm": 50.0,
+            "waistCm": 45.0,
+            "hipsCm": 55.0,
+            "shoulderWidthCm": 20.0,
+            "inseamCm": 40.0,
+        }
+        betas = SmplxProvider.measurements_to_betas(tiny)
+        for i, b in enumerate(betas):
+            assert -4.0 <= b <= 4.0, f"beta[{i}]={b} not clamped to [-4, 4]"
+        assert any(b == -4.0 for b in betas)
+
+    def test_neutral_gender_matches_default_arg(self):
+        """Explicit gender='neutral' must equal the default (no-arg) behavior."""
+        m = {"heightCm": 180.0, "weightKg": 85.0, "chestCm": 100.0}
+        assert (
+            SmplxProvider.measurements_to_betas(m)
+            == SmplxProvider.measurements_to_betas(m, "neutral")
+        )
+
+    def test_gender_conditioning_shifts_betas(self):
+        """male/female shift population means, so betas differ from neutral."""
+        m = {"heightCm": 170.0}
+        neutral = SmplxProvider.measurements_to_betas(m, "neutral")
+        male = SmplxProvider.measurements_to_betas(m, "male")
+        female = SmplxProvider.measurements_to_betas(m, "female")
+        assert neutral != male
+        assert neutral != female
+
+    def test_unknown_gender_falls_back_to_neutral(self):
+        """An unrecognized gender behaves like neutral."""
+        m = {"heightCm": 180.0, "weightKg": 90.0}
+        assert (
+            SmplxProvider.measurements_to_betas(m, "alien")
+            == SmplxProvider.measurements_to_betas(m, "neutral")
+        )
+
 
 # ---------------------------------------------------------------------------
 # _is_lfs_pointer — Git LFS pointer detection
@@ -546,8 +604,12 @@ class TestSmplxStubProviderGenderPassthrough:
 class TestSmplxProviderSkinnedGlbOutput:
     """Tests that SmplxProvider.generate() produces skinned GLB with skeleton data."""
 
-    def _run_generate(self, tmp_path, input_payload=None):
-        """Helper: run generate() with fully mocked SMPL-X dependencies."""
+    def _run_generate(self, tmp_path, input_payload=None, vertices=None):
+        """Helper: run generate() with fully mocked SMPL-X dependencies.
+
+        Pass ``vertices`` (shape (N, 3)) to control the mesh bounds (used by the
+        fit-accuracy tests); otherwise a random 100-vertex cloud is used.
+        """
         import numpy as np
 
         provider = SmplxProvider(
@@ -557,9 +619,13 @@ class TestSmplxProviderSkinnedGlbOutput:
 
         sentinel_model = MagicMock(name="neutral_model")
 
-        mock_vertices = np.random.rand(100, 3).astype(np.float32)
+        if vertices is None:
+            mock_vertices = np.random.rand(100, 3).astype(np.float32)
+        else:
+            mock_vertices = np.asarray(vertices, dtype=np.float32)
+        n = mock_vertices.shape[0]
         mock_faces = np.array([[0, 1, 2], [1, 2, 3]], dtype=np.int64)
-        mock_lbs = np.random.rand(100, 55).astype(np.float32)
+        mock_lbs = np.random.rand(n, 55).astype(np.float32)
         mock_joints = np.random.rand(1, 55, 3).astype(np.float32)
 
         mock_output = MagicMock()
@@ -576,11 +642,11 @@ class TestSmplxProviderSkinnedGlbOutput:
         provider._torch.tensor.return_value = MagicMock()
 
         mock_trimesh = MagicMock()
-        mock_normals = np.random.rand(100, 3).astype(np.float32)
+        mock_normals = np.random.rand(n, 3).astype(np.float32)
         mock_trimesh.Trimesh.return_value.vertex_normals = mock_normals
 
-        mock_ji = np.zeros((100, 4), dtype=np.uint8)
-        mock_jw = np.ones((100, 4), dtype=np.float32) * 0.25
+        mock_ji = np.zeros((n, 4), dtype=np.uint8)
+        mock_jw = np.ones((n, 4), dtype=np.float32) * 0.25
 
         with patch.dict("sys.modules", {"trimesh": mock_trimesh}):
             with patch(
@@ -623,3 +689,34 @@ class TestSmplxProviderSkinnedGlbOutput:
         """generate() should convert LBS weights via dense_weights_to_top4."""
         _, _, mock_top4 = self._run_generate(tmp_path)
         mock_top4.assert_called_once()
+
+    def test_output_payload_contains_fit_accuracy(self, tmp_path):
+        """generate() output should include a tracked 'fit_accuracy' block."""
+        result, _, _ = self._run_generate(tmp_path)
+        assert "fit_accuracy" in result, "Output payload missing 'fit_accuracy'"
+        fa = result["fit_accuracy"]
+        assert "height_error_cm" in fa
+        assert "betas_in_range" in fa
+        assert isinstance(fa["height_error_cm"], float)
+        assert isinstance(fa["betas_in_range"], bool)
+
+    def test_fit_accuracy_height_error_reflects_mesh_height(self, tmp_path):
+        """height_error_cm should be ~0 when the mesh Y-extent matches the requested height."""
+        import numpy as np
+
+        # Vertices spanning exactly 1.60m in Y (min 0.0, max 1.60).
+        verts = np.array(
+            [[0.0, 0.0, 0.0], [0.1, 1.60, 0.1], [-0.1, 0.8, -0.1]], dtype=np.float32
+        )
+        result, _, _ = self._run_generate(
+            tmp_path, input_payload={"heightCm": 160.0}, vertices=verts
+        )
+        assert result["fit_accuracy"]["height_error_cm"] == pytest.approx(0.0, abs=0.5)
+        assert result["fit_accuracy"]["betas_in_range"] is True
+
+    def test_fit_accuracy_betas_in_range_true_for_normal_input(self, tmp_path):
+        """Clamped betas from normal measurements are always in range."""
+        result, _, _ = self._run_generate(
+            tmp_path, input_payload={"heightCm": 170.0, "weightKg": 70.0}
+        )
+        assert result["fit_accuracy"]["betas_in_range"] is True

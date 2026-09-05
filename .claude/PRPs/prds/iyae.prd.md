@@ -188,6 +188,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 - **Success signal**: Suggestions render on the user's avatar; picks reference real catalog pieces + Toronto weather.
 
 **Phase 4: Virtual Fitting (Full 3D) + Fit/Size**
+- **Status**: 🚧 in-progress — see plan `.claude/PRPs/plans/completed/virtual-fitting-3d-fit-size.plan.md` and report `.claude/PRPs/reports/virtual-fitting-3d-fit-size-report.md` (worker hardening + recommended-size + one-tap delete + 2D preview + inline chat try-on landed on `worktree-iyae-phase4-prp-plan`).
 - **Goal**: Measurement-true try-on that clears the zero-friction bar and drives the fit KPI.
 - **Scope**: Harden SMPL-X + rigging; instant 2D preview + async high-fidelity; recommended size; inline embed; fix `measurements_to_betas` + Meshy validation; privacy (face optional / one-tap delete).
 - **Success signal**: First preview is instant; recommended size shows on every try-on; validated fit accuracy metric.

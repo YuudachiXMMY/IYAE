@@ -118,6 +118,31 @@ public class AvatarService {
         return new AvatarResponse(avatarUrl, status);
     }
 
+    /**
+     * One-tap privacy delete: purge the user's avatar URL, body profile, and avatar
+     * generation task rows. The {@link User} itself is NOT deleted. Idempotent — a
+     * missing body profile or empty task list is a no-op.
+     */
+    @Transactional
+    public void deleteAvatarData(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        user.setAvatarGlbUrl(null);
+        userRepository.save(user);
+
+        bodyProfileRepository.findByUserId(user.getId())
+                .ifPresent(bodyProfileRepository::delete);
+
+        List<AvatarGenerationTask> tasks =
+                avatarTaskRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        if (!tasks.isEmpty()) {
+            avatarTaskRepository.deleteAll(tasks);
+        }
+
+        log.info("Deleted avatar data for user {}", user.getId());
+    }
+
     @Transactional
     public void processReadyTasks() {
         List<AvatarGenerationTask> readyTasks =

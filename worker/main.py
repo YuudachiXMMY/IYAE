@@ -11,7 +11,13 @@ from providers.stub_generator import StubGenerator
 from providers.tripo_generator import TripoGenerator
 from providers.smplx_stub_provider import SmplxStubProvider
 from providers.stub_rigging_provider import StubRiggingProvider
-from validator import validate_glb, validate_metadata, validate_usdz, validate_rigged_glb
+from validator import (
+    validate_glb,
+    validate_glb_geometry,
+    validate_metadata,
+    validate_usdz,
+    validate_rigged_glb,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -137,6 +143,10 @@ def run():
                     if not validation["valid"]:
                         raise RuntimeError(f"GLB validation failed: {validation['errors']}")
 
+                    geometry = validate_glb_geometry(glb_path)
+                    if not geometry["valid"]:
+                        raise RuntimeError(f"GLB geometry validation failed: {geometry['errors']}")
+
                     if output.get("usdz_path"):
                         usdz_path = os.path.join(OUTPUT_BASE_DIR, output["usdz_path"])
                         usdz_validation = validate_usdz(usdz_path)
@@ -169,6 +179,10 @@ def run():
                     validation = validate_glb(glb_path)
                     if not validation["valid"]:
                         raise RuntimeError(f"GLB validation failed: {validation['errors']}")
+
+                    geometry = validate_glb_geometry(glb_path)
+                    if not geometry["valid"]:
+                        raise RuntimeError(f"GLB geometry validation failed: {geometry['errors']}")
 
                     meta_validation = validate_metadata(output)
                     if not meta_validation["valid"]:
