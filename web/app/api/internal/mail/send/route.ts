@@ -1,11 +1,12 @@
 import { Resend } from 'resend';
 import { buildPasswordResetEmailHtml, buildVerificationEmailHtml } from '@/lib/email-templates';
+import { BRAND } from '@/lib/brand';
 
 type MailType = 'verification' | 'password-reset';
 
 const SUBJECT_MAP: Record<MailType, string> = {
-  verification: 'Verify your IYAE account',
-  'password-reset': 'Reset your IYAE password',
+  verification: `Verify your ${BRAND.name} account`,
+  'password-reset': `Reset your ${BRAND.name} password`,
 };
 
 const TEMPLATE_MAP: Record<MailType, (name: string, actionUrl: string) => string> = {

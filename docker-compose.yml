@@ -36,8 +36,6 @@ services:
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://iyae.localhost}
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
-      SPRING_MAIL_HOST: mailpit
-      SPRING_MAIL_PORT: 1025
       JAVA_TOOL_OPTIONS: "-Xmx384m -Xms128m"
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET:-dev-internal-secret}
@@ -46,8 +44,6 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      mailpit:
-        condition: service_started
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.iyae-api.rule=Host(`${API_DOMAIN:-api.iyae.localhost}`)"
@@ -56,14 +52,6 @@ services:
       - iyae-net
       - proxy
       - default
-
-  mailpit:
-    image: axllent/mailpit
-    container_name: iyae-mailpit
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    restart: unless-stopped
 
   worker:
     build:

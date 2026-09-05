@@ -1,6 +1,7 @@
 "use client";
 
 import { XLogo, InstagramLogo } from "@phosphor-icons/react";
+import { BRAND } from "@/lib/brand";
 
 export function LandingFooter() {
   return (
@@ -9,7 +10,7 @@ export function LandingFooter() {
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
             <span className="font-display text-xl font-bold text-foreground">
-              IYAE
+              {BRAND.name}
             </span>
             <span className="text-muted-foreground text-sm">&copy; 2026</span>
           </div>

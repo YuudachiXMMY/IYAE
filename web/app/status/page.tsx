@@ -5,6 +5,7 @@ import { NavBar } from "@/components/NavBar";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { api } from "@/lib/api";
+import { BRAND } from "@/lib/brand";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export default function StatusPage() {
               System Status
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Real-time status of IYAE services.
+              Real-time status of {BRAND.name} services.
             </p>
           </div>
 

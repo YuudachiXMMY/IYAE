@@ -1,6 +1,7 @@
 package com.iyae.service;
 
 import com.iyae.ai.AIProviderFactory;
+import com.iyae.config.BrandProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,11 +14,12 @@ import java.util.Map;
 public class HealthService {
 
     private final AIProviderFactory aiProviderFactory;
+    private final BrandProperties brandProperties;
 
     public Map<String, String> getServerHealth() {
         return Map.of(
             "status", "UP",
-            "service", "iyae-server"
+            "service", brandProperties.serviceId()
         );
     }
 

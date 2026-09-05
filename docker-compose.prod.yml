@@ -34,12 +34,7 @@ services:
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
       CORS_ORIGINS: ${CORS_ORIGINS}
       SPRING_PROFILES_ACTIVE: prod
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
-      MAIL_FROM: ${MAIL_FROM:-noreply@iyae.ca}
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET}
     volumes:

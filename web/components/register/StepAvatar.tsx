@@ -1,6 +1,7 @@
 "use client";
 
 import type { RegisterRequest } from "@/lib/api";
+import { BRAND } from "@/lib/brand";
 
 interface StepAvatarProps {
   data: Partial<RegisterRequest>;
@@ -23,7 +24,7 @@ export function StepAvatar({ data, onChange }: StepAvatarProps) {
     <div className="space-y-6">
       <div>
         <h2 className="font-display text-2xl text-foreground">Your avatar</h2>
-        <p className="text-sm text-muted-foreground mt-1">How would you like to appear on IYAE?</p>
+        <p className="text-sm text-muted-foreground mt-1">How would you like to appear on {BRAND.name}?</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

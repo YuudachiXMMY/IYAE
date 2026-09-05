@@ -6,6 +6,7 @@ import { CartProvider } from "@/lib/cart-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { FloatingAIStylist } from "@/components/floating-ai-stylist";
 import { Toaster } from "@/components/ui/sonner";
+import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
 const cormorant = Cormorant_Garamond({
@@ -16,7 +17,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "IYAE — AI-Powered Fashion",
+  title: `${BRAND.name} — ${BRAND.tagline}`,
   description: "Personalized styling with AI and 3D virtual try-on",
 };
 

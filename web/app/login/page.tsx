@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
 import { useRedirectIfAuthenticated } from "@/lib/hooks/useRedirectIfAuthenticated";
+import { BRAND } from "@/lib/brand";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -59,7 +60,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-soft rounded-card">
         <CardHeader className="text-center">
           <CardTitle className="font-display text-3xl">Welcome Back</CardTitle>
-          <CardDescription>Sign in to your IYAE account</CardDescription>
+          <CardDescription>Sign in to your {BRAND.name} account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

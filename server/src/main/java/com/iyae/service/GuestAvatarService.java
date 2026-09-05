@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.iyae.config.BrandProperties;
 import com.iyae.dto.GuestAvatarRequest;
 import com.iyae.dto.GuestAvatarStatusResponse;
 import com.iyae.entity.AvatarGenerationTask;
@@ -26,12 +27,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class GuestAvatarService {
 
-    static final String GUEST_EMAIL = "guest@iyae.internal";
-
     private final AvatarGenerationTaskRepository avatarTaskRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
+    private final BrandProperties brandProperties;
 
     @Value("${AVATAR_GENERATION_PROVIDER:mock}")
     private String avatarProvider;
@@ -79,11 +79,11 @@ public class GuestAvatarService {
     }
 
     private User getOrCreateGuestUser() {
-        return userRepository.findByEmail(GUEST_EMAIL)
+        return userRepository.findByEmail(brandProperties.guestEmail())
                 .orElseGet(() -> {
                     log.info("Creating guest user for anonymous avatar generation");
                     return userRepository.save(User.builder()
-                            .email(GUEST_EMAIL)
+                            .email(brandProperties.guestEmail())
                             .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
                             .name("Guest")
                             .role(Role.BUYER)

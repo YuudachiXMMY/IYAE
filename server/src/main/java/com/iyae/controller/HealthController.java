@@ -1,6 +1,7 @@
 package com.iyae.controller;
 
 import com.iyae.ai.AIProviderFactory;
+import com.iyae.config.BrandProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,12 +16,13 @@ import java.util.Map;
 public class HealthController {
 
     private final AIProviderFactory aiProviderFactory;
+    private final BrandProperties brandProperties;
 
     @GetMapping
     public ResponseEntity<Map<String, String>> health() {
         return ResponseEntity.ok(Map.of(
             "status", "UP",
-            "service", "iyae-server"
+            "service", brandProperties.serviceId()
         ));
     }
 

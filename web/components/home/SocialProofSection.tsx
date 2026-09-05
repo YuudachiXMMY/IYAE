@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
+import { BRAND } from "@/lib/brand";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -61,7 +62,7 @@ export default function SocialProofSection() {
             >
               I used to spend 45 minutes picking an outfit.
               <br className="hidden md:block" />
-              Now I just ask IYAE.
+              Now I just ask {BRAND.name}.
             </motion.blockquote>
 
             <motion.p

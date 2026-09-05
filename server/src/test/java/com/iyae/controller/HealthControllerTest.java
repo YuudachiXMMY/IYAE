@@ -1,6 +1,7 @@
 package com.iyae.controller;
 
 import com.iyae.ai.AIProviderFactory;
+import com.iyae.config.BrandProperties;
 import com.iyae.security.JwtTokenProvider;
 import com.iyae.security.UserDetailsServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,9 @@ class HealthControllerTest {
     AIProviderFactory aiProviderFactory;
 
     @MockBean
+    BrandProperties brandProperties;
+
+    @MockBean
     JwtTokenProvider jwtTokenProvider;
 
     @MockBean
@@ -31,6 +35,8 @@ class HealthControllerTest {
 
     @Test
     void getHealth_returnsUpStatus() throws Exception {
+        when(brandProperties.serviceId()).thenReturn("iyae-server");
+
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))

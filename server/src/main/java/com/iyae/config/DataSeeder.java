@@ -31,6 +31,7 @@ public class DataSeeder implements CommandLineRunner {
     private final PromotionRepository promotionRepository;
     private final GarmentAssetRepository garmentAssetRepository;
     private final PasswordEncoder passwordEncoder;
+    private final BrandProperties brandProperties;
 
     private static final String GLB_URL = "/assets/models/placeholder.glb";
 
@@ -46,9 +47,10 @@ public class DataSeeder implements CommandLineRunner {
 
         // 1. Create users
         String encodedPassword = passwordEncoder.encode("password123");
+        String domain = brandProperties.domain();
 
         User luna = userRepository.save(User.builder()
-                .email("luna@iyae.ca")
+                .email("luna@" + domain)
                 .passwordHash(encodedPassword)
                 .name("Luna Kim")
                 .role(Role.DESIGNER)
@@ -56,7 +58,7 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
 
         User marco = userRepository.save(User.builder()
-                .email("marco@iyae.ca")
+                .email("marco@" + domain)
                 .passwordHash(encodedPassword)
                 .name("Marco Voss")
                 .role(Role.DESIGNER)
@@ -64,7 +66,7 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
 
         User aria = userRepository.save(User.builder()
-                .email("aria@iyae.ca")
+                .email("aria@" + domain)
                 .passwordHash(encodedPassword)
                 .name("Aria Chen")
                 .role(Role.DESIGNER)
@@ -72,7 +74,7 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
 
         User emma = userRepository.save(User.builder()
-                .email("emma@iyae.ca")
+                .email("emma@" + domain)
                 .passwordHash(encodedPassword)
                 .name("Emma Wilson")
                 .role(Role.BUYER)
@@ -80,7 +82,7 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
 
         User james = userRepository.save(User.builder()
-                .email("james@iyae.ca")
+                .email("james@" + domain)
                 .passwordHash(encodedPassword)
                 .name("James Park")
                 .role(Role.BUYER)
