@@ -149,7 +149,7 @@ function ChatBubble({ msg }: { msg: ChatMsg }) {
       animate="visible"
       className={`max-w-[85%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed ${
         isAI
-          ? "self-start bg-white/[0.12] text-white/90 rounded-bl-[4px]"
+          ? "self-start bg-paper/[0.12] text-white/90 rounded-bl-[4px]"
           : "self-end bg-landing-accent text-white rounded-br-[4px]"
       }`}
     >
@@ -355,7 +355,7 @@ export default function AIStylistSection() {
               <div
                 className="w-full rounded-[44px] overflow-hidden"
                 style={{
-                  background: "linear-gradient(180deg, #1c1917 0%, #171311 100%)",
+                  background: "linear-gradient(180deg, var(--color-landing-contrast) 0%, var(--color-landing-contrast) 100%)",
                   border: "3px solid rgba(60, 52, 46, 0.5)",
                   boxShadow:
                     "0 25px 60px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
@@ -439,7 +439,7 @@ export default function AIStylistSection() {
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
-                        className="self-start bg-white/10 rounded-2xl rounded-bl-sm"
+                        className="self-start bg-paper/10 rounded-2xl rounded-bl-sm"
                       >
                         <TypingDots />
                       </motion.div>
@@ -470,7 +470,7 @@ export default function AIStylistSection() {
 
                 {/* Input bar (iMessage-style) */}
                 <div className="relative z-10 flex items-center gap-2 px-3 py-2">
-                  <div className="flex-1 flex items-center rounded-full bg-white/[0.06] ring-1 ring-white/[0.08] px-3.5 py-2">
+                  <div className="flex-1 flex items-center rounded-full bg-paper/[0.06] ring-1 ring-white/[0.08] px-3.5 py-2">
                     <input
                       type="text"
                       value={inputValue}
@@ -496,7 +496,7 @@ export default function AIStylistSection() {
 
                 {/* Home Indicator */}
                 <div className="flex justify-center pb-3 pt-1">
-                  <div className="w-[100px] h-[4px] rounded-full bg-white/20" />
+                  <div className="w-[100px] h-[4px] rounded-full bg-paper/20" />
                 </div>
               </div>
             </motion.div>

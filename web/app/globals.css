@@ -56,6 +56,10 @@
   --gradient-page-end: #f6f3f0;
   --gradient-profile-banner-start: #f0dce0;
   --gradient-profile-banner-end: #e4dad3;
+  /* Hero / immersive dark sections — burgundy-tinted ink, theme-invariant dark */
+  --gradient-hero-start: #1c1917;
+  --gradient-hero-mid: #3a1c22;
+  --gradient-hero-end: #14110f;
 
   /* Landing page brand colors (White / Burgundy / Ink) */
   --color-landing-surface: #ffffff;

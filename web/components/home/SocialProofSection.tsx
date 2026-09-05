@@ -57,7 +57,7 @@ export default function SocialProofSection() {
             <motion.blockquote
               variants={fadeUp}
               className="font-display text-2xl md:text-3xl lg:text-[28px] font-light leading-relaxed mb-6"
-              style={{ color: "#F5F0EB" }}
+              style={{ color: "var(--color-paper)" }}
             >
               I used to spend 45 minutes picking an outfit.
               <br className="hidden md:block" />

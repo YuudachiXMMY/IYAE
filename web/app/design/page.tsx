@@ -477,7 +477,7 @@ export default function DesignPage() {
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Link
                     href="/register"
-                    className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-4 bg-white text-landing-contrast text-sm font-bold rounded-full hover:bg-landing-surface transition-all duration-300 hover:shadow-xl active:scale-[0.98]"
+                    className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-4 bg-paper text-landing-contrast text-sm font-bold rounded-full hover:bg-landing-surface transition-all duration-300 hover:shadow-xl active:scale-[0.98]"
                   >
                     Apply as a Designer
                     <ArrowRight
@@ -488,7 +488,7 @@ export default function DesignPage() {
                   </Link>
                   <Link
                     href="/login"
-                    className="w-full sm:w-auto inline-flex items-center justify-center px-10 py-4 border border-white/30 text-white text-sm font-bold rounded-full hover:bg-white/10 transition-all duration-300 active:scale-[0.98]"
+                    className="w-full sm:w-auto inline-flex items-center justify-center px-10 py-4 border border-white/30 text-white text-sm font-bold rounded-full hover:bg-paper/10 transition-all duration-300 active:scale-[0.98]"
                   >
                     Log in
                   </Link>

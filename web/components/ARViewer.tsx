@@ -60,7 +60,7 @@ function HitTestReticle({
     <mesh ref={reticleRef} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
       <ringGeometry args={[0.08, 0.12, 32]} />
       <meshStandardMaterial
-        color="#a855f7"
+        color="#7a2e3a"
         transparent
         opacity={0.75}
         side={THREE.DoubleSide}

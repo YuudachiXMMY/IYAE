@@ -31,7 +31,7 @@ export default function HeroSection() {
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, #1e1816 0%, #231e1b 50%, #141110 100%)",
+            "linear-gradient(180deg, var(--gradient-hero-start) 0%, var(--gradient-hero-mid) 50%, var(--gradient-hero-end) 100%)",
         }}
       />
 
@@ -106,7 +106,7 @@ export default function HeroSection() {
           <motion.h1
             variants={fadeUp}
             className="text-5xl md:text-6xl lg:text-7xl font-light tracking-tight leading-[1.05] mb-6"
-            style={{ color: "#F5F0EB" }}
+            style={{ color: "var(--color-paper)" }}
           >
             Your Closet, Reimagined
           </motion.h1>
@@ -125,7 +125,7 @@ export default function HeroSection() {
           >
             <Link
               href="/register"
-              className="group inline-flex items-center justify-center gap-2 px-10 py-4 bg-landing-accent text-white text-sm font-medium rounded-full hover:brightness-110 transition-all duration-300 hover:shadow-xl active:scale-[0.98]"
+              className="group inline-flex items-center justify-center gap-2 px-10 py-4 bg-landing-accent text-primary-foreground text-sm font-medium rounded-full hover:brightness-110 transition-all duration-300 hover:shadow-xl active:scale-[0.98]"
             >
               Start Styling
               <ArrowRight
@@ -146,7 +146,7 @@ export default function HeroSection() {
               className="inline-flex items-center justify-center px-10 py-4 border text-sm font-medium rounded-full transition-all duration-300 active:scale-[0.98]"
               style={{
                 borderColor: "rgba(245, 240, 235, 0.25)",
-                color: "#F5F0EB",
+                color: "var(--color-paper)",
               }}
             >
               See How It Works
