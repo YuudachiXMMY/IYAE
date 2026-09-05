@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   const mailType = type as MailType;
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { data, error } = await resend.emails.send({
-    from: process.env.MAIL_FROM || 'onboarding@resend.dev',
+    from: process.env.MAIL_FROM || BRAND.mailFrom,
     to: toEmail,
     subject: SUBJECT_MAP[mailType],
     html: TEMPLATE_MAP[mailType](name, actionUrl),

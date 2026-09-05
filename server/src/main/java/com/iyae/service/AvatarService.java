@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -151,7 +152,7 @@ public class AvatarService {
         User user = task.getUser();
 
         // Guest user tasks: mark MATERIALIZED but skip writing to User.avatarGlbUrl
-        boolean isGuest = brandProperties.guestEmail().equals(user.getEmail());
+        boolean isGuest = Objects.equals(brandProperties.guestEmail(), user.getEmail());
         if (!isGuest) {
             user.setAvatarGlbUrl(glbUrl);
             userRepository.save(user);

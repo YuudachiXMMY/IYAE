@@ -55,7 +55,7 @@ lib/profile-dashboard.ts         --> Profile tab filtering, stats, body measurem
 lib/outfit-slots.ts              --> Outfit slot constants (top/bottom/shoes/accessory), types (Slot, SlotMap), empty slot factory
 lib/pose-config.ts               --> Pose preset definitions (5 poses, 3 categories), PoseDef type, getPoseById() lookup
 lib/demo-looks.ts                --> Demo saved looks data for development
-lib/brand.ts                     --> Single source of brand values (BRAND: name, tagline, domain, url, mailFrom); consumed by wordmark sites, email subjects, and email-templates.ts
+lib/brand.ts                     --> Single source of brand values (BRAND: name, tagline, url, mailFrom); consumed by wordmark sites, document title/metadataBase, email subjects, and email-templates.ts
 lib/email-templates.ts           --> Email template utilities for Resend integration (reads copy/sender from BRAND)
 lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation (11 hooks)
 middleware.ts                    --> CSP headers + Permissions-Policy (camera on AR routes only)
@@ -436,7 +436,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `lib/community-feed.ts` | Community feed state management (posts, likes, follows, comments, create/archive/restore) |
 | `lib/profile-dashboard.ts` | Profile tab filtering, stats, body measurement coverage |
 | `lib/demo-looks.ts` | Demo saved looks data for development |
-| `lib/brand.ts` | Single source of brand values (`BRAND`: name, tagline, domain, url, mailFrom) for wordmarks, email subjects, and templates |
+| `lib/brand.ts` | Single source of brand values (`BRAND`: name, tagline, url, mailFrom) for wordmarks, document title/metadataBase, email subjects, and templates |
 | `lib/email-templates.ts` | Email template utilities for Resend integration (reads copy/sender from `BRAND`) |
 | `lib/hooks/useCommunityState.ts` | Community state management hook (load, save, CRUD, follow, archive/restore) |
 | `lib/hooks/useRiggingStatus.ts` | Rigging status polling hook (AbortController-based, for designer product edit) |

@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +10,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Delivers transactional emails (verification, password reset) exclusively through the
@@ -19,11 +23,23 @@ import java.net.http.HttpResponse;
  * not build or send any HTML itself. A non-2xx response or transport failure surfaces as
  * {@link EmailDeliveryException} (mapped to HTTP 503 by the global handler); callers that
  * must not leak delivery status (registration, forgot-password) swallow it.
+ * <p>
+ * Both the connect and per-request timeouts are bounded so a slow or hung mail route can
+ * never block the calling request thread indefinitely — the removed SMTP path carried an
+ * explicit 5s timeout, and this is now the sole delivery path.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthMailService {
+
+    /** Shared, immutable client — reused across sends; bounds connection setup time. */
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
+    private final ObjectMapper objectMapper;
 
     @Value("${app.frontend.base-url}")
     private String frontendBaseUrl;
@@ -33,6 +49,9 @@ public class AuthMailService {
 
     @Value("${app.mail.internal-secret:}")
     private String internalMailSecret;
+
+    /** Per-request read timeout; a hung route fails with {@link EmailDeliveryException} rather than blocking. */
+    private Duration requestTimeout = Duration.ofSeconds(10);
 
     /**
      * Sends an email verification email with a tokenized link via the Resend route.
@@ -60,7 +79,8 @@ public class AuthMailService {
 
     /**
      * Sends an email via the Next.js internal Resend route. Throws {@link EmailDeliveryException}
-     * on any failure — including an unconfigured endpoint — so delivery can never silently no-op.
+     * on any failure — including an unconfigured endpoint or a timeout — so delivery can never
+     * silently no-op or hang the caller.
      *
      * @param type      mail type ("verification" or "password-reset")
      * @param toEmail   recipient email address
@@ -69,26 +89,24 @@ public class AuthMailService {
      */
     private void sendViaResend(String type, String toEmail, String name, String actionUrl) {
         try {
-            String json = """
-                    {"type":"%s","toEmail":"%s","name":"%s","actionUrl":"%s"}"""
-                    .formatted(
-                            escapeJson(type),
-                            escapeJson(toEmail),
-                            escapeJson(name),
-                            escapeJson(actionUrl)
-                    );
+            // Build the payload with a real serializer so all JSON metacharacters and control
+            // characters are escaped correctly (no hand-rolled escaping).
+            Map<String, String> payload = new LinkedHashMap<>();
+            payload.put("type", type);
+            payload.put("toEmail", toEmail == null ? "" : toEmail);
+            payload.put("name", name == null ? "" : name);
+            payload.put("actionUrl", actionUrl == null ? "" : actionUrl);
+            String json = objectMapper.writeValueAsString(payload);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(resendEndpoint))
+                    .timeout(requestTimeout)
                     .header("Content-Type", "application/json")
                     .header("x-internal-mail-secret", internalMailSecret)
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .build();
 
-            HttpResponse<String> response = HttpClient.newBuilder()
-                    .version(HttpClient.Version.HTTP_1_1)
-                    .build()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.error("Resend mail endpoint returned {}: {}", response.statusCode(), response.body());
@@ -103,17 +121,6 @@ public class AuthMailService {
             log.error("Failed to send {} email via Resend to {}: {}", type, toEmail, e.getMessage(), e);
             throw new EmailDeliveryException("Failed to deliver email via Resend to " + toEmail, e);
         }
-    }
-
-    /** Minimal JSON string escaping to prevent injection in hand-built JSON payloads. */
-    private String escapeJson(String input) {
-        if (input == null) return "";
-        return input
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 
     // -------------------------------------------------------------------------

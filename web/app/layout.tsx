@@ -17,6 +17,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(BRAND.url),
   title: `${BRAND.name} — ${BRAND.tagline}`,
   description: "Personalized styling with AI and 3D virtual try-on",
 };

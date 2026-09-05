@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -49,7 +51,7 @@ class AuthMailServiceTest {
         server.start();
         String endpointUrl = "http://localhost:" + server.getAddress().getPort() + "/api/internal/mail/send";
 
-        authMailService = new AuthMailService();
+        authMailService = new AuthMailService(new ObjectMapper());
         ReflectionTestUtils.setField(authMailService, "frontendBaseUrl", "http://localhost:3000");
         ReflectionTestUtils.setField(authMailService, "resendEndpoint", endpointUrl);
         ReflectionTestUtils.setField(authMailService, "internalMailSecret", "test-secret");
@@ -93,7 +95,7 @@ class AuthMailServiceTest {
     void sendViaResend_escapesQuotesInName() {
         authMailService.sendVerificationEmail("user@example.com", "Ann \"Q\" Lee", "tok");
 
-        // Embedded quotes must be JSON-escaped so the hand-built payload stays valid.
+        // Embedded quotes must be JSON-escaped so the serialized payload stays valid.
         assertThat(capturedBody.get()).contains("\"name\":\"Ann \\\"Q\\\" Lee\"");
     }
 
@@ -122,6 +124,25 @@ class AuthMailServiceTest {
         // Option A removes the SMTP fallback: an unconfigured endpoint must fail loudly,
         // never silently no-op.
         ReflectionTestUtils.setField(authMailService, "resendEndpoint", "");
+
+        assertThatThrownBy(() ->
+                authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
+                .isInstanceOf(AuthMailService.EmailDeliveryException.class);
+    }
+
+    @Test
+    void sendVerificationEmail_slowEndpoint_timesOut_throwsEmailDeliveryException() {
+        // A hung route must fail via the request timeout, never block the caller indefinitely.
+        server.removeContext("/api/internal/mail/send");
+        server.createContext("/api/internal/mail/send", exchange -> {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        ReflectionTestUtils.setField(authMailService, "requestTimeout", Duration.ofMillis(200));
 
         assertThatThrownBy(() ->
                 authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
