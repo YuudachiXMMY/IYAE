@@ -15,11 +15,13 @@ import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.GarmentAssetRepository;
 import com.iyae.repository.ModelGenerationTaskRepository;
 import com.iyae.repository.ProductRepository;
+import com.iyae.repository.ProductSizeMeasurementRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -27,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -61,6 +64,12 @@ class ProductServiceTest {
 
     @Mock
     ModelGenerationTaskRepository modelGenerationTaskRepository;
+
+    @Mock
+    ProductSizeMeasurementRepository productSizeMeasurementRepository;
+
+    @Mock
+    SizeRecommendationService sizeRecommendationService;
 
     @Spy
     ObjectMapper objectMapper = new ObjectMapper();
@@ -145,12 +154,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_noFilters_returnsPublishedProducts() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatus(eq(ProductStatus.PUBLISHED), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, null);
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, null, false);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).name()).isEqualTo("Silk Blouse");
@@ -160,13 +169,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_withCategory_filtersByCategory() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatusAndCategory(
-                eq(ProductStatus.PUBLISHED), eq("Tops"), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", null);
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", null, false);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).category()).isEqualTo("Tops");
@@ -175,13 +183,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_withSearchQuery_filtersByNameOrDescription() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatusAndSearch(
-                eq(ProductStatus.PUBLISHED), eq("silk"), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, "silk");
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, "silk", false);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).name()).isEqualTo("Silk Blouse");
@@ -190,13 +197,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_withCategoryAndSearch_appliesBothFilters() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatusAndCategoryAndSearch(
-                eq(ProductStatus.PUBLISHED), eq("Tops"), eq("silk"), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", "silk");
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", "silk", false);
 
         assertThat(result.content()).hasSize(1);
     }
@@ -204,13 +210,28 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_pageSizeClamped_toMaxPageSize() {
         Page<Product> page = new PageImpl<>(Collections.emptyList());
-        when(productRepository.findByStatus(eq(ProductStatus.PUBLISHED), any(Pageable.class)))
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
 
-        productService.getPublicCatalog(0, 500, null, null);
+        productService.getPublicCatalog(0, 500, null, null, false);
 
-        // Verify the repository was called (size clamping is internal; we verify no error)
-        verify(productRepository).findByStatus(eq(ProductStatus.PUBLISHED), any(Pageable.class));
+        verify(productRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    void getPublicCatalog_localOnly_delegatesToSpecification() {
+        Page<Product> page = new PageImpl<>(List.of(publishedProduct));
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(page);
+        when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
+                .thenReturn(Collections.emptyList());
+
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, null, true);
+
+        assertThat(result.content()).hasSize(1);
+        verify(productRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
     // -------------------------------------------------------------------------
@@ -343,6 +364,7 @@ class ProductServiceTest {
                 List.of("blue"),
                 List.of("S", "M"),
                 List.of("photo.jpg"),
+                null,
                 null
         );
 
@@ -383,7 +405,7 @@ class ProductServiceTest {
                 new BigDecimal("29.99"),
                 null,
                 "Tops",
-                null, null, null, null, null
+                null, null, null, null, null, null
         );
 
         Product savedProduct = Product.builder()

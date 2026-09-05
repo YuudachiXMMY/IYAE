@@ -6,7 +6,7 @@ import { NavBar } from "@/components/NavBar";
 import { PageShell } from "@/components/PageShell";
 import { ProductForm, type ProductFormData } from "@/components/ProductForm";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
-import { api } from "@/lib/api";
+import { api, type SizeMeasurement } from "@/lib/api";
 
 interface CreateProductRequest {
   name: string;
@@ -17,6 +17,7 @@ interface CreateProductRequest {
   colorTags: string[];
   sizes: string[];
   media: string[];
+  measurements: SizeMeasurement[];
 }
 
 export default function NewProductPage() {
@@ -37,6 +38,7 @@ export default function NewProductPage() {
           colorTags: data.colorTags,
           sizes: data.sizes,
           media: data.imageUrl ? [data.imageUrl] : [],
+          measurements: data.measurements ?? [],
         };
         await api.post("/api/designer/products", body);
         router.push("/designer/products");

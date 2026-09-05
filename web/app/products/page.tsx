@@ -29,6 +29,7 @@ function ProductsPageContent() {
   const currentCategory = searchParams.get("category") ?? "";
   const currentSort = searchParams.get("sort") ?? "createdAt,desc";
   const currentQ = searchParams.get("q") ?? "";
+  const currentLocalOnly = searchParams.get("localOnly") === "true";
 
   const [data, setData] = useState<ProductPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,7 @@ function ProductsPageContent() {
       });
       if (currentCategory) params.set("category", currentCategory);
       if (currentQ) params.set("q", currentQ);
+      if (currentLocalOnly) params.set("localOnly", "true");
 
       const result = await api.get<ProductPage>(
         `/api/products?${params.toString()}`,
@@ -53,7 +55,7 @@ function ProductsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, currentCategory, currentSort, currentQ]);
+  }, [currentPage, currentCategory, currentSort, currentQ, currentLocalOnly]);
 
   useEffect(() => {
     void fetchProducts();
@@ -92,6 +94,12 @@ function ProductsPageContent() {
     [searchParams],
   );
 
+  const handleLocal = useCallback(
+    (next: boolean) => updateParams({ localOnly: next ? "true" : "" }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchParams],
+  );
+
   const totalPages = data?.totalPages ?? 0;
   const products = data?.content ?? [];
 
@@ -119,6 +127,8 @@ function ProductsPageContent() {
           onSearch={handleSearch}
           onCategory={handleCategory}
           onSort={handleSort}
+          onLocal={handleLocal}
+          localActive={currentLocalOnly}
           className="mb-8"
         />
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { api, auth, ApiError } from '@/lib/api'
+import { api, auth, admin, ApiError } from '@/lib/api'
 import type { RegisterRequest, UpdateProfileRequest, UserResponse, ProfileVisibility, AvatarMode } from '@/lib/api'
 
 describe('api', () => {
@@ -158,6 +158,59 @@ describe('api', () => {
       const mode: AvatarMode = 'AI_AVATAR'
       expect(visibility).toBe('PUBLIC')
       expect(mode).toBe('AI_AVATAR')
+    })
+  })
+
+  describe('admin', () => {
+    it('admin.listProducts appends the status filter', async () => {
+      mockFetch.mockResolvedValue(makeResponse([]))
+
+      await admin.listProducts('ARCHIVED')
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/products?status=ARCHIVED')
+      expect(init.method).toBe('GET')
+    })
+
+    it('admin.listProducts omits the status query when not provided', async () => {
+      mockFetch.mockResolvedValue(makeResponse([]))
+
+      await admin.listProducts()
+
+      const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/products')
+    })
+
+    it('admin.setProductStatus PUTs the new status', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 1, status: 'ARCHIVED' }))
+
+      await admin.setProductStatus(1, 'ARCHIVED')
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/products/1/status')
+      expect(init.method).toBe('PUT')
+      expect(JSON.parse(init.body as string)).toEqual({ status: 'ARCHIVED' })
+    })
+
+    it('admin.removePost PUTs to the remove endpoint', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 5, status: 'PENDING_DELETE' }))
+
+      await admin.removePost(5)
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/posts/5/remove')
+      expect(init.method).toBe('PUT')
+    })
+
+    it('admin.setPromotionSlot PUTs the slot type', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 3, slotType: 'FEATURED' }))
+
+      await admin.setPromotionSlot(3, 'FEATURED')
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/promotions/3/slot')
+      expect(init.method).toBe('PUT')
+      expect(JSON.parse(init.body as string)).toEqual({ slotType: 'FEATURED' })
     })
   })
 })

@@ -44,7 +44,8 @@ class ProductControllerTest {
                 List.of("S", "M"), List.of("/img/top.jpg"),
                 null, ProductStatus.PUBLISHED,
                 Instant.now(), Instant.now(),
-                null, null, null
+                null, null, null,
+                false, null, null, null
         );
     }
 
@@ -55,7 +56,7 @@ class ProductControllerTest {
     @Test
     void listProducts_noAuth_returns200() throws Exception {
         PagedResponse<ProductResponse> page = singlePageResponse(sampleProduct(1L));
-        when(productService.getPublicCatalog(anyInt(), anyInt(), isNull(), isNull())).thenReturn(page);
+        when(productService.getPublicCatalog(anyInt(), anyInt(), isNull(), isNull(), anyBoolean())).thenReturn(page);
 
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
@@ -66,13 +67,23 @@ class ProductControllerTest {
     @Test
     void listProducts_withCategoryAndSearch_returns200() throws Exception {
         PagedResponse<ProductResponse> page = singlePageResponse(sampleProduct(2L));
-        when(productService.getPublicCatalog(anyInt(), anyInt(), eq("Tops"), eq("linen"))).thenReturn(page);
+        when(productService.getPublicCatalog(anyInt(), anyInt(), eq("Tops"), eq("linen"), anyBoolean())).thenReturn(page);
 
         mockMvc.perform(get("/api/products")
                         .param("category", "Tops")
                         .param("q", "linen"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].category").value("Tops"));
+    }
+
+    @Test
+    void listProducts_localOnly_passesFlag() throws Exception {
+        PagedResponse<ProductResponse> page = singlePageResponse(sampleProduct(3L));
+        when(productService.getPublicCatalog(anyInt(), anyInt(), isNull(), isNull(), eq(true))).thenReturn(page);
+
+        mockMvc.perform(get("/api/products").param("localOnly", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(3));
     }
 
     @Test

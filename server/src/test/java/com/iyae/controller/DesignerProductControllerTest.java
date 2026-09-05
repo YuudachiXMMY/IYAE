@@ -47,7 +47,8 @@ class DesignerProductControllerTest {
                 new BigDecimal("59.99"), "CAD", "Tops",
                 Collections.emptyList(), Collections.emptyList(), List.of("S", "M", "L"),
                 Collections.emptyList(), null, ProductStatus.DRAFT,
-                Instant.now(), Instant.now(), null, null, null
+                Instant.now(), Instant.now(), null, null, null,
+                false, null, null, null
         );
     }
 
@@ -69,7 +70,7 @@ class DesignerProductControllerTest {
 
         CreateProductRequest req = new CreateProductRequest(
                 "Linen Shirt", "A nice shirt", new BigDecimal("59.99"),
-                "CAD", "Tops", null, null, List.of("S", "M", "L"), null, null);
+                "CAD", "Tops", null, null, List.of("S", "M", "L"), null, null, null);
 
         mockMvc.perform(post("/api/designer/products")
                         .with(csrf())
@@ -88,13 +89,14 @@ class DesignerProductControllerTest {
                 new BigDecimal("69.99"), "CAD", "Tops",
                 Collections.emptyList(), Collections.emptyList(), List.of("S", "M"),
                 Collections.emptyList(), null, ProductStatus.PUBLISHED,
-                Instant.now(), Instant.now(), null, null, null
+                Instant.now(), Instant.now(), null, null, null,
+                false, null, null, null
         );
         when(productService.updateProduct(eq("designer@example.com"), eq(1L), any())).thenReturn(updated);
 
         UpdateProductRequest req = new UpdateProductRequest(
                 "Updated Shirt", "Updated desc", new BigDecimal("69.99"),
-                "CAD", "Tops", null, null, List.of("S", "M"), null, null, ProductStatus.PUBLISHED);
+                "CAD", "Tops", null, null, List.of("S", "M"), null, null, ProductStatus.PUBLISHED, null);
 
         mockMvc.perform(put("/api/designer/products/1")
                         .with(csrf())

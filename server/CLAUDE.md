@@ -174,7 +174,7 @@ User (hub)
 
 | Enum | Values |
 |------|--------|
-| Role | `BUYER`, `DESIGNER` |
+| Role | `BUYER`, `DESIGNER`, `ADMIN` |
 | ProductStatus | `DRAFT`, `PUBLISHED`, `ARCHIVED` |
 | TaskStatus | `PENDING`, `RUNNING`, `READY`, `FAILED`, `MATERIALIZED` |
 | SessionStatus | `ACTIVE`, `COMPLETED` |
@@ -449,6 +449,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `src/main/resources/db/migration/V8__community_tables.sql` | Community tables (posts, post_comments, post_likes, follows) |
 | `src/main/resources/db/migration/V9__checkout_orders.sql` | Stripe payment columns on orders (stripe_session_id, stripe_payment_intent, payment_status) |
 | `src/main/resources/db/migration/V10__cart_item_selected_size.sql` | Add selected_size to cart_items, change unique key to (cart_id, product_id, selected_size) |
+| `src/main/resources/db/migration/V11__marketplace_local_and_measurements.sql` | Add ADMIN to users.role enum; city/is_local on designer_profiles; new product_size_measurements table |
 
 ## Changelog
 
@@ -460,3 +461,4 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | 2026-06-14 | Doc sync: +GuestAvatarController/Service (public avatar API), cart size selection (V10 migration), V9+V10 migration refs, services 26->27, controllers 20->21, DTOs 44->46, tests 333->339 |
 | 2026-06-14 | Count audit: tests 339->338 (service header 220->215, controller header 105->100 -- corrected sum errors); AuthMailServiceTest 5->8 (Resend fallback tests were undercounted); added GuestAvatar to untested areas |
 | 2026-09-05 | Email consolidated onto Resend: removed `spring-boot-starter-mail` + all `spring.mail.*`/`SMTP_*` config; `AuthMailService` is Resend-only (POSTs to Next.js internal route). Added `BrandProperties` (`app.brand.*`, config 9->10). Main class/context test renamed Clossett->Iyae. Tests 338->336 (AuthMailServiceTest 8->6; Health*/Avatar now mock BrandProperties) |
+| 2026-09-05 | Phase 5 (Marketplace + Local Designers + ADMIN): V11 migration (ADMIN role, designer_profiles.city/is_local, product_size_measurements table); +ADMIN enum value (auto ROLE_ADMIN via UserDetailsServiceImpl); `/api/admin/**` gated to ADMIN in SecurityConfig; new AdminController + AdminModerationService (privileged catalog/community/promotion moderation, no ownership check) + SizeRecommendationService (cm-based "your size" normalization vs BodyProfile); catalog `localOnly` filter via new ProductSpecifications; ProductResponse gains designerLocal/designerCity/recommendedSize/measurements; DesignerProduct create/update accept per-size measurements; AuthService rejects public ADMIN registration; DataSeeder seeds 1 ADMIN + Toronto locality (Luna/Aria) + measurements on 3 products. Controllers 21->22, services 27->29, entities 22->23 (ProductSizeMeasurement); tests 336->361 (+SizeRecommendationServiceTest, AdminModerationServiceTest, AdminControllerTest) |

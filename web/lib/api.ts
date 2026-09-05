@@ -108,7 +108,7 @@ export interface UserResponse {
   id: number;
   email: string;
   name: string | null;
-  role: "BUYER" | "DESIGNER";
+  role: "BUYER" | "DESIGNER" | "ADMIN";
   emailVerified: boolean;
   username?: string | null;
   ageRange?: string | null;
@@ -214,4 +214,56 @@ export const promotions = {
   create: (data: CreatePromotionRequest) => api.post<PromotionResponse>("/api/promotions", data),
   update: (id: number, data: UpdatePromotionRequest) => api.put<PromotionResponse>(`/api/promotions/${id}`, data),
   delete: (id: number) => api.delete(`/api/promotions/${id}`),
+};
+
+// ── Marketplace: cross-brand sizing ─────────────────────────────────────────────
+
+export interface SizeMeasurement {
+  sizeLabel: string;
+  chestCm: number | null;
+  waistCm: number | null;
+  hipsCm: number | null;
+  lengthCm: number | null;
+}
+
+// ── Admin moderation ────────────────────────────────────────────────────────────
+
+export type AdminProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+
+export interface AdminProduct {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  currency: string;
+  status: AdminProductStatus;
+  designerDisplayName: string | null;
+  designerLocal: boolean;
+  designerCity: string | null;
+}
+
+export type AdminPostStatus = "ACTIVE" | "ARCHIVED" | "PENDING_DELETE";
+
+export interface AdminPost {
+  id: number;
+  authorId: number;
+  authorName: string | null;
+  authorUsername: string | null;
+  content: string | null;
+  status: AdminPostStatus;
+  createdAt: string;
+}
+
+export const admin = {
+  listProducts: (status?: AdminProductStatus) =>
+    api.get<AdminProduct[]>(`/api/admin/products${status ? `?status=${status}` : ""}`),
+  setProductStatus: (id: number, status: AdminProductStatus) =>
+    api.put<AdminProduct>(`/api/admin/products/${id}/status`, { status }),
+  listPosts: (status?: AdminPostStatus) =>
+    api.get<AdminPost[]>(`/api/admin/posts${status ? `?status=${status}` : ""}`),
+  archivePost: (id: number) => api.put<AdminPost>(`/api/admin/posts/${id}/archive`),
+  removePost: (id: number) => api.put<AdminPost>(`/api/admin/posts/${id}/remove`),
+  listPromotions: () => api.get<PromotionResponse[]>("/api/admin/promotions"),
+  setPromotionSlot: (id: number, slotType: PromotionSlotType) =>
+    api.put<PromotionResponse>(`/api/admin/promotions/${id}/slot`, { slotType }),
 };

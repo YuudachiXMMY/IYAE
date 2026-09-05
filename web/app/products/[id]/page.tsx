@@ -133,6 +133,7 @@ export default function ProductDetailPage({
           colorTags: p.colorTags ?? [],
         });
         setSelectedImage(0);
+        if (p.recommendedSize) setSelectedSize(p.recommendedSize);
       })
       .catch(() => setError("Product not found."))
       .finally(() => setProductLoading(false));
@@ -303,6 +304,12 @@ export default function ProductDetailPage({
               {product.sizes && product.sizes.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <span className="text-sm font-medium text-foreground">Size</span>
+                  {product.recommendedSize && (
+                    <p className="text-xs text-brand">
+                      Your recommended size:{" "}
+                      <span className="font-semibold">{product.recommendedSize}</span>
+                    </p>
+                  )}
                   <SizeSelector
                     sizes={product.sizes}
                     selectedSize={selectedSize}
