@@ -57,7 +57,7 @@ class TestMeshyGeneratorInit:
 
     def test_default_output_dir(self):
         gen = MeshyGenerator(api_key="test-key")
-        assert gen.output_base_dir == "/var/clossette/assets"
+        assert gen.output_base_dir == "/var/iyae/assets"
 
     def test_custom_output_dir(self, tmp_path):
         gen = MeshyGenerator(api_key="test-key", output_base_dir=str(tmp_path))

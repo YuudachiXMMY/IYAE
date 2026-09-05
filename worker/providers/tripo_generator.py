@@ -12,7 +12,7 @@ TRIPO_API_BASE = "https://api.tripo3d.ai/v2"
 class TripoGenerator:
     """Generates 3D models via Tripo3D API."""
 
-    def __init__(self, api_key: str, output_base_dir: str = "/var/clossette/assets"):
+    def __init__(self, api_key: str, output_base_dir: str = "/var/iyae/assets"):
         self.api_key = api_key
         self.output_base_dir = output_base_dir
         self.headers = {

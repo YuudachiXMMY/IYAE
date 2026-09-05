@@ -3,8 +3,8 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: clossette
-      MYSQL_USER: clossette
+      MYSQL_DATABASE: iyae
+      MYSQL_USER: iyae
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - clossette-net
+      - iyae-net
 
   server:
     build:
@@ -23,8 +23,8 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: clossette
-      DB_USERNAME: clossette
+      DB_NAME: iyae
+      DB_USERNAME: iyae
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       AI_PROVIDER: ${AI_PROVIDER:-mock}
@@ -39,11 +39,11 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
-      MAIL_FROM: ${MAIL_FROM:-noreply@clossette.ca}
+      MAIL_FROM: ${MAIL_FROM:-noreply@iyae.ca}
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET}
     volumes:
-      - assets_data:/var/clossette/assets
+      - assets_data:/var/iyae/assets
     depends_on:
       mysql:
         condition: service_healthy
@@ -54,7 +54,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - clossette-net
+      - iyae-net
 
   worker:
     build:
@@ -63,25 +63,25 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: clossette
-      DB_USERNAME: clossette
+      DB_NAME: iyae
+      DB_USERNAME: iyae
       DB_PASSWORD: ${DB_PASSWORD}
       MODEL_GENERATION_PROVIDER: ${MODEL_GENERATION_PROVIDER:-mock}
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
       WORKER_TRIPO_API_KEY: ${WORKER_TRIPO_API_KEY}
       WORKER_MESHY_API_KEY: ${WORKER_MESHY_API_KEY}
       WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
-      WORKER_OUTPUT_DIR: /var/clossette/assets
+      WORKER_OUTPUT_DIR: /var/iyae/assets
       RIGGING_PROVIDER: ${RIGGING_PROVIDER:-python}
-      SMPLX_MODELS_PATH: /var/clossette/smplx_models
+      SMPLX_MODELS_PATH: /var/iyae/smplx_models
     volumes:
-      - assets_data:/var/clossette/assets
-      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/clossette/smplx_models:ro
+      - assets_data:/var/iyae/assets
+      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/iyae/smplx_models:ro
     depends_on:
       mysql:
         condition: service_healthy
     networks:
-      - clossette-net
+      - iyae-net
 
   web:
     build:
@@ -102,7 +102,7 @@ services:
       retries: 3
       start_period: 15s
     networks:
-      - clossette-net
+      - iyae-net
 
   nginx:
     image: nginx:alpine
@@ -112,7 +112,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - assets_data:/var/clossette/assets:ro
+      - assets_data:/var/iyae/assets:ro
       - letsencrypt:/etc/letsencrypt:ro
       - certbot_www:/var/certbot/www
     depends_on:
@@ -124,7 +124,7 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - clossette-net
+      - iyae-net
 
   certbot:
     image: certbot/certbot
@@ -132,12 +132,12 @@ services:
       - letsencrypt:/etc/letsencrypt
       - certbot_www:/var/certbot/www
     networks:
-      - clossette-net
+      - iyae-net
     profiles:
       - tools
 
 networks:
-  clossette-net:
+  iyae-net:
     driver: bridge
 
 volumes:

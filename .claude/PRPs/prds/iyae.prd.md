@@ -159,7 +159,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 
 | # | Phase | Description | Status | Parallel | Depends | PRP Plan |
 |---|-------|-------------|--------|----------|---------|----------|
-| 1 | Rebrand & Foundation | Package rename, fresh DB relaunch, atomic asset-path/DB/domain cutover, CAD single-currency fix, BrandConfig, email consolidation, SSL re-issue, delete dead config | pending | - | - | - |
+| 1 | Rebrand & Foundation | Package rename, fresh DB relaunch, atomic asset-path/DB/domain cutover, CAD single-currency fix, BrandConfig, email consolidation, SSL re-issue, delete dead config | in-progress (impl landed; server tests + 2 Java structural refactors pending a JDK) | - | - | [plan](../plans/rebrand-and-foundation.plan.md) · [report](../reports/rebrand-and-foundation-report.md) |
 | 2 | Design System + Core Reskin | IYAE `@theme` tokens, shadcn regen, reskin 30+ core routes + rebuild `home/` from Figma (landing, auth, onboarding, profile, shop/PDP/cart/checkout) | pending | with 9 | 1 | - |
 | 3 | AI Stylist + Inline Suggestions | Human-centered voice via AIProvider prompts; occasion/mood/weather → outfit; render inline/on avatar | pending | with 4, 5 | 2 | - |
 | 4 | Virtual Fitting (Full 3D) + Fit/Size | SMPL-X + weight-transfer kept & hardened; instant 2D preview + async high-fidelity; recommended size; inline embed; validation fixes; privacy controls | pending | with 3, 5 | 2 | - |

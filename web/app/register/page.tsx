@@ -96,7 +96,7 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-background flex items-start justify-center px-4 py-12">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="font-display text-4xl text-foreground">Join Clossette</h1>
+          <h1 className="font-display text-4xl text-foreground">Join IYAE</h1>
           <p className="text-muted-foreground mt-2 text-sm">Create your style profile</p>
         </div>
 

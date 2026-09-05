@@ -1,5 +1,5 @@
 "use client";
-// AR Visualization showcase — demonstrates how Clossette uses AR
+// AR Visualization showcase — demonstrates how IYAE uses AR
 // across different devices. No authentication required.
 
 import dynamic from "next/dynamic";

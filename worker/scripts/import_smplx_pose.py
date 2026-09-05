@@ -2,7 +2,7 @@
 
 Converts a JSON file containing SMPL-X body_pose vectors (63 floats per frame,
 21 body joints x 3 axis-angle) into a GLB file with skeleton animation, ready
-for use in the Clossette virtual try-on viewer.
+for use in the IYAE virtual try-on viewer.
 
 Usage:
     # Single-frame pose

@@ -299,7 +299,7 @@ def _build_singleframe_pose_glb(pose: PoseDef) -> bytes:
         joint_quats = _to_apose_relative_full(abs_quats)
 
     gltf = pygltflib.GLTF2()
-    gltf.asset = pygltflib.Asset(version="2.0", generator="Clossette PoseGLBGenerator")
+    gltf.asset = pygltflib.Asset(version="2.0", generator="IYAE PoseGLBGenerator")
 
     # ------------------------------------------------------------------
     # Scene
@@ -485,7 +485,7 @@ def _build_multiframe_pose_glb(pose: PoseDef) -> bytes:
     first_frame_quats = frame_quats[0] if frame_quats else {}
 
     gltf = pygltflib.GLTF2()
-    gltf.asset = pygltflib.Asset(version="2.0", generator="Clossette PoseGLBGenerator")
+    gltf.asset = pygltflib.Asset(version="2.0", generator="IYAE PoseGLBGenerator")
 
     # ------------------------------------------------------------------
     # Scene

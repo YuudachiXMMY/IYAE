@@ -4,8 +4,8 @@ import { buildPasswordResetEmailHtml, buildVerificationEmailHtml } from '@/lib/e
 type MailType = 'verification' | 'password-reset';
 
 const SUBJECT_MAP: Record<MailType, string> = {
-  verification: 'Verify your Clossette account',
-  'password-reset': 'Reset your Clossette password',
+  verification: 'Verify your IYAE account',
+  'password-reset': 'Reset your IYAE password',
 };
 
 const TEMPLATE_MAP: Record<MailType, (name: string, actionUrl: string) => string> = {

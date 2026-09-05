@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Clossette Development Helper
+# IYAE Development Helper
 #
 # Usage: ./dev.sh <command>
 #
@@ -192,7 +192,7 @@ cmd_db() {
       local backup_file="backup_${timestamp}.sql"
       info "Backing up database to $backup_file..."
       docker compose -f "$COMPOSE_FILE" exec -T mysql \
-        mysqldump -u clossette -p"${DB_PASSWORD}" clossette > "$backup_file"
+        mysqldump -u iyae -p"${DB_PASSWORD}" iyae > "$backup_file"
       success "Database backed up to $backup_file"
       ;;
     restore)
@@ -209,7 +209,7 @@ cmd_db() {
       read -r
       info "Restoring database from $restore_file..."
       docker compose -f "$COMPOSE_FILE" exec -T mysql \
-        mysql -u clossette -p"${DB_PASSWORD}" clossette < "$restore_file"
+        mysql -u iyae -p"${DB_PASSWORD}" iyae < "$restore_file"
       success "Database restored from $restore_file"
       ;;
     *)

@@ -1,13 +1,13 @@
-# About Clossette
+# About IYAE
 
 > Context file for Claude Cowork — helps Claude understand the project background
-> when executing tasks across any Clossette workspace.
+> when executing tasks across any IYAE workspace.
 
 ---
 
 ## Product Vision
 
-Clossette is an **AI-powered fashion marketplace** that helps Gen Z and young millennial shoppers (18-30) go from "I have nothing to wear" to "I feel great about this look" — with zero decision fatigue and near-zero returns.
+IYAE is an **AI-powered fashion marketplace** that helps Gen Z and young millennial shoppers (18-30) go from "I have nothing to wear" to "I feel great about this look" — with zero decision fatigue and near-zero returns.
 
 ### Problem We Solve
 

@@ -61,7 +61,7 @@ export default function SocialProofSection() {
             >
               I used to spend 45 minutes picking an outfit.
               <br className="hidden md:block" />
-              Now I just ask Clossette.
+              Now I just ask IYAE.
             </motion.blockquote>
 
             <motion.p

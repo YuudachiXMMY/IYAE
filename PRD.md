@@ -1,4 +1,4 @@
-# Clossette — Product Requirements Document (PRD)
+# IYAE — Product Requirements Document (PRD)
 
 > **Version**: 2.0 (Full Rebuild Blueprint)
 > **Date**: 2026-05-16
@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-Clossette is an AI-powered fashion marketplace that combines **conversational AI styling**, **3D/AR virtual try-on**, and an **independent designer marketplace** to help Gen Z and young millennial shoppers (18-30) go from "I have nothing to wear" to "I feel great about this look" — with zero decision fatigue and near-zero returns.
+IYAE is an AI-powered fashion marketplace that combines **conversational AI styling**, **3D/AR virtual try-on**, and an **independent designer marketplace** to help Gen Z and young millennial shoppers (18-30) go from "I have nothing to wear" to "I feel great about this look" — with zero decision fatigue and near-zero returns.
 
 ### Core Value Propositions
 
@@ -230,7 +230,7 @@ Four-slot matching against published catalog:
 |--------|---------------|
 | **Purpose** | Support AI chat and AR flows when recommended outfits have no real product IDs |
 | **IDs** | Negative integers (`-Math.floor(Date.now() + Math.random() * 1000)`) |
-| **Storage** | `localStorage["clossette_demo_cart_items"]` |
+| **Storage** | `localStorage["iyae_demo_cart_items"]` |
 | **Merge** | Cart badge/totals include both server items + demo items |
 | **Cleanup** | Cleared on logout |
 
@@ -401,7 +401,7 @@ DRAFT → PUBLISHED → ARCHIVED
 |--------|---------------|
 | **Format** | JPEG only (MIME validated) |
 | **Size** | ≤10 MB |
-| **Storage** | `/var/clossette/assets/uploads/products/{uuid}.jpg` |
+| **Storage** | `/var/iyae/assets/uploads/products/{uuid}.jpg` |
 | **Atomic write** | temp file + `os.replace` |
 | **Response** | `{ url, originalFilename, size, contentType }` |
 
@@ -920,14 +920,14 @@ User (hub)
 ## Appendix B: File Structure Reference
 
 ```
-Clossette/
+IYAE/
 ├── web/                    # Next.js 16 frontend
 │   ├── app/               # 26 page routes
 │   ├── components/        # 30+ components
 │   ├── lib/               # 11 utility files
 │   └── tests/             # Unit + E2E
 ├── server/                # Spring Boot backend
-│   └── src/main/java/com/clossette/
+│   └── src/main/java/com/iyae/
 │       ├── controller/    # 16 controllers
 │       ├── service/       # 19 services
 │       ├── repository/    # 15 repositories

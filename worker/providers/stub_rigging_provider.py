@@ -102,7 +102,7 @@ def _create_stub_skinned_glb() -> bytes:
 
     scene_json = json.dumps(
         {
-            "asset": {"version": "2.0", "generator": "clossette-stub-rigging"},
+            "asset": {"version": "2.0", "generator": "iyae-stub-rigging"},
             "scene": 0,
             "scenes": [{"nodes": [mesh_node_idx] + roots}],
             "nodes": nodes,
@@ -157,7 +157,7 @@ class StubRiggingProvider:
     when Blender and heavy rigging dependencies are not installed.
     """
 
-    def __init__(self, output_dir: str = "/var/clossette/assets") -> None:
+    def __init__(self, output_dir: str = "/var/iyae/assets") -> None:
         self.output_dir = output_dir
 
     def generate(

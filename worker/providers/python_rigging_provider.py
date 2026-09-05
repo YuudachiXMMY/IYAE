@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class PythonRiggingProvider:
     """Rig a garment GLB via pure-Python weight transfer (no Blender)."""
 
-    def __init__(self, output_dir: str = "/var/clossette/assets") -> None:
+    def __init__(self, output_dir: str = "/var/iyae/assets") -> None:
         self.output_dir = output_dir
 
     # ------------------------------------------------------------------

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const { data, error } = await resend.emails.send({
     from: process.env.MAIL_FROM || 'onboarding@resend.dev',
     to: toEmail,
-    subject: 'Reset your Clossette password',
+    subject: 'Reset your IYAE password',
     html: buildPasswordResetEmailHtml(name, resetUrl),
   });
 
