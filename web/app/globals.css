@@ -1,51 +1,69 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Semantic color tokens — light mode defaults */
-  --color-background: #f5efe8;
-  --color-foreground: #171311;
-  --color-card: #fdf8f3;
-  --color-card-foreground: #171311;
-  --color-muted: #ede4d9;
-  --color-muted-foreground: #78716c;
-  --color-border: rgba(23, 19, 17, 0.12);
-  --color-input: rgba(23, 19, 17, 0.08);
-  --color-ring: #9333ea;
-  --color-primary: #9333ea;
+  /* Semantic color tokens — light mode defaults (White / Burgundy / Ink)
+     PROVISIONAL editorial-burgundy palette — exact burgundy/serif/tracking pending
+     Figma sign-off (flagged in the PR + PRD Open Questions). Token NAMES are stable;
+     only VALUES change once Figma is confirmed. */
+  --color-background: #ffffff;
+  --color-foreground: #1c1917;
+  --color-card: #faf7f5;
+  --color-card-foreground: #1c1917;
+  --color-muted: #f4f1ee;
+  --color-muted-foreground: #6b625c;
+  --color-border: rgba(28, 25, 23, 0.12);
+  --color-input: rgba(28, 25, 23, 0.08);
+  --color-ring: #7a2e3a;
+  --color-primary: #7a2e3a;
   --color-primary-foreground: #ffffff;
-  --color-popover: #fdf8f3;
-  --color-popover-foreground: #171311;
-  --color-accent: #ede4d9;
-  --color-accent-foreground: #171311;
+  --color-secondary: #f4f1ee;
+  --color-secondary-foreground: #1c1917;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1c1917;
+  --color-accent: #f4f1ee;
+  --color-accent-foreground: #1c1917;
   --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
 
-  /* Brand colors (invariant across themes) */
-  --color-brand: #9333ea;
-  --color-brand-hover: #7e22ce;
+  /* Status colors — semantic tokens for badges/banners */
+  --color-success: #2f7d5b;
+  --color-success-foreground: #ffffff;
+  --color-warning: #b8791f;
+  --color-warning-foreground: #ffffff;
+  --color-info: #2563eb;
+  --color-info-foreground: #ffffff;
+
+  /* Brand colors (burgundy) */
+  --color-brand: #7a2e3a;
+  --color-brand-hover: #5e1f2b;
+
+  /* Paper — warm editorial cream used on dark home sections (centralizes inline #F5F0EB) */
+  --color-paper: #F5F0EB;
 
   /* Typography */
   --font-display: var(--font-cormorant), serif;
   --font-body: var(--font-geist-sans), sans-serif;
+  --tracking-display: -0.015em;
 
   /* Border radius */
   --radius-card: 2rem;
 
   /* Shadows */
   --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.04);
-  --shadow-heavy-color: rgba(23, 19, 17, 0.08);
-  --gradient-page-start: #f8f2ea;
-  --gradient-page-mid: #f5efe8;
-  --gradient-page-end: #fbf6f1;
-  --gradient-profile-banner-start: #f4d1dc;
-  --gradient-profile-banner-end: #c8b6ff;
+  --shadow-heavy-color: rgba(28, 25, 23, 0.08);
+  --gradient-page-start: #ffffff;
+  --gradient-page-mid: #fbfaf9;
+  --gradient-page-end: #f6f3f0;
+  --gradient-profile-banner-start: #f0dce0;
+  --gradient-profile-banner-end: #e4dad3;
 
-  /* Landing page brand colors */
-  --color-landing-surface: #F3E8E2;
-  --color-landing-soft: #E8DDD4;
+  /* Landing page brand colors (White / Burgundy / Ink) */
+  --color-landing-surface: #ffffff;
+  --color-landing-soft: #f4f1ee;
   --color-landing-contrast: #1A1A1A;
-  --color-landing-tone: #C4654A;
-  --color-landing-accent: #C4654A;
-  --color-landing-highlight: #C4654A;
+  --color-landing-tone: #7a2e3a;
+  --color-landing-accent: #7a2e3a;
+  --color-landing-highlight: #7a2e3a;
 
   /* Animations */
   --animate-editorial-float: editorialFloat 12s ease-in-out infinite;
@@ -64,26 +82,37 @@
   --color-muted-foreground: #a8a29e;
   --color-border: rgba(236, 230, 224, 0.15);
   --color-input: rgba(236, 230, 224, 0.08);
-  --color-ring: #a855f7;
-  --color-primary: #a855f7;
+  --color-ring: #c15563;
+  --color-primary: #c15563;
   --color-primary-foreground: #ffffff;
+  --color-secondary: #2a2624;
+  --color-secondary-foreground: #ece6e0;
   --color-popover: #25211f;
   --color-popover-foreground: #ece6e0;
   --color-accent: #2a2624;
   --color-accent-foreground: #ece6e0;
   --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-success: #4fae82;
+  --color-success-foreground: #0f0d0c;
+  --color-warning: #d99a3c;
+  --color-warning-foreground: #0f0d0c;
+  --color-info: #5b8def;
+  --color-info-foreground: #0f0d0c;
+  --color-brand: #c15563;
+  --color-brand-hover: #d16b78;
   --shadow-heavy-color: rgba(0, 0, 0, 0.35);
   --gradient-page-start: #14110f;
   --gradient-page-mid: #1a1614;
   --gradient-page-end: #161311;
-  --gradient-profile-banner-start: #4a2040;
-  --gradient-profile-banner-end: #2d2860;
+  --gradient-profile-banner-start: #3a1c22;
+  --gradient-profile-banner-end: #241a1c;
   --color-landing-surface: #2a2624;
   --color-landing-soft: #25211f;
   --color-landing-contrast: #0f0d0c;
-  --color-landing-tone: #D4785E;
-  --color-landing-accent: #D4785E;
-  --color-landing-highlight: #D4785E;
+  --color-landing-tone: #c15563;
+  --color-landing-accent: #c15563;
+  --color-landing-highlight: #c15563;
 }
 
 @keyframes editorialFloat {
@@ -138,6 +167,7 @@
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
+    letter-spacing: var(--tracking-display);
   }
 }
 
