@@ -41,13 +41,17 @@
   /* Paper — warm editorial cream used on dark home sections (centralizes inline #F5F0EB) */
   --color-paper: #F5F0EB;
 
-  /* Typography */
+  /* Typography — FORME Figma: Cormorant Garamond display / DM Sans body.
+     Tracking rule: serif 0, sans 0.01em (audit 2.3). */
   --font-display: var(--font-cormorant), serif;
-  --font-body: var(--font-geist-sans), sans-serif;
-  --tracking-display: -0.015em;
+  --font-body: var(--font-dm-sans), sans-serif;
+  --tracking-display: 0em;
+  --tracking-body: 0.01em;
 
-  /* Border radius */
-  --radius-card: 2rem;
+  /* Border radius — FORME Figma: card 12px, button 24px capsule, chip 17px capsule */
+  --radius-card: 12px;
+  --radius-button: 24px;
+  --radius-chip: 17px;
 
   /* Shadows */
   --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.04);
@@ -59,7 +63,7 @@
   --gradient-profile-banner-end: #e4dad3;
   /* Hero / immersive dark sections — burgundy-tinted ink, theme-invariant dark */
   --gradient-hero-start: #171717;
-  --gradient-hero-mid: #3a1c22;
+  --gradient-hero-mid: #3a0f1c;
   --gradient-hero-end: #14110f;
 
   /* Landing page brand colors (White / Burgundy / Ink) */
@@ -87,8 +91,8 @@
   --color-muted-foreground: #a8a29e;
   --color-border: rgba(236, 230, 224, 0.15);
   --color-input: rgba(236, 230, 224, 0.08);
-  --color-ring: #c15563;
-  --color-primary: #c15563;
+  --color-ring: #cb4d6d;
+  --color-primary: #cb4d6d;
   --color-primary-foreground: #ffffff;
   --color-secondary: #2a2624;
   --color-secondary-foreground: #ece6e0;
@@ -104,20 +108,20 @@
   --color-warning-foreground: #0f0d0c;
   --color-info: #5b8def;
   --color-info-foreground: #0f0d0c;
-  --color-brand: #c15563;
-  --color-brand-hover: #d16b78;
+  --color-brand: #cb4d6d;
+  --color-brand-hover: #dd6280;
   --shadow-heavy-color: rgba(0, 0, 0, 0.35);
   --gradient-page-start: #14110f;
   --gradient-page-mid: #1a1614;
   --gradient-page-end: #161311;
-  --gradient-profile-banner-start: #3a1c22;
+  --gradient-profile-banner-start: #3a0f1c;
   --gradient-profile-banner-end: #241a1c;
   --color-landing-surface: #2a2624;
   --color-landing-soft: #25211f;
   --color-landing-contrast: #0f0d0c;
-  --color-landing-tone: #c15563;
-  --color-landing-accent: #c15563;
-  --color-landing-highlight: #c15563;
+  --color-landing-tone: #cb4d6d;
+  --color-landing-accent: #cb4d6d;
+  --color-landing-highlight: #cb4d6d;
 }
 
 @keyframes editorialFloat {
@@ -166,6 +170,7 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-body);
+    letter-spacing: var(--tracking-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

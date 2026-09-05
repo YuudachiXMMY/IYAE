@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond } from "next/font/google";
-import { GeistSans } from "geist/font/sans";
+import { Cormorant_Garamond, DM_Sans } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -16,6 +15,14 @@ const cormorant = Cormorant_Garamond({
   display: "swap",
 });
 
+// FORME Figma body font: DM Sans (replaces Geist Sans) — 2026-09-05 brand sign-off.
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND.url),
   title: `${BRAND.name} — ${BRAND.tagline}`,
@@ -28,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${cormorant.variable} ${GeistSans.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${cormorant.variable} ${dmSans.variable}`} suppressHydrationWarning>
       <body>
         <ThemeProvider>
           <AuthProvider>
