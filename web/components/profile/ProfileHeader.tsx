@@ -50,7 +50,7 @@ export function ProfileHeader({ user, surface, onUpdateSurface }: ProfileHeaderP
             className="h-full w-full"
             style={{
               background:
-                "linear-gradient(135deg, var(--gradient-profile-banner-start, #c4b5fd), var(--gradient-profile-banner-end, #9333ea))",
+                "linear-gradient(135deg, var(--gradient-profile-banner-start), var(--gradient-profile-banner-end))",
             }}
           />
         )}

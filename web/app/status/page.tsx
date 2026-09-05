@@ -40,8 +40,8 @@ function StatusIndicator({
             status === "loading"
               ? "animate-pulse bg-muted-foreground/40"
               : status === "up"
-                ? "bg-green-500"
-                : "bg-red-500"
+                ? "bg-success"
+                : "bg-destructive"
           }`}
           aria-hidden
         />
@@ -55,8 +55,8 @@ function StatusIndicator({
           status === "loading"
             ? "bg-muted text-muted-foreground"
             : status === "up"
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-600"
+              ? "bg-success/10 text-success"
+              : "bg-destructive/10 text-destructive"
         }`}
       >
         {status === "loading"
@@ -128,7 +128,7 @@ export default function StatusPage() {
           {!anyLoading && (
             <div
               className={`mb-6 rounded-card px-5 py-4 ${
-                allUp ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"
+                allUp ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
               }`}
             >
               <p className="text-sm font-semibold">

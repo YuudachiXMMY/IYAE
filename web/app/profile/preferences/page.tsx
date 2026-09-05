@@ -54,7 +54,7 @@ function ChipGroup({
             className={[
               "rounded-full border px-3 py-1 text-sm transition-colors",
               active
-                ? "border-brand bg-brand text-white"
+                ? "border-brand bg-brand text-primary-foreground"
                 : "border-border bg-card text-foreground hover:border-brand/50",
             ].join(" ")}
           >
@@ -305,7 +305,7 @@ export default function PreferencesPage() {
                         className={[
                           "rounded-full border px-4 py-1.5 text-sm transition-colors",
                           form.budgetRange === range
-                            ? "border-brand bg-brand text-white"
+                            ? "border-brand bg-brand text-primary-foreground"
                             : "border-border bg-card text-foreground hover:border-brand/50",
                         ].join(" ")}
                       >
@@ -350,7 +350,7 @@ export default function PreferencesPage() {
 
             <Button
               type="submit"
-              className="w-full rounded-full bg-brand text-white hover:bg-brand-hover"
+              className="w-full rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
               disabled={saving}
             >
               {saving ? "Saving..." : "Save Changes"}

@@ -158,7 +158,7 @@ export function ImageUploader({ currentUrl, onUpload, className }: ImageUploader
         )}
 
         {uploading && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/70">
+          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-card/70">
             <span className="text-sm font-medium text-muted-foreground animate-pulse">
               Uploading...
             </span>

@@ -103,7 +103,7 @@ export default function CheckoutPage() {
           </div>
 
           {error && (
-            <div className="mb-6 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-red-600">
+            <div className="mb-6 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           )}
@@ -120,7 +120,7 @@ export default function CheckoutPage() {
             <div className="py-16 text-center">
               <p className="text-muted-foreground">Your cart is empty.</p>
               <Link href="/products" className="mt-4 inline-block">
-                <Button className="mt-2 rounded-full bg-brand text-white hover:bg-brand-hover">
+                <Button className="mt-2 rounded-full bg-brand text-primary-foreground hover:bg-brand-hover">
                   Browse Products
                 </Button>
               </Link>
@@ -182,7 +182,7 @@ export default function CheckoutPage() {
               <Button
                 onClick={handlePlaceOrder}
                 disabled={placing}
-                className="mt-6 w-full rounded-full bg-brand py-3 text-white hover:bg-brand-hover"
+                className="mt-6 w-full rounded-full bg-brand py-3 text-primary-foreground hover:bg-brand-hover"
               >
                 {placing ? "Processing..." : "Place Order"}
               </Button>

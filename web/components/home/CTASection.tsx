@@ -29,7 +29,7 @@ export default function CTASection() {
       className="relative py-16 lg:py-20 overflow-hidden"
       style={{
         background:
-          "linear-gradient(135deg, #a5543e 0%, #6e3828 35%, #2a2220 70%, #1A1A1A 100%)",
+          "linear-gradient(135deg, var(--color-brand) 0%, color-mix(in srgb, var(--color-brand) 55%, var(--color-landing-contrast)) 35%, color-mix(in srgb, var(--color-brand) 12%, var(--color-landing-contrast)) 70%, var(--color-landing-contrast) 100%)",
       }}
     >
       {/* Background fashion photo mosaic */}
@@ -53,8 +53,7 @@ export default function CTASection() {
       >
         <motion.h2
           variants={fadeUp}
-          className="font-display text-4xl md:text-5xl lg:text-[56px] font-light tracking-tight leading-[1.15] mb-6"
-          style={{ color: "#F5F0EB" }}
+          className="font-display text-4xl md:text-5xl lg:text-[56px] font-light tracking-tight leading-[1.15] mb-6 text-paper"
         >
           Ready to Find
           <br />
@@ -63,8 +62,7 @@ export default function CTASection() {
 
         <motion.p
           variants={fadeUp}
-          className="text-base mb-10"
-          style={{ color: "rgba(245, 240, 235, 0.5)" }}
+          className="text-base mb-10 text-paper/50"
         >
           Free to start. No credit card needed.
         </motion.p>
@@ -85,8 +83,7 @@ export default function CTASection() {
           {TRUST_ITEMS.map((item) => (
             <span
               key={item.text}
-              className="flex items-center gap-2 text-xs"
-              style={{ color: "rgba(245, 240, 235, 0.35)" }}
+              className="flex items-center gap-2 text-xs text-paper/35"
             >
               <span>{item.icon}</span>
               {item.text}

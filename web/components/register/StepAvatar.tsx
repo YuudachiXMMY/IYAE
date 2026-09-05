@@ -34,8 +34,8 @@ export function StepAvatar({ data, onChange }: StepAvatarProps) {
           className={[
             "rounded-2xl border-2 p-6 text-left transition-all duration-150",
             mode === "AI_AVATAR"
-              ? "border-purple-600 bg-purple-50"
-              : "border-border bg-card hover:border-purple-300",
+              ? "border-brand bg-brand/10"
+              : "border-border bg-card hover:border-brand/40",
           ].join(" ")}
         >
           <div className="text-3xl mb-3">✨</div>
@@ -49,8 +49,8 @@ export function StepAvatar({ data, onChange }: StepAvatarProps) {
           className={[
             "rounded-2xl border-2 p-6 text-left transition-all duration-150",
             mode === "PROFILE_PHOTO"
-              ? "border-purple-600 bg-purple-50"
-              : "border-border bg-card hover:border-purple-300",
+              ? "border-brand bg-brand/10"
+              : "border-border bg-card hover:border-brand/40",
           ].join(" ")}
         >
           <div className="text-3xl mb-3">📷</div>
@@ -71,8 +71,8 @@ export function StepAvatar({ data, onChange }: StepAvatarProps) {
                 className={[
                   "rounded-xl border-2 p-3 text-left transition-all duration-150",
                   data.avatarPreset === preset.id
-                    ? "border-purple-600 bg-purple-50"
-                    : "border-border bg-card hover:border-purple-300",
+                    ? "border-brand bg-brand/10"
+                    : "border-border bg-card hover:border-brand/40",
                 ].join(" ")}
               >
                 <div className="font-medium text-sm text-foreground">{preset.label}</div>

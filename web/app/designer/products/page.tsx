@@ -27,12 +27,13 @@ import {
 import { GenerationStatusBadge } from "@/components/GenerationStatusBadge";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
+import { TONE_CLASS } from "@/lib/status";
 import type { Product } from "@/components/ProductListItem";
 
 const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-muted text-muted-foreground",
-  PUBLISHED: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  ARCHIVED: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  DRAFT: TONE_CLASS.neutral,
+  PUBLISHED: TONE_CLASS.success,
+  ARCHIVED: TONE_CLASS.warning,
 };
 
 const FILTER_TABS = ["ALL", "PUBLISHED", "DRAFT", "ARCHIVED"] as const;
@@ -166,7 +167,7 @@ export default function DesignerProductsPage() {
                 these features.
               </p>
               <Button
-                className="rounded-full bg-brand text-white hover:bg-brand-hover"
+                className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
                 onClick={() => router.push("/dashboard")}
               >
                 Go to dashboard
@@ -197,7 +198,7 @@ export default function DesignerProductsPage() {
           </div>
           <Button
             onClick={() => router.push("/designer/products/new")}
-            className="bg-brand hover:bg-brand-hover text-white gap-1.5 self-start sm:self-auto"
+            className="bg-brand hover:bg-brand-hover text-primary-foreground gap-1.5 self-start sm:self-auto"
           >
             <Plus className="h-4 w-4" />
             Create product
@@ -276,7 +277,7 @@ export default function DesignerProductsPage() {
             </p>
             {activeTab === "ALL" && (
               <Button
-                className="mt-6 bg-brand hover:bg-brand-hover text-white gap-1.5"
+                className="mt-6 bg-brand hover:bg-brand-hover text-primary-foreground gap-1.5"
                 onClick={() => router.push("/designer/products/new")}
               >
                 <Plus className="h-4 w-4" />
@@ -425,7 +426,7 @@ export default function DesignerProductsPage() {
               <Button
                 onClick={() => void handleDelete()}
                 disabled={deleting}
-                className="bg-destructive text-white hover:bg-destructive/90"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deleting ? "Deleting..." : "Delete"}
               </Button>

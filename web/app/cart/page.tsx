@@ -135,7 +135,7 @@ function ServerItemRow({ item }: { item: CartItem }) {
       <button
         onClick={handleRemove}
         disabled={busy}
-        className="ml-2 text-muted-foreground/40 hover:text-red-400 transition-colors disabled:opacity-40"
+        className="ml-2 text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40"
         aria-label="Remove item"
       >
         <RemoveIcon />
@@ -150,7 +150,7 @@ function DemoItemRow({ item }: { item: DemoCartItem }) {
   const { updateDemoItem, removeDemoItem } = useCart();
 
   return (
-    <div className="flex items-center gap-4 rounded-card bg-card p-4 shadow-soft border border-dashed border-purple-200">
+    <div className="flex items-center gap-4 rounded-card bg-card p-4 shadow-soft border border-dashed border-brand/30">
       <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-muted">
         {item.imageUrl ? (
           <Image src={item.imageUrl} alt={item.name} fill sizes="80px" className="object-cover" />
@@ -165,7 +165,7 @@ function DemoItemRow({ item }: { item: DemoCartItem }) {
           <p className="text-xs text-muted-foreground">Size: {item.selectedSize}</p>
         )}
         <p className="text-sm font-semibold text-foreground">{formatPrice(item.price)}</p>
-        <span className="w-fit rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-600">
+        <span className="w-fit rounded-full bg-brand/10 px-2 py-0.5 text-xs text-brand">
           AI recommendation
         </span>
       </div>
@@ -194,7 +194,7 @@ function DemoItemRow({ item }: { item: DemoCartItem }) {
 
       <button
         onClick={() => removeDemoItem(item.id)}
-        className="ml-2 text-muted-foreground/40 hover:text-red-400 transition-colors"
+        className="ml-2 text-muted-foreground/40 hover:text-destructive transition-colors"
         aria-label="Remove item"
       >
         <RemoveIcon />
@@ -239,7 +239,7 @@ export default function CartPage() {
           <div className="py-20 text-center">
             <p className="text-lg text-muted-foreground">Your cart is empty.</p>
             <Link href="/products">
-              <Button className="mt-6 rounded-full bg-brand px-8 text-white hover:bg-brand-hover">
+              <Button className="mt-6 rounded-full bg-brand px-8 text-primary-foreground hover:bg-brand-hover">
                 Browse Products
               </Button>
             </Link>
@@ -299,7 +299,7 @@ export default function CartPage() {
               </div>
 
               <Button
-                className="mt-6 w-full rounded-full bg-brand py-3 text-white hover:bg-brand-hover"
+                className="mt-6 w-full rounded-full bg-brand py-3 text-primary-foreground hover:bg-brand-hover"
                 disabled={totalCount === 0}
                 onClick={() => router.push("/checkout")}
               >

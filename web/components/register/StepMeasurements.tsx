@@ -92,8 +92,8 @@ export function StepMeasurements({ data, onChange }: StepMeasurementsProps) {
               className={[
                 "rounded-2xl border-2 p-4 text-center transition-all duration-150",
                 data.genderIdentity === type.id
-                  ? "border-purple-600 bg-purple-50 dark:bg-purple-950/30"
-                  : "border-border bg-card hover:border-purple-300",
+                  ? "border-brand bg-brand/10"
+                  : "border-border bg-card hover:border-brand/40",
               ].join(" ")}
             >
               <div className="text-2xl mb-1">{type.icon}</div>

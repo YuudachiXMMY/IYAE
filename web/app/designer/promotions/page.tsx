@@ -96,7 +96,7 @@ export default function PromotionsPage() {
           </div>
           <Button
             onClick={() => { setEditing(null); setFormOpen(true); }}
-            className="rounded-full bg-brand text-white hover:bg-brand-hover"
+            className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
           >
             New Promotion
           </Button>

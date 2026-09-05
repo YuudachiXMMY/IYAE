@@ -14,8 +14,8 @@ interface PromotionListProps {
 
 function slotBadgeClass(slotType: string) {
   return slotType === "FEATURED"
-    ? "border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400"
-    : "border-purple-300 text-purple-700 bg-purple-50 dark:bg-purple-950/30 dark:text-purple-400";
+    ? "border-warning/30 text-warning bg-warning/10"
+    : "border-brand/30 text-brand bg-brand/10";
 }
 
 function isActive(p: PromotionResponse): boolean {
@@ -59,7 +59,7 @@ export function PromotionList({ promotions, onEdit, onDelete, deleting }: Promot
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>Weight: <span className="font-medium text-foreground">{p.weight}</span></span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${active ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" : "bg-muted text-muted-foreground"}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${active ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
                 {active ? "Active" : "Inactive"}
               </span>
             </div>

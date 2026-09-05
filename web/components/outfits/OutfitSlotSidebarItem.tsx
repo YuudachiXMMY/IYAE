@@ -92,7 +92,7 @@ export function OutfitSlotSidebarItem({
         )}
         {/* 3D badge inside thumbnail */}
         {product.glbUrl && (
-          <span className="absolute top-0.5 right-0.5 rounded-full bg-brand/90 px-1.5 py-0.5 text-[8px] font-semibold text-white">
+          <span className="absolute top-0.5 right-0.5 rounded-full bg-brand/90 px-1.5 py-0.5 text-[8px] font-semibold text-primary-foreground">
             3D
           </span>
         )}

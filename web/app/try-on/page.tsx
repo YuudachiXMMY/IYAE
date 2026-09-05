@@ -20,7 +20,7 @@ function CapabilityBadge({
     <div className="flex items-center gap-2">
       <span
         className={`inline-flex h-2 w-2 rounded-full ${
-          supported ? "bg-green-400" : "bg-muted-foreground/40"
+          supported ? "bg-success" : "bg-muted-foreground/40"
         }`}
         aria-hidden="true"
       />
@@ -32,7 +32,7 @@ function CapabilityBadge({
       <span
         className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium ${
           supported
-            ? "bg-green-50 text-green-700"
+            ? "bg-success/10 text-success"
             : "bg-muted text-muted-foreground"
         }`}
       >
@@ -129,7 +129,7 @@ export default function TryOnPage() {
         <div className="mb-8 grid gap-4 sm:grid-cols-2">
           <Link
             href="/chat"
-            className="flex flex-col gap-2 rounded-2xl bg-brand p-6 text-white shadow transition hover:bg-brand-hover active:scale-[0.98]"
+            className="flex flex-col gap-2 rounded-2xl bg-brand p-6 text-primary-foreground shadow transition hover:bg-brand-hover active:scale-[0.98]"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -146,7 +146,7 @@ export default function TryOnPage() {
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             <span className="font-semibold">Start AI Styling</span>
-            <span className="text-sm text-white/70">
+            <span className="text-sm text-primary-foreground/70">
               Chat with your AI stylist to build outfits
             </span>
           </Link>

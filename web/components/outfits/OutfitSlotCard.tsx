@@ -57,7 +57,7 @@ export function OutfitSlotCard({
               </div>
             )}
             {product.glbUrl && (
-              <span className="absolute top-2 right-2 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-semibold text-white">
+              <span className="absolute top-2 right-2 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
                 3D
               </span>
             )}

@@ -49,7 +49,7 @@ export default function ForgotPasswordPage() {
         </CardHeader>
         <CardContent>
           {submitted ? (
-            <div className="rounded-lg bg-green-50 dark:bg-green-950 p-4 text-sm text-green-700 dark:text-green-300 text-center">
+            <div className="rounded-lg bg-success/10 p-4 text-sm text-success text-center">
               If an account exists with that email, we&apos;ve sent a password
               reset link.
             </div>

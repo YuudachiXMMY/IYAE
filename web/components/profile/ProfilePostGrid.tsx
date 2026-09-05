@@ -163,7 +163,7 @@ export function ProfilePostGrid({
                     e.stopPropagation();
                     onDelete?.(post);
                   }}
-                  className="flex items-center justify-center h-7 w-7 rounded-full bg-card/90 backdrop-blur-sm text-muted-foreground hover:text-rose-500 shadow-heavy transition-colors"
+                  className="flex items-center justify-center h-7 w-7 rounded-full bg-card/90 backdrop-blur-sm text-muted-foreground hover:text-destructive shadow-heavy transition-colors"
                   aria-label="Delete post"
                 >
                   <Trash2 size={14} />

@@ -111,7 +111,7 @@ export function OutfitCard({ outfit, outfitId }: OutfitCardProps) {
         <Button
           asChild
           size="sm"
-          className="flex-1 rounded-full bg-brand hover:bg-brand-hover text-white text-xs"
+          className="flex-1 rounded-full bg-brand hover:bg-brand-hover text-primary-foreground text-xs"
         >
           <Link href={linkId != null ? `/outfits/${linkId}/view` : "/outfits"}>View in 3D</Link>
         </Button>

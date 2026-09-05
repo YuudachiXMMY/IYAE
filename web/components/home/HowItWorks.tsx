@@ -50,8 +50,7 @@ export default function HowItWorks() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.5 }}
           transition={{ duration: 0.7, ease: EASE_OUT_EXPO }}
-          className="font-display text-3xl md:text-4xl lg:text-5xl font-light tracking-tight leading-[1.1] text-center mb-16 lg:mb-20"
-          style={{ color: "#F5F0EB" }}
+          className="font-display text-3xl md:text-4xl lg:text-5xl font-light tracking-tight leading-[1.1] text-center mb-16 lg:mb-20 text-paper"
         >
           Three steps to your
           <br />
@@ -84,21 +83,20 @@ export default function HowItWorks() {
                     <motion.div
                       whileHover={reduce ? {} : { scale: 1.1, rotate: 5 }}
                       transition={SOFT_SPRING}
-                      className={`w-14 h-14 rounded-2xl bg-landing-accent/[0.12] flex items-center justify-center mb-5 text-landing-accent ${
+                      className={`w-14 h-14 rounded-2xl bg-landing-accent/[0.12] border border-brand/15 flex items-center justify-center mb-5 text-landing-accent ${
                         isEven ? "lg:ml-auto" : ""
                       }`}
                       style={{
-                        border: "1px solid rgba(196, 101, 74, 0.15)",
-                        boxShadow: "0 4px 20px rgba(196, 101, 74, 0.08)",
+                        boxShadow: "0 4px 20px color-mix(in srgb, var(--color-brand) 8%, transparent)",
                       }}
                     >
                       <step.Icon size={24} weight="duotone" />
                     </motion.div>
 
-                    <h3 className="text-2xl font-semibold mb-3" style={{ color: "#F5F0EB" }}>
+                    <h3 className="text-2xl font-semibold mb-3 text-paper">
                       {step.title}
                     </h3>
-                    <p className="text-sm leading-relaxed max-w-sm" style={{ color: "rgba(245, 240, 235, 0.5)" }}>
+                    <p className="text-sm leading-relaxed max-w-sm text-paper/50">
                       {step.desc}
                     </p>
                   </div>
@@ -136,7 +134,7 @@ export default function HowItWorks() {
                     transition={{ ...SOFT_SPRING, delay: 0.2 }}
                     className="absolute left-1/2 -translate-x-1/2 top-4 w-3 h-3 rounded-full bg-landing-accent hidden lg:block"
                     style={{
-                      boxShadow: "0 0 12px rgba(196, 101, 74, 0.4)",
+                      boxShadow: "0 0 12px color-mix(in srgb, var(--color-brand) 40%, transparent)",
                     }}
                   />
                 </motion.div>
@@ -155,7 +153,7 @@ export default function HowItWorks() {
         >
           <Link
             href="/register"
-            className="group inline-flex items-center justify-center gap-2 px-10 py-4 bg-landing-accent text-white text-sm font-medium rounded-full hover:brightness-110 transition-all duration-300 active:scale-[0.98]"
+            className="group inline-flex items-center justify-center gap-2 px-10 py-4 bg-landing-accent text-primary-foreground text-sm font-medium rounded-full hover:brightness-110 transition-all duration-300 active:scale-[0.98]"
           >
             Get Started Free
             <ArrowRight

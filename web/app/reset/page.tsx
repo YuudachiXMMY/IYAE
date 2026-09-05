@@ -19,7 +19,7 @@ function RedirectContent() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+      <Loader2 className="h-8 w-8 animate-spin text-brand" />
     </div>
   );
 }
@@ -29,7 +29,7 @@ export default function ResetRedirectPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-brand" />
         </div>
       }
     >

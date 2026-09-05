@@ -327,7 +327,7 @@ export default function ARVisualizationPage() {
 
                   {/* Floating badge */}
                   <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-foreground/80 px-3 py-1.5 text-xs font-medium text-background backdrop-blur-sm">
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
                     Live preview
                   </div>
                 </div>

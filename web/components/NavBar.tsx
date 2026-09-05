@@ -262,7 +262,7 @@ export function NavBar({ className }: NavBarProps) {
           ) : (
             <Link
               href="/login"
-              className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover transition-colors"
+              className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-brand-hover transition-colors"
             >
               Sign In
             </Link>
@@ -360,7 +360,7 @@ export function NavBar({ className }: NavBarProps) {
                     <Link
                       href="/login"
                       onClick={() => setMobileOpen(false)}
-                      className="rounded-full bg-brand px-4 py-2 text-center text-sm font-medium text-white hover:bg-brand-hover transition-colors"
+                      className="rounded-full bg-brand px-4 py-2 text-center text-sm font-medium text-primary-foreground hover:bg-brand-hover transition-colors"
                     >
                       Sign In
                     </Link>

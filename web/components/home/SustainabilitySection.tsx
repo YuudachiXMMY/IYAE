@@ -46,7 +46,7 @@ export default function SustainabilitySection() {
         {/* Scroll-reveal heading */}
         <h2
           ref={headingRef}
-          className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-8 leading-tight"
+          className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-paper mb-8 leading-tight"
         >
           {reduce ? (
             <>
@@ -86,7 +86,7 @@ export default function SustainabilitySection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          className="text-white/60 text-lg max-w-2xl mx-auto mb-16"
+          className="text-paper/60 text-lg max-w-2xl mx-auto mb-16"
         >
           By trying before buying with your accurate AR model, we eliminate the
           guesswork that leads to returns and landfill waste.
@@ -104,13 +104,13 @@ export default function SustainabilitySection() {
             <p className="font-display text-5xl font-bold text-landing-accent">
               -60%
             </p>
-            <p className="text-white/40 text-sm mt-2">Return Rates</p>
+            <p className="text-paper/40 text-sm mt-2">Return Rates</p>
           </div>
           <div>
             <p className="font-display text-5xl font-bold text-landing-accent">
               0
             </p>
-            <p className="text-white/40 text-sm mt-2">Fitting Room Stress</p>
+            <p className="text-paper/40 text-sm mt-2">Fitting Room Stress</p>
           </div>
         </motion.div>
 

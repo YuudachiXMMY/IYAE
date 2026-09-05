@@ -30,7 +30,7 @@ function FollowCreatorsCard() {
 
       <div className="relative p-10">
         <div className="w-14 h-14 bg-gradient-to-br from-landing-tone to-landing-accent rounded-2xl flex items-center justify-center mb-6">
-          <UserPlus size={28} weight="duotone" className="text-white" />
+          <UserPlus size={28} weight="duotone" className="text-primary-foreground" />
         </div>
 
         <h3 className="font-display text-3xl font-semibold mb-4 text-foreground">
@@ -73,7 +73,7 @@ function LikeSaveCard() {
       className="bg-card/80 backdrop-blur-sm rounded-3xl p-8 border border-border/30 shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-heavy"
     >
       <div className="w-12 h-12 bg-gradient-to-br from-landing-highlight to-landing-accent rounded-2xl flex items-center justify-center mb-5">
-        <Heart size={24} weight="duotone" className="text-white" />
+        <Heart size={24} weight="duotone" className="text-primary-foreground" />
       </div>
 
       <h3 className="font-display text-2xl font-semibold mb-3 text-foreground">
@@ -118,7 +118,7 @@ function ShareStyleCard() {
       className="bg-card/80 backdrop-blur-sm rounded-3xl p-8 border border-border/30 shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-heavy"
     >
       <div className="w-12 h-12 bg-gradient-to-br from-foreground to-landing-tone rounded-2xl flex items-center justify-center mb-5">
-        <ShareNetwork size={24} weight="duotone" className="text-white" />
+        <ShareNetwork size={24} weight="duotone" className="text-primary-foreground" />
       </div>
 
       <h3 className="font-display text-2xl font-semibold mb-3 text-foreground">
