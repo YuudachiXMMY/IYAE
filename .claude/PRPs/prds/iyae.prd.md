@@ -160,7 +160,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 | # | Phase | Description | Status | Parallel | Depends | PRP Plan |
 |---|-------|-------------|--------|----------|---------|----------|
 | 1 | Rebrand & Foundation | Package rename, fresh DB relaunch, atomic asset-path/DB/domain cutover, CAD single-currency fix, BrandConfig, email consolidation, SSL re-issue, delete dead config | impl landed & verified (server 338/338 · web tsc+vitest+build · worker py_compile); 2 Java centralizations (BrandConfig DI, email Option-A) deferred as literal swaps | - | - | [plan](../plans/rebrand-and-foundation.plan.md) · [report](../reports/rebrand-and-foundation-report.md) |
-| 2 | Design System + Core Reskin | IYAE `@theme` tokens, shadcn regen, reskin 30+ core routes + rebuild `home/` from Figma (landing, auth, onboarding, profile, shop/PDP/cart/checkout) | pending | with 9 | 1 | - |
+| 2 | Design System + Core Reskin | IYAE `@theme` tokens, shadcn regen, reskin 30+ core routes + rebuild `home/` from Figma (landing, auth, onboarding, profile, shop/PDP/cart/checkout) | in-progress | with 9 | 1 | [plan](../plans/design-system-and-core-reskin.plan.md) |
 | 3 | AI Stylist + Inline Suggestions | Human-centered voice via AIProvider prompts; occasion/mood/weather → outfit; render inline/on avatar | pending | with 4, 5 | 2 | - |
 | 4 | Virtual Fitting (Full 3D) + Fit/Size | SMPL-X + weight-transfer kept & hardened; instant 2D preview + async high-fidelity; recommended size; inline embed; validation fixes; privacy controls | pending | with 3, 5 | 2 | - |
 | 5 | Marketplace + Local Designers + ADMIN | Local Designers filter, designer studio/upload, asset-light no-inventory, measurement normalization to SMPL-X, ADMIN role + moderation | pending | with 3, 4 | 2 | - |
@@ -180,6 +180,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 - **Goal**: The 8 Figma screens and all token-driven routes render in IYAE's editorial language.
 - **Scope**: `@theme` tokens (White/Burgundy/Ink, serif+sans); shadcn regen; reskin shop/PDP/cart/checkout/profile/auth/onboarding; rebuild `home/` from Figma.
 - **Success signal**: Visual parity with Figma; zero hardcoded legacy colors; dark mode intact.
+- **Open question (Brand constants)**: The exact burgundy/serif/tracking are Figma-only (no export in repo). The initial reskin shipped a PROVISIONAL editorial-burgundy palette in `web/app/globals.css` — primary/brand `#7a2e3a` (hover `#5e1f2b`, dark `#c15563`), status success `#2f7d5b` / warning `#b8791f` / info `#2563eb`, serif = Cormorant Garamond with `--tracking-display: -0.015em`. Token **names are stable**; **values need owner sign-off against Figma** (swap in `globals.css` only).
 
 **Phase 3: AI Stylist + Inline Suggestions**
 - **Goal**: A trustworthy, human-centered stylist that returns few, decisive, context-aware picks rendered inline.

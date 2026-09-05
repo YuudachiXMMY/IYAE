@@ -60,7 +60,7 @@ function HitTestReticle({
     <mesh ref={reticleRef} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
       <ringGeometry args={[0.08, 0.12, 32]} />
       <meshStandardMaterial
-        color="#a855f7"
+        color="#7a2e3a"
         transparent
         opacity={0.75}
         side={THREE.DoubleSide}
@@ -289,7 +289,7 @@ export default function ARViewer({ glbUrls, onExit }: ARViewerProps) {
           {!arActive && (
             <button
               onClick={handleEnterAR}
-              className="rounded-full bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-purple-700 active:scale-95"
+              className="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg backdrop-blur-sm transition hover:bg-brand-hover active:scale-95"
               type="button"
             >
               Enter AR

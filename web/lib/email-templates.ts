@@ -38,7 +38,7 @@ function buildEmailHtml(options: EmailTemplateOptions): string {
         <table role="presentation" width="560" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
           <!-- Header -->
           <tr>
-            <td style="background:#9333ea;padding:32px 40px;text-align:center;">
+            <td style="background:#7a2e3a;padding:32px 40px;text-align:center;">
               <span style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">${BRAND.name}</span>
             </td>
           </tr>
@@ -50,7 +50,7 @@ function buildEmailHtml(options: EmailTemplateOptions): string {
               <!-- CTA Button -->
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td style="border-radius:10px;background:#9333ea;">
+                  <td style="border-radius:10px;background:#7a2e3a;">
                     <a href="${actionUrl}"
                        style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
                       ${escapeHtml(actionText)}

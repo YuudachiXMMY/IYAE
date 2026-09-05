@@ -531,7 +531,7 @@ export default function ChatPage() {
                   <Button
                     onClick={handleNewChat}
                     disabled={isCreatingSession}
-                    className="rounded-full bg-brand hover:bg-brand-hover text-white"
+                    className="rounded-full bg-brand hover:bg-brand-hover text-primary-foreground"
                   >
                     {isCreatingSession ? "Creating..." : "Start new chat"}
                   </Button>
@@ -560,7 +560,7 @@ export default function ChatPage() {
                       onClick={handleSend}
                       disabled={!input.trim() || isSending || isCreatingSession}
                       size="icon"
-                      className="h-11 w-11 shrink-0 rounded-xl bg-brand hover:bg-brand-hover text-white transition-all duration-200 hover:scale-105 active:scale-95"
+                      className="h-11 w-11 shrink-0 rounded-xl bg-brand hover:bg-brand-hover text-primary-foreground transition-all duration-200 hover:scale-105 active:scale-95"
                       aria-label="Send message"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -179,7 +179,7 @@ export default function NewOutfitPage() {
                 Cancel
               </Button>
               <Button
-                className="flex-1 rounded-full bg-brand text-white hover:bg-brand-hover"
+                className="flex-1 rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
                 onClick={handleSave}
                 disabled={!hasAtLeastOneSlot || saving}
               >
@@ -202,7 +202,7 @@ export default function NewOutfitPage() {
             Cancel
           </Button>
           <Button
-            className="flex-1 rounded-full bg-brand text-white hover:bg-brand-hover"
+            className="flex-1 rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
             onClick={handleSave}
             disabled={!hasAtLeastOneSlot || saving}
           >

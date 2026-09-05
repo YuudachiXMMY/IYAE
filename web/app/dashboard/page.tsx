@@ -97,7 +97,7 @@ function ShopperQuickActions() {
               "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
               featured
                 ? "bg-background/15 text-background group-hover:bg-background/25"
-                : "bg-brand/10 text-brand group-hover:bg-brand group-hover:text-white"
+                : "bg-brand/10 text-brand group-hover:bg-brand group-hover:text-primary-foreground"
             )}
           >
             <Icon size={20} weight="duotone" />

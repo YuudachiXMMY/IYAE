@@ -245,7 +245,7 @@ export default function BodyProfilePage() {
             <div
               className={`mb-6 rounded-xl px-4 py-3 text-sm ${
                 toast.type === "success"
-                  ? "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
+                  ? "bg-success/10 text-success"
                   : "bg-destructive/10 text-destructive"
               }`}
             >
@@ -262,7 +262,7 @@ export default function BodyProfilePage() {
             </CardHeader>
             <CardContent>
               {fetchError && (
-                <div className="rounded-lg border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-700 dark:text-red-400 mb-6">
+                <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive mb-6">
                   <p>{fetchError}</p>
                   <button
                     type="button"
@@ -281,7 +281,7 @@ export default function BodyProfilePage() {
                         })
                         .finally(() => setFetchLoading(false));
                     }}
-                    className="mt-2 text-sm font-medium text-red-700 dark:text-red-400 underline hover:text-red-800 dark:hover:text-red-300"
+                    className="mt-2 text-sm font-medium text-destructive underline hover:text-destructive/80"
                   >
                     Retry
                   </button>
@@ -304,8 +304,8 @@ export default function BodyProfilePage() {
                       className={[
                         "rounded-2xl border-2 p-4 text-center transition-all duration-150",
                         bodyType === type.id
-                          ? "border-purple-600 bg-purple-50 dark:bg-purple-950/30"
-                          : "border-border bg-card hover:border-purple-300",
+                          ? "border-brand bg-brand/10"
+                          : "border-border bg-card hover:border-brand",
                       ].join(" ")}
                     >
                       <div className="text-2xl mb-1">{type.icon}</div>
@@ -423,7 +423,7 @@ export default function BodyProfilePage() {
 
                 <Button
                   type="submit"
-                  className="w-full rounded-full bg-brand text-white hover:bg-brand-hover"
+                  className="w-full rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
                   disabled={saving}
                 >
                   {saving ? "Saving..." : "Save Measurements"}

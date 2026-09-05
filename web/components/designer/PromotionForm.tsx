@@ -214,7 +214,7 @@ export function PromotionForm({ open, onClose, onSaved, editing }: PromotionForm
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting} className="rounded-full border-border text-xs">
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} className="rounded-full bg-brand text-white hover:bg-brand-hover text-xs">
+            <Button type="submit" disabled={submitting} className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover text-xs">
               {submitting ? "Saving..." : editing ? "Save Changes" : "Create"}
             </Button>
           </div>

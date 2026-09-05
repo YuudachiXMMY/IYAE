@@ -211,7 +211,7 @@ export default function OutfitViewPage() {
                 {showARButton && has3D && (
                   <Button
                     asChild
-                    className="rounded-full bg-brand hover:bg-brand-hover text-white"
+                    className="rounded-full bg-brand hover:bg-brand-hover text-primary-foreground"
                   >
                     <Link href={`/outfits/${outfitId}/ar`}>
                       <svg
@@ -239,7 +239,7 @@ export default function OutfitViewPage() {
                   className={
                     saved
                       ? "rounded-full border-brand text-brand"
-                      : "rounded-full bg-brand hover:bg-brand-hover text-white"
+                      : "rounded-full bg-brand hover:bg-brand-hover text-primary-foreground"
                   }
                   disabled={saving || saved}
                   onClick={async () => {

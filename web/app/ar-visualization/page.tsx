@@ -327,7 +327,7 @@ export default function ARVisualizationPage() {
 
                   {/* Floating badge */}
                   <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-foreground/80 px-3 py-1.5 text-xs font-medium text-background backdrop-blur-sm">
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
                     Live preview
                   </div>
                 </div>
@@ -399,7 +399,7 @@ export default function ARVisualizationPage() {
                 <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                   <Link
                     href="/register"
-                    className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-10 py-4 text-sm font-bold text-landing-contrast transition-all duration-300 hover:bg-landing-surface hover:shadow-xl active:scale-[0.98] sm:w-auto"
+                    className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-paper px-10 py-4 text-sm font-bold text-landing-contrast transition-all duration-300 hover:bg-landing-surface hover:shadow-xl active:scale-[0.98] sm:w-auto"
                   >
                     Get Started
                     <ArrowRight
@@ -410,7 +410,7 @@ export default function ARVisualizationPage() {
                   </Link>
                   <Link
                     href="/products"
-                    className="inline-flex w-full items-center justify-center rounded-full border border-white/30 px-10 py-4 text-sm font-bold text-white transition-all duration-300 hover:bg-white/10 active:scale-[0.98] sm:w-auto"
+                    className="inline-flex w-full items-center justify-center rounded-full border border-white/30 px-10 py-4 text-sm font-bold text-white transition-all duration-300 hover:bg-paper/10 active:scale-[0.98] sm:w-auto"
                   >
                     Browse Products
                   </Link>

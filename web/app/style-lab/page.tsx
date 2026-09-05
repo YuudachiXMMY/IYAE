@@ -123,7 +123,7 @@ function FeaturedCard({
 
         <div className="relative p-10 md:p-14 flex flex-col gap-8">
           <div className="flex items-start justify-between">
-            <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
+            <div className="w-16 h-16 rounded-2xl bg-paper/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
               <Icon size={32} weight="duotone" className="text-white/90" />
             </div>
             <ArrowRight

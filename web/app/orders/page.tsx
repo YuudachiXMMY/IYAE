@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { api, ApiError } from "@/lib/api";
+import { toneForStatus, TONE_CLASS } from "@/lib/status";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,19 +31,7 @@ interface Order {
 // ── Status Badge ──────────────────────────────────────────────────────────────
 
 function statusStyle(status: string): string {
-  switch (status.toUpperCase()) {
-    case "PAID":
-    case "COMPLETED":
-      return "bg-green-100 text-green-700";
-    case "PENDING":
-      return "bg-yellow-100 text-yellow-700";
-    case "CANCELLED":
-      return "bg-red-100 text-red-600";
-    case "SHIPPED":
-      return "bg-blue-100 text-blue-700";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
+  return TONE_CLASS[toneForStatus(status)];
 }
 
 // ── Order Row ─────────────────────────────────────────────────────────────────
@@ -188,7 +177,7 @@ export default function OrdersPage() {
             </div>
             <Button
               asChild
-              className="rounded-full bg-brand text-white hover:bg-brand-hover"
+              className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
             >
               <Link href="/products">Browse Products</Link>
             </Button>

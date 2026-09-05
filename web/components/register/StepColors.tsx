@@ -32,7 +32,7 @@ function ColorGrid({
             title={name}
             className={[
               "flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all duration-150",
-              isSelected ? "border-purple-600 shadow-md scale-105" : "border-transparent hover:border-border",
+              isSelected ? "border-brand shadow-md scale-105" : "border-transparent hover:border-border",
             ].join(" ")}
           >
             <span
@@ -57,10 +57,10 @@ export function StepColors({ data, onChange }: StepColorsProps) {
 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-purple-400 inline-block" />
+          <span className="w-3 h-3 rounded-full bg-brand inline-block" />
           <h3 className="text-sm font-medium text-muted-foreground">Colors I love</h3>
           {(data.favoriteColors ?? []).length > 0 && (
-            <span className="text-xs text-purple-600 font-medium">
+            <span className="text-xs text-brand font-medium">
               {(data.favoriteColors ?? []).length} selected
             </span>
           )}

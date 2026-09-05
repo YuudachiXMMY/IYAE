@@ -103,7 +103,7 @@ export default function RegisterPage() {
 
         <WizardProgress currentStep={currentStep} totalSteps={TOTAL_STEPS} />
 
-        <Card className="shadow-soft rounded-card bg-white">
+        <Card className="shadow-soft rounded-card bg-card">
           <CardContent className="p-6 sm:p-8">
             {currentStep === 0 && <StepBasics data={formData} onChange={handleChange} />}
             {currentStep === 1 && <StepStylePrefs data={formData} onChange={handleChange} />}
@@ -147,7 +147,7 @@ export default function RegisterPage() {
                     type="button"
                     onClick={handleNext}
                     disabled={!canAdvance()}
-                    className="rounded-full bg-purple-600 hover:bg-purple-700 text-white"
+                    className="rounded-full bg-brand hover:bg-brand-hover text-primary-foreground"
                   >
                     Next
                   </Button>
@@ -156,7 +156,7 @@ export default function RegisterPage() {
             )}
 
             {error && !isLastStep && (
-              <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
+              <div className="mt-4 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
@@ -165,7 +165,7 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="text-purple-600 hover:underline">
+          <Link href="/login" className="text-brand hover:underline">
             Sign in
           </Link>
         </p>

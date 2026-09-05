@@ -21,8 +21,8 @@ function Chip({ label, selected, onClick }: { label: string; selected: boolean; 
       className={[
         "px-3 py-1.5 rounded-full text-sm border transition-all duration-150",
         selected
-          ? "bg-purple-600 border-purple-600 text-white"
-          : "bg-card border-border text-muted-foreground hover:border-purple-300",
+          ? "bg-brand border-brand text-primary-foreground"
+          : "bg-card border-border text-muted-foreground hover:border-brand/40",
       ].join(" ")}
     >
       {label}
@@ -91,8 +91,8 @@ export function StepStylePrefs({ data, onChange }: StepStylePrefsProps) {
               className={[
                 "px-3 py-1.5 rounded-full text-sm border transition-all duration-150",
                 data.budgetRange === b
-                  ? "bg-purple-600 border-purple-600 text-white"
-                  : "bg-card border-border text-muted-foreground hover:border-purple-300",
+                  ? "bg-brand border-brand text-primary-foreground"
+                  : "bg-card border-border text-muted-foreground hover:border-brand/40",
               ].join(" ")}
             >
               {b}

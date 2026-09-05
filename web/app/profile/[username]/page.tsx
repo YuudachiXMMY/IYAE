@@ -78,8 +78,8 @@ export default function ProfilePage() {
         displayName: serverProfile.name ?? serverProfile.username,
         username: serverProfile.username,
         bio: "",
-        avatarTone: ["#e2d9d7", "#d7efe7"] as [string, string],
-        bannerTone: ["#f5efe8", "#e8e0d5"] as [string, string],
+        avatarTone: ["var(--color-muted)", "var(--color-card)"] as [string, string],
+        bannerTone: ["var(--gradient-profile-banner-start)", "var(--gradient-profile-banner-end)"] as [string, string],
         location: "",
         headline: "",
         styleAesthetics: serverProfile.styleAesthetics ?? [],
@@ -107,8 +107,8 @@ export default function ProfilePage() {
         displayName: user.name ?? username,
         username: username,
         bio: `Fashion enthusiast on ${BRAND.name}`,
-        avatarTone: ["#e2d9d7", "#d7efe7"] as [string, string],
-        bannerTone: ["#f5efe8", "#e8e0d5"] as [string, string],
+        avatarTone: ["var(--color-muted)", "var(--color-card)"] as [string, string],
+        bannerTone: ["var(--gradient-profile-banner-start)", "var(--gradient-profile-banner-end)"] as [string, string],
         location: "",
         headline: "",
         styleAesthetics: user.styleAesthetics ?? [],
@@ -121,8 +121,8 @@ export default function ProfilePage() {
         displayName: username.replace(/\./g, " "),
         username,
         bio: "",
-        avatarTone: ["#d9d1d7", "#cfc9c6"] as [string, string],
-        bannerTone: ["#ece6df", "#d7e3e8"] as [string, string],
+        avatarTone: ["var(--color-muted)", "var(--color-card)"] as [string, string],
+        bannerTone: ["var(--gradient-profile-banner-start)", "var(--gradient-profile-banner-end)"] as [string, string],
         location: "",
         headline: "",
         styleAesthetics: [],
@@ -187,8 +187,8 @@ export default function ProfilePage() {
       <div
         className="min-h-screen"
         style={{
-          background:
-            "linear-gradient(180deg, #f8f2ea 0%, #f5efe8 50%, #fbf6f1 100%)",
+          backgroundImage:
+            "linear-gradient(180deg, var(--gradient-page-start), var(--gradient-page-mid), var(--gradient-page-end))",
         }}
       >
         {/* Back link */}
@@ -210,14 +210,14 @@ export default function ProfilePage() {
             }}
           >
             {/* Public profile badge */}
-            <div className="absolute top-4 left-5 flex items-center gap-1.5 rounded-full bg-white/60 dark:bg-black/40 backdrop-blur-sm px-3 py-1.5">
+            <div className="absolute top-4 left-5 flex items-center gap-1.5 rounded-full bg-background/60 backdrop-blur-sm px-3 py-1.5">
               <Globe2 size={12} className="text-muted-foreground" />
               <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                 Public profile
               </span>
             </div>
             {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-white/82" />
+            <div className="absolute inset-0 bg-gradient-to-b from-foreground/10 to-background/80" />
           </div>
         </div>
 
@@ -232,7 +232,7 @@ export default function ProfilePage() {
                   background: `linear-gradient(135deg, ${profileData.avatarTone[0]}, ${profileData.avatarTone[1]})`,
                 }}
               >
-                <div className="flex h-full w-full items-center justify-center text-3xl font-semibold text-white rounded-full">
+                <div className="flex h-full w-full items-center justify-center text-3xl font-semibold text-foreground rounded-full">
                   {profileData.displayName.charAt(0)}
                 </div>
               </div>
@@ -244,9 +244,9 @@ export default function ProfilePage() {
                     Creator profile
                   </span>
                   {profileData.isVerified && (
-                    <span className="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5">
-                      <BadgeCheck size={12} className="text-purple-500" />
-                      <span className="text-[10px] text-purple-600 font-medium">
+                    <span className="flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5">
+                      <BadgeCheck size={12} className="text-brand" />
+                      <span className="text-[10px] text-brand font-medium">
                         Verified designer
                       </span>
                     </span>
@@ -365,14 +365,14 @@ export default function ProfilePage() {
                         style={{
                           background: gradient
                             ? `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`
-                            : "#f5efe8",
+                            : "var(--color-muted)",
                         }}
                       />
                       {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <div className="flex gap-4 text-white">
+                      <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <div className="flex gap-4 text-background">
                           <span className="flex items-center gap-1">
-                            <Heart size={16} fill="white" /> {post.likeCount}
+                            <Heart size={16} fill="currentColor" /> {post.likeCount}
                           </span>
                           <span className="flex items-center gap-1">
                             <MessageCircleMore size={16} /> {post.comments.length}

@@ -23,14 +23,14 @@ export default function SocialProofSection() {
       className="relative py-16 lg:py-20 overflow-hidden"
       style={{
         background:
-          "linear-gradient(135deg, #9a7b6a 0%, #8c6b5a 40%, #664d40 100%)",
+          "linear-gradient(135deg, var(--color-brand) 0%, color-mix(in srgb, var(--color-brand) 60%, var(--color-landing-contrast)) 40%, color-mix(in srgb, var(--color-brand) 25%, var(--color-landing-contrast)) 100%)",
       }}
     >
       <div
         className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(180deg, transparent 0%, rgba(10,8,7,0.1) 40%, rgba(10,8,7,0.65) 100%)",
+            "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--color-landing-contrast) 10%, transparent) 40%, color-mix(in srgb, var(--color-landing-contrast) 65%, transparent) 100%)",
         }}
       />
 
@@ -47,8 +47,7 @@ export default function SocialProofSection() {
           {/* Giant quotation mark — second-read moment */}
           <motion.div
             variants={fadeUp}
-            className="text-[240px] md:text-[320px] leading-none font-light select-none pointer-events-none absolute top-4 left-4 lg:left-8"
-            style={{ color: "rgba(245, 240, 235, 0.06)" }}
+            className="text-[240px] md:text-[320px] leading-none font-light select-none pointer-events-none absolute top-4 left-4 lg:left-8 text-paper/[0.06]"
             aria-hidden="true"
           >
             &ldquo;
@@ -58,7 +57,7 @@ export default function SocialProofSection() {
             <motion.blockquote
               variants={fadeUp}
               className="font-display text-2xl md:text-3xl lg:text-[28px] font-light leading-relaxed mb-6"
-              style={{ color: "#F5F0EB" }}
+              style={{ color: "var(--color-paper)" }}
             >
               I used to spend 45 minutes picking an outfit.
               <br className="hidden md:block" />

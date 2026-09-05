@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { api, ApiError } from "@/lib/api";
+import { toneForStatus, TONE_CLASS } from "@/lib/status";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,19 +35,7 @@ interface Order {
 const STATUS_STEPS = ["PENDING", "PAID", "SHIPPED", "COMPLETED"];
 
 function statusStyle(status: string): string {
-  switch (status.toUpperCase()) {
-    case "PAID":
-    case "COMPLETED":
-      return "bg-green-100 text-green-700";
-    case "PENDING":
-      return "bg-yellow-100 text-yellow-700";
-    case "CANCELLED":
-      return "bg-red-100 text-red-600";
-    case "SHIPPED":
-      return "bg-blue-100 text-blue-700";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
+  return TONE_CLASS[toneForStatus(status)];
 }
 
 // ── Status Timeline ───────────────────────────────────────────────────────────
@@ -74,7 +63,7 @@ function StatusTimeline({ status }: { status: string }) {
             <div className="flex flex-col items-center gap-1">
               <div
                 className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
-                  done ? "bg-brand text-white" : "bg-muted text-muted-foreground"
+                  done ? "bg-brand text-primary-foreground" : "bg-muted text-muted-foreground"
                 } ${active ? "ring-2 ring-brand ring-offset-2" : ""}`}
               >
                 {done ? (

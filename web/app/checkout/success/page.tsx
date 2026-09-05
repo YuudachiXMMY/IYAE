@@ -13,7 +13,7 @@ export default function CheckoutSuccessPage() {
       <PageShell>
         <div className="flex flex-col items-center justify-center py-24 text-center">
           {/* Checkmark icon */}
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="36"
@@ -24,7 +24,7 @@ export default function CheckoutSuccessPage() {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-green-600"
+              className="text-success"
               aria-label="Order confirmed"
             >
               <polyline points="20 6 9 17 4 12" />
@@ -41,7 +41,7 @@ export default function CheckoutSuccessPage() {
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link href="/orders">
-              <Button className="rounded-full bg-brand px-8 text-white hover:bg-brand-hover">
+              <Button className="rounded-full bg-brand px-8 text-primary-foreground hover:bg-brand-hover">
                 View My Orders
               </Button>
             </Link>

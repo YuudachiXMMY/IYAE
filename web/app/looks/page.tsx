@@ -138,7 +138,7 @@ function LookCard({
                 size="sm"
                 onClick={handleSaveNote}
                 disabled={saving}
-                className="rounded-full bg-brand text-white hover:bg-brand-hover text-xs h-7 px-3"
+                className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover text-xs h-7 px-3"
               >
                 {saving ? "Saving..." : "Save"}
               </Button>
@@ -284,7 +284,7 @@ export default function LooksPage() {
             </p>
           </div>
           <Link href="/chat" className="mt-4 sm:mt-0 shrink-0">
-            <Button className="rounded-full bg-brand text-white hover:bg-brand-hover gap-1.5 transition-all active:scale-[0.98]">
+            <Button className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover gap-1.5 transition-all active:scale-[0.98]">
               <Plus className="h-4 w-4" aria-hidden="true" />
               New Look
             </Button>
@@ -351,7 +351,7 @@ export default function LooksPage() {
             </div>
             <Button
               asChild
-              className="rounded-full bg-brand text-white hover:bg-brand-hover gap-1.5 transition-all active:scale-[0.98]"
+              className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover gap-1.5 transition-all active:scale-[0.98]"
             >
               <Link href="/chat">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />

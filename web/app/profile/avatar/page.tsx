@@ -366,9 +366,9 @@ export default function AvatarPage() {
                     <div
                       className={`h-2 w-2 rounded-full ${
                         isReady
-                          ? "bg-green-500"
+                          ? "bg-success"
                           : isGenerating
-                            ? "bg-amber-500 animate-pulse"
+                            ? "bg-warning animate-pulse"
                             : isFailed
                               ? "bg-destructive"
                               : "bg-muted-foreground"

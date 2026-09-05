@@ -78,7 +78,7 @@ export function GenerationStatusCard({ productId }: GenerationStatusCardProps) {
               variant="outline"
               size="sm"
               onClick={() => void retry()}
-              className="border-red-200 text-red-700 hover:bg-red-50"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10"
             >
               Retry Generation
             </Button>

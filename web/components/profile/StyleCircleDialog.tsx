@@ -71,7 +71,7 @@ function UserListItem({
             {profile.displayName}
           </span>
           {profile.isVerified && (
-            <BadgeCheck className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+            <BadgeCheck className="h-3.5 w-3.5 text-brand shrink-0" />
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate">@{profile.username}</p>
@@ -114,7 +114,7 @@ function DetailCard({
               {profile.displayName}
             </h3>
             {profile.isVerified && (
-              <BadgeCheck className="h-4 w-4 text-purple-500 shrink-0" />
+              <BadgeCheck className="h-4 w-4 text-brand shrink-0" />
             )}
           </div>
           <p className="text-sm text-muted-foreground">@{profile.username}</p>

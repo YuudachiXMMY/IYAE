@@ -19,7 +19,7 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
+        <Label htmlFor="email">Email <span className="text-destructive">*</span></Label>
         <Input
           id="email"
           type="email"
@@ -31,7 +31,7 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
+        <Label htmlFor="password">Password <span className="text-destructive">*</span></Label>
         <Input
           id="password"
           type="password"
@@ -66,20 +66,20 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
       </div>
 
       <div className="space-y-3">
-        <Label>I am a... <span className="text-red-500">*</span></Label>
+        <Label>I am a... <span className="text-destructive">*</span></Label>
         <RadioGroup
           value={data.role ?? "BUYER"}
           onValueChange={(v) => onChange({ role: v as "BUYER" | "DESIGNER" })}
           className="space-y-2"
         >
-          <div className="flex items-center space-x-3 rounded-xl border border-border p-4 cursor-pointer hover:border-purple-300 transition-colors">
+          <div className="flex items-center space-x-3 rounded-xl border border-border p-4 cursor-pointer hover:border-brand/40 transition-colors">
             <RadioGroupItem value="BUYER" id="role-buyer" />
             <Label htmlFor="role-buyer" className="font-normal cursor-pointer">
               <span className="font-medium">Shopper</span>
               <span className="text-muted-foreground block text-xs mt-0.5">Discover and try on fashion with AI styling</span>
             </Label>
           </div>
-          <div className="flex items-center space-x-3 rounded-xl border border-border p-4 cursor-pointer hover:border-purple-300 transition-colors">
+          <div className="flex items-center space-x-3 rounded-xl border border-border p-4 cursor-pointer hover:border-brand/40 transition-colors">
             <RadioGroupItem value="DESIGNER" id="role-designer" />
             <Label htmlFor="role-designer" className="font-normal cursor-pointer">
               <span className="font-medium">Designer</span>

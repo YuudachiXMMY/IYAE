@@ -66,7 +66,7 @@ export function StepComplete({ data, onSubmit, onBack, isLoading, error }: StepC
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-600">
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -87,7 +87,7 @@ export function StepComplete({ data, onSubmit, onBack, isLoading, error }: StepC
           type="button"
           onClick={onSubmit}
           disabled={isLoading}
-          className={`rounded-full bg-purple-600 hover:bg-purple-700 text-white py-3 text-base ${onBack ? "flex-1" : "w-full"}`}
+          className={`rounded-full bg-brand hover:bg-brand-hover text-primary-foreground py-3 text-base ${onBack ? "flex-1" : "w-full"}`}
         >
           {isLoading ? "Creating your account..." : "Create Account"}
         </Button>

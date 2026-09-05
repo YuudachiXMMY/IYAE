@@ -85,7 +85,7 @@ function ResetPasswordContent() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {(validationError || serverError) && (
-              <div className="rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600 dark:text-red-400 space-y-2">
+              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive space-y-2">
                 <p>{validationError || serverError}</p>
                 {serverError && (
                   <div className="flex flex-col items-start gap-1 pt-1">
@@ -147,7 +147,7 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-brand" />
         </div>
       }
     >

@@ -90,7 +90,7 @@ export default function DesignersSection() {
             <motion.div variants={fadeUp}>
               <Link
                 href="/products"
-                className="inline-flex items-center justify-center px-7 py-3.5 bg-landing-accent text-white text-sm font-medium rounded-full hover:brightness-110 transition-all duration-300 active:scale-[0.98]"
+                className="inline-flex items-center justify-center px-7 py-3.5 bg-landing-accent text-primary-foreground text-sm font-medium rounded-full hover:brightness-110 transition-all duration-300 active:scale-[0.98]"
               >
                 Explore Designers
               </Link>

@@ -57,14 +57,14 @@ function VerifyEmailContent() {
         <CardContent className="flex flex-col items-center gap-4 py-6">
           {status === "loading" && (
             <>
-              <Loader2 className="h-12 w-12 animate-spin text-purple-600" />
+              <Loader2 className="h-12 w-12 animate-spin text-brand" />
               <p className="text-muted-foreground">Verifying your email…</p>
             </>
           )}
 
           {status === "success" && (
             <>
-              <CheckCircle className="h-12 w-12 text-green-500" />
+              <CheckCircle className="h-12 w-12 text-success" />
               <p className="text-center font-semibold text-foreground">
                 Email verified!
               </p>
@@ -76,7 +76,7 @@ function VerifyEmailContent() {
 
           {status === "error" && (
             <>
-              <XCircle className="h-12 w-12 text-red-500" />
+              <XCircle className="h-12 w-12 text-destructive" />
               <p className="text-center font-semibold text-foreground">
                 Verification failed
               </p>
@@ -96,7 +96,7 @@ export default function VerifyEmailPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-brand" />
         </div>
       }
     >

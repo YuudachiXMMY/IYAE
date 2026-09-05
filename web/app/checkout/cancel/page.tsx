@@ -42,7 +42,7 @@ export default function CheckoutCancelPage() {
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link href="/cart">
-              <Button className="rounded-full bg-brand px-8 text-white hover:bg-brand-hover">
+              <Button className="rounded-full bg-brand px-8 text-primary-foreground hover:bg-brand-hover">
                 Return to Cart
               </Button>
             </Link>

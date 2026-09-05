@@ -147,12 +147,12 @@ export default function TryOnViewer({
       <directionalLight
         position={[-3, 2, -3]}
         intensity={0.25}
-        color="#d4785e"
+        color="#7a2e3a"
       />
       <pointLight
         position={[0, 3, 2]}
         intensity={0.15}
-        color="#c4654a"
+        color="#7a2e3a"
         distance={8}
       />
       <Mannequin

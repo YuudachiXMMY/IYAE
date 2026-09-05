@@ -90,7 +90,7 @@ function StarRating({ rating }: { rating: number }) {
           fill={i < rating ? "currentColor" : "none"}
           stroke="currentColor"
           strokeWidth="2"
-          className={i < rating ? "text-amber-400" : "text-muted-foreground"}
+          className={i < rating ? "text-warning" : "text-muted-foreground"}
           aria-hidden="true"
         >
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -320,7 +320,7 @@ export default function ProductDetailPage({
                   {product.styleTags.map((tag) => (
                     <span
                       key={tag}
-                      className="rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-700"
+                      className="rounded-full bg-brand/10 px-2 py-0.5 text-xs text-brand"
                     >
                       #{tag}
                     </span>
@@ -363,7 +363,7 @@ export default function ProductDetailPage({
                 <Button
                   onClick={handleAddToCart}
                   disabled={adding || (product.sizes && product.sizes.length > 0 && !selectedSize)}
-                  className="w-fit rounded-full bg-brand px-8 py-3 text-white hover:bg-brand-hover"
+                  className="w-fit rounded-full bg-brand px-8 py-3 text-primary-foreground hover:bg-brand-hover"
                 >
                   {adding ? "Adding..." : "Add to Cart"}
                 </Button>
@@ -372,8 +372,8 @@ export default function ProductDetailPage({
                     className={`text-sm ${
                       addedMessage.startsWith("Error") ||
                       addedMessage.startsWith("Failed")
-                        ? "text-red-500"
-                        : "text-green-600"
+                        ? "text-destructive"
+                        : "text-success"
                     }`}
                   >
                     {addedMessage}

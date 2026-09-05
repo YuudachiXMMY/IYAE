@@ -110,7 +110,7 @@ function CompactSlider({
           {value} {unit}
         </span>
       </div>
-      <div className="relative h-1.5 rounded-full bg-white/[0.08]">
+      <div className="relative h-1.5 rounded-full bg-paper/[0.08]">
         <motion.div
           className="absolute left-0 top-0 h-full rounded-full bg-landing-accent/60"
           animate={{ width: `${pct}%` }}
@@ -160,7 +160,7 @@ function BodyTypePicker({
               "relative flex flex-col items-center gap-1.5 rounded-xl py-2.5 px-2 text-center transition-colors duration-200 cursor-pointer select-none",
               active
                 ? "bg-landing-accent/20 ring-1 ring-landing-accent/50 text-white/90"
-                : "bg-white/[0.06] ring-1 ring-white/[0.06] text-white/40 hover:text-white/60 hover:ring-white/10",
+                : "bg-paper/[0.06] ring-1 ring-white/[0.06] text-white/40 hover:text-white/60 hover:ring-white/10",
             ].join(" ")}
           >
             <Icon size={18} weight={active ? "fill" : "regular"} />
@@ -188,7 +188,7 @@ function ViewModeToggle({
   if (!hasAvatar) return null;
 
   return (
-    <div className="flex items-center gap-1 rounded-full p-0.5 bg-white/[0.06] ring-1 ring-white/[0.06]">
+    <div className="flex items-center gap-1 rounded-full p-0.5 bg-paper/[0.06] ring-1 ring-white/[0.06]">
       <button
         type="button"
         onClick={() => onToggle("demo")}
@@ -466,7 +466,7 @@ export default function TryOnSection() {
       className="relative py-32 lg:py-48 overflow-hidden"
       style={{
         background:
-          "linear-gradient(135deg, #151210 0%, #1e1916 60%, #121010 100%)",
+          "linear-gradient(135deg, var(--gradient-hero-start) 0%, var(--gradient-hero-mid) 60%, var(--gradient-hero-end) 100%)",
       }}
     >
       {/* Ambient terracotta glow */}
@@ -493,7 +493,7 @@ export default function TryOnSection() {
               custom={0}
               variants={fadeUp}
               className="font-display text-5xl md:text-6xl lg:text-[64px] font-light tracking-tight leading-[1.05] mb-8"
-              style={{ color: "#F5F0EB" }}
+              style={{ color: "var(--color-paper)" }}
             >
               See It On
               <span
@@ -742,7 +742,7 @@ export default function TryOnSection() {
                       {/* Status bar + expand toggle */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-success" />
                           <span className="text-[11px] text-white/70 font-medium">
                             Model generation active
                           </span>
@@ -832,7 +832,7 @@ export default function TryOnSection() {
                                       className="w-full py-2.5 rounded-full text-sm font-medium transition-colors cursor-pointer"
                                       style={{
                                         background: "var(--color-landing-accent)",
-                                        color: "#1a1a1a",
+                                        color: "var(--color-landing-contrast)",
                                       }}
                                     >
                                       Next: Body Measurements
@@ -891,7 +891,7 @@ export default function TryOnSection() {
                                       onChange={setInseamCm}
                                     />
                                     {generateError && (
-                                      <p className="text-[11px] text-red-400/90 text-center leading-snug">
+                                      <p className="text-[11px] text-destructive/90 text-center leading-snug">
                                         {generateError}
                                       </p>
                                     )}
@@ -912,7 +912,7 @@ export default function TryOnSection() {
                                         className="flex-1 py-2.5 rounded-full text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                         style={{
                                           background: "var(--color-landing-accent)",
-                                          color: "#1a1a1a",
+                                          color: "var(--color-landing-contrast)",
                                         }}
                                       >
                                         {isUpdating ? "Updating..." : "Update Avatar"}
@@ -1003,7 +1003,7 @@ export default function TryOnSection() {
                                 className="w-full py-2.5 rounded-full text-sm font-medium transition-colors cursor-pointer"
                                 style={{
                                   background: "var(--color-landing-accent)",
-                                  color: "#1a1a1a",
+                                  color: "var(--color-landing-contrast)",
                                 }}
                               >
                                 Next: Body Measurements
@@ -1062,7 +1062,7 @@ export default function TryOnSection() {
                                 onChange={setInseamCm}
                               />
                               {generateError && (
-                                <p className="text-[11px] text-red-400/90 text-center leading-snug">
+                                <p className="text-[11px] text-destructive/90 text-center leading-snug">
                                   {generateError}
                                 </p>
                               )}
@@ -1082,7 +1082,7 @@ export default function TryOnSection() {
                                   className="flex-1 py-2.5 rounded-full text-sm font-medium transition-colors cursor-pointer"
                                   style={{
                                     background: "var(--color-landing-accent)",
-                                    color: "#1a1a1a",
+                                    color: "var(--color-landing-contrast)",
                                   }}
                                 >
                                   {user ? "Generate My Avatar" : "Generate Avatar"}
@@ -1135,7 +1135,7 @@ export default function TryOnSection() {
                               ? "Building your SMPL-X model"
                               : "Crafting your silhouette"}
                           </p>
-                          <div className="mt-1.5 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div className="mt-1.5 h-1 rounded-full bg-paper/[0.06] overflow-hidden">
                             <motion.div
                               className="h-full bg-landing-accent/50 rounded-full"
                               initial={{ width: "0%" }}
@@ -1180,7 +1180,7 @@ export default function TryOnSection() {
                               {typeLabel}
                             </p>
                           </div>
-                          <div className="w-px h-5 bg-white/[0.08]" />
+                          <div className="w-px h-5 bg-paper/[0.08]" />
                           <div className="text-center">
                             <p className="text-[9px] text-white/30 uppercase tracking-wider">
                               Height
@@ -1189,7 +1189,7 @@ export default function TryOnSection() {
                               {heightCm} cm
                             </p>
                           </div>
-                          <div className="w-px h-5 bg-white/[0.08]" />
+                          <div className="w-px h-5 bg-paper/[0.08]" />
                           <div className="text-center">
                             <p className="text-[9px] text-white/30 uppercase tracking-wider">
                               Weight
@@ -1201,8 +1201,8 @@ export default function TryOnSection() {
                         </div>
 
                         {/* Ready badge */}
-                        <div className="flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 flex-shrink-0">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <div className="flex items-center gap-1.5 rounded-full bg-paper/[0.06] px-2.5 py-1 flex-shrink-0">
+                          <div className="w-1.5 h-1.5 rounded-full bg-success" />
                           <span className="text-[10px] text-white/60 font-medium">
                             Ready
                           </span>
