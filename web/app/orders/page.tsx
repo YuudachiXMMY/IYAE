@@ -54,9 +54,9 @@ function OrderRow({ order }: { order: Order }) {
     day: "numeric",
   });
 
-  const formattedTotal = new Intl.NumberFormat("en-US", {
+  const formattedTotal = new Intl.NumberFormat("en-CA", {
     style: "currency",
-    currency: order.currency || "USD",
+    currency: order.currency || "CAD",
   }).format(order.total);
 
   return (

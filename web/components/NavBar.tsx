@@ -125,7 +125,7 @@ export function NavBar({ className }: NavBarProps) {
           href="/"
           className="font-display text-2xl font-semibold text-foreground"
         >
-          Clossette
+          IYAE
         </Link>
 
         {/* Desktop nav links */}

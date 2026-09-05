@@ -11,9 +11,9 @@ import { useCart, type CartItem, type DemoCartItem } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 
 function formatPrice(price: number, currency?: string): string {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-CA", {
     style: "currency",
-    currency: currency || "USD",
+    currency: currency || "CAD",
   }).format(price);
 }
 

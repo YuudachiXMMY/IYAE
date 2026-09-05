@@ -21,8 +21,8 @@ interface CheckoutResponse {
 
 // ── Format helper ─────────────────────────────────────────────────────────────
 
-function formatPrice(amount: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+function formatPrice(amount: number, currency = "CAD"): string {
+  return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency,
   }).format(amount);

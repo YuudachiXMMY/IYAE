@@ -1,10 +1,10 @@
-# Clossette
+# IYAE
 
 AI-powered fashion marketplace combining conversational AI styling, 3D/AR virtual try-on, and an independent designer marketplace. Targets Gen Z and young millennial shoppers (18-30) to eliminate decision fatigue and reduce fashion returns.
 
 ## Overview
 
-Clossette helps shoppers go from "I have nothing to wear" to "I feel great about this look" through:
+IYAE helps shoppers go from "I have nothing to wear" to "I feel great about this look" through:
 
 - **AI Styling** — Conversational AI chat with outfit generation and suggestion chips
 - **3D/AR Try-On** — SMPL-X avatar generation, garment rigging, and pose animation

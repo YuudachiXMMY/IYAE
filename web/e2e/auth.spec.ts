@@ -23,7 +23,7 @@ test.describe('Authentication flows', () => {
     await page.goto('/register');
 
     // Verify the register page heading rendered
-    await expect(page.getByRole('heading', { name: 'Join Clossette' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Join IYAE' })).toBeVisible();
 
     // Verify WizardProgress step labels are visible
     await expect(page.getByText('Basics')).toBeVisible();

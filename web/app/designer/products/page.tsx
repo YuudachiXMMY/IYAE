@@ -38,9 +38,9 @@ const STATUS_STYLES: Record<string, string> = {
 const FILTER_TABS = ["ALL", "PUBLISHED", "DRAFT", "ARCHIVED"] as const;
 
 function formatPrice(price: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-CA", {
     style: "currency",
-    currency: currency || "USD",
+    currency: currency || "CAD",
   }).format(price);
 }
 

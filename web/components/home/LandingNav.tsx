@@ -150,7 +150,7 @@ export function LandingNav() {
           href="/"
           className="font-display text-2xl font-bold tracking-tight text-foreground"
         >
-          CLOSSETTE
+          IYAE
         </Link>
 
         <div className="hidden md:flex items-center space-x-10">

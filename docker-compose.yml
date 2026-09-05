@@ -3,8 +3,8 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: clossette
-      MYSQL_USER: clossette
+      MYSQL_DATABASE: iyae
+      MYSQL_USER: iyae
       MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
       - "${DB_PORT:-3002}:3306"
@@ -25,8 +25,8 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: clossette
-      DB_USERNAME: clossette
+      DB_NAME: iyae
+      DB_USERNAME: iyae
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
@@ -34,7 +34,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://clossette.localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://iyae.localhost}
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
       SPRING_MAIL_HOST: mailpit
       SPRING_MAIL_PORT: 1025
@@ -42,7 +42,7 @@ services:
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET:-dev-internal-secret}
     volumes:
-      - assets_data:/var/clossette/assets
+      - assets_data:/var/iyae/assets
     depends_on:
       mysql:
         condition: service_healthy
@@ -50,16 +50,16 @@ services:
         condition: service_started
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.clossette-api.rule=Host(`${API_DOMAIN:-api.clossette.localhost}`)"
-      - "traefik.http.services.clossette-api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.iyae-api.rule=Host(`${API_DOMAIN:-api.iyae.localhost}`)"
+      - "traefik.http.services.iyae-api.loadbalancer.server.port=8080"
     networks:
-      - clossette-net
+      - iyae-net
       - proxy
       - default
 
   mailpit:
     image: axllent/mailpit
-    container_name: clossette-mailpit
+    container_name: iyae-mailpit
     ports:
       - "1025:1025"
       - "8025:8025"
@@ -72,20 +72,20 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: clossette
-      DB_USERNAME: clossette
+      DB_NAME: iyae
+      DB_USERNAME: iyae
       DB_PASSWORD: ${DB_PASSWORD}
       MODEL_GENERATION_PROVIDER: ${MODEL_GENERATION_PROVIDER:-mock}
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
       WORKER_TRIPO_API_KEY: ${WORKER_TRIPO_API_KEY:-}
       WORKER_MESHY_API_KEY: ${WORKER_MESHY_API_KEY:-}
       WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
-      WORKER_OUTPUT_DIR: /var/clossette/assets
+      WORKER_OUTPUT_DIR: /var/iyae/assets
       RIGGING_PROVIDER: ${RIGGING_PROVIDER:-mock}
-      SMPLX_MODELS_PATH: /var/clossette/smplx_models
+      SMPLX_MODELS_PATH: /var/iyae/smplx_models
     volumes:
-      - assets_data:/var/clossette/assets
-      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/clossette/smplx_models:ro
+      - assets_data:/var/iyae/assets
+      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/iyae/smplx_models:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -97,16 +97,16 @@ services:
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: clossette
-      DB_USERNAME: clossette
+      DB_NAME: iyae
+      DB_USERNAME: iyae
       DB_PASSWORD: ${DB_PASSWORD}
       WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
-      WORKER_OUTPUT_DIR: /var/clossette/assets
+      WORKER_OUTPUT_DIR: /var/iyae/assets
       RIGGING_PROVIDER: ${RIGGING_PROVIDER:-python}
-      SMPLX_MODELS_PATH: /var/clossette/smplx_models
+      SMPLX_MODELS_PATH: /var/iyae/smplx_models
     volumes:
-      - assets_data:/var/clossette/assets
-      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/clossette/smplx_models:ro
+      - assets_data:/var/iyae/assets
+      - ${SMPLX_MODELS_PATH:-./smplx_models}:/var/iyae/smplx_models:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -135,15 +135,15 @@ services:
       - server
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.clossette-web.rule=Host(`${WEB_DOMAIN:-clossette.localhost}`)"
-      - "traefik.http.services.clossette-web.loadbalancer.server.port=3000"
+      - "traefik.http.routers.iyae-web.rule=Host(`${WEB_DOMAIN:-iyae.localhost}`)"
+      - "traefik.http.services.iyae-web.loadbalancer.server.port=3000"
     networks:
-      - clossette-net
+      - iyae-net
       - proxy
       - default
 
 networks:
-  clossette-net:
+  iyae-net:
     driver: bridge
   proxy:
     external: true

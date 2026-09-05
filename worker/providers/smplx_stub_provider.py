@@ -93,7 +93,7 @@ def create_avatar_glb() -> bytes:
 
     scene_json = json.dumps(
         {
-            "asset": {"version": "2.0", "generator": "clossette-smplx-stub"},
+            "asset": {"version": "2.0", "generator": "iyae-smplx-stub"},
             "scene": 0,
             # scene includes mesh node (0) and root joint pelvis (1)
             "scenes": [{"nodes": [0, 1]}],
@@ -214,7 +214,7 @@ def create_avatar_glb() -> bytes:
 class SmplxStubProvider:
     """Generates placeholder avatar GLB files for development and testing."""
 
-    def __init__(self, output_base_dir: str = "/var/clossette/assets"):
+    def __init__(self, output_base_dir: str = "/var/iyae/assets"):
         self.output_base_dir = output_base_dir
 
     def generate(self, task_id: int, user_id: int, input_payload: dict | None) -> dict:

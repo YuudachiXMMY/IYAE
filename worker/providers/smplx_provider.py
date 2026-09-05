@@ -108,8 +108,8 @@ class SmplxProvider:
 
     def __init__(
         self,
-        output_base_dir: str = "/var/clossette/assets",
-        model_path: str = "/var/clossette/smplx_models",
+        output_base_dir: str = "/var/iyae/assets",
+        model_path: str = "/var/iyae/smplx_models",
     ):
         self.output_base_dir = output_base_dir
         self.model_path = model_path

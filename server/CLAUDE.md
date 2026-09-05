@@ -1,6 +1,6 @@
 [Root](../CLAUDE.md) > **server**
 
-# Clossette Server (Spring Boot 3.4)
+# IYAE Server (Spring Boot 3.4)
 
 Spring Boot REST API providing authentication (with email verification and password reset), product catalog, AI conversational styling, outfit generation, shopping cart with cloth size selection, 3D model generation orchestration, guest avatar generation, designer studio features, and rate-limited security.
 
@@ -10,7 +10,7 @@ The server is the central backend service. It exposes all REST endpoints, manage
 
 ## Entry & Startup
 
-- **Main class**: `com.clossette.ClossettApplication` (standard Spring Boot `@SpringBootApplication`)
+- **Main class**: `com.iyae.ClossettApplication` (standard Spring Boot `@SpringBootApplication`)
 - **Port**: 8080 (configurable via `server.port`)
 - **Profile**: `application.yml` (base), `application-dev.yml` (dev overrides with SQL logging), `application-prod.yml` (production: INFO logging, no SQL, SMTP auth+TLS), `application-test.yml` (H2 in-memory, Flyway disabled)
 - **On startup**: `DataSeeder` (CommandLineRunner) seeds initial data if the database is empty (5 users, 3 designer profiles, 2 body profiles, 36 products, 10 promotions, 10 garment assets)
@@ -112,7 +112,7 @@ test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controlle
 
 | Property | Env Var | Default | Purpose |
 |----------|---------|---------|---------|
-| `spring.datasource.url` | `DB_HOST`, `DB_PORT`, `DB_NAME` | `localhost:3306/clossette` | MySQL connection |
+| `spring.datasource.url` | `DB_HOST`, `DB_PORT`, `DB_NAME` | `localhost:3306/iyae` | MySQL connection |
 | `spring.datasource.password` | `DB_PASSWORD` | -- | DB password |
 | `spring.jpa.hibernate.ddl-auto` | -- | `validate` | Schema validation only |
 | `spring.jpa.open-in-view` | -- | `false` | No lazy loading outside tx |
@@ -121,9 +121,9 @@ test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controlle
 | `app.jwt.secret` | `JWT_SECRET` | -- | HS256 signing key |
 | `app.jwt.expiration-ms` | -- | `86400000` (24h) | Token TTL |
 | `app.ai.provider` | `AI_PROVIDER` | `mock` | AI provider selection |
-| `app.cors.origins` | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001,http://clossette.localhost` | CORS allowlist |
+| `app.cors.origins` | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001,http://iyae.localhost` | CORS allowlist |
 | `app.frontend.base-url` | `FRONTEND_BASE_URL` | `http://localhost:3000` | Base URL for email links |
-| `app.mail.from` | `MAIL_FROM` | `noreply@clossette.ca` | Sender email address |
+| `app.mail.from` | `MAIL_FROM` | `noreply@iyae.ca` | Sender email address |
 | `app.auth.verification-token-ttl` | -- | `24h` | Email verification token expiry |
 | `app.auth.password-reset-ttl` | -- | `1h` | Password reset token expiry |
 
@@ -363,7 +363,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 
 - **Framework**: JUnit 5 + Mockito + MockMvc + AssertJ (via `spring-boot-starter-test`)
 - **Test profile**: `application-test.yml` (H2 in-memory, Flyway disabled, mock AI)
-- **Test directory**: `server/src/test/java/com/clossette/`
+- **Test directory**: `server/src/test/java/com/iyae/`
 - **Current state**: 48 test files, 338 test methods (+ 4 test support files)
 
 ### Test Inventory
@@ -415,7 +415,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - CORS origins configured via `app.cors.origins` (comma-separated), injected into `CorsConfig` bean which `SecurityConfig` consumes
 - `DataSeeder` populates seed data on startup (designers, buyers, products, promotions, garment assets) -- skips if any users already exist; all seed users have `emailVerified=true`
 - `SchedulerConfig` runs three 5s tasks: materialize READY generation tasks into `GarmentAsset` rows, READY avatar tasks into `User.avatarGlbUrl`, and READY rigging tasks into `GarmentAsset` rigging columns
-- Guest avatar endpoint (`/api/public/avatar/*`) uses an internal `guest@clossette.internal` user account; the guest user is auto-created on first request
+- Guest avatar endpoint (`/api/public/avatar/*`) uses an internal `guest@iyae.internal` user account; the guest user is auto-created on first request
 - `GuestAvatarService.estimateWaistCm()` estimates waist from height+weight using BMI-based formula when not provided
 - Cart items now include `selectedSize` (default `ONE_SIZE`); unique constraint changed from `(cart_id, product_id)` to `(cart_id, product_id, selected_size)` allowing the same product in different sizes
 - Checkout is currently stubbed (returns fake Stripe session)

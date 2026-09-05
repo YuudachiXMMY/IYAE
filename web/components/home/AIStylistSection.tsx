@@ -402,7 +402,7 @@ export default function AIStylistSection() {
                     }}
                   />
                   <span className="text-xs font-semibold text-white/60 tracking-wide">
-                    Clossette AI
+                    IYAE AI
                   </span>
                 </div>
 

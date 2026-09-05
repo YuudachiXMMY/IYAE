@@ -28,7 +28,7 @@ describe('POST /api/internal/mail/send', () => {
   beforeEach(() => {
     process.env.INTERNAL_MAIL_SECRET = VALID_SECRET;
     process.env.RESEND_API_KEY = 'test-resend-key';
-    process.env.MAIL_FROM = 'noreply@clossette.ca';
+    process.env.MAIL_FROM = 'noreply@iyae.ca';
     mockSend.mockResolvedValue({ data: { id: 'test-email-id' }, error: null });
   });
 
@@ -135,9 +135,9 @@ describe('POST /api/internal/mail/send', () => {
 
     expect(mockSend).toHaveBeenCalledOnce();
     const sendArgs = mockSend.mock.calls[0][0];
-    expect(sendArgs.subject).toBe('Verify your Clossette account');
+    expect(sendArgs.subject).toBe('Verify your IYAE account');
     expect(sendArgs.to).toBe('user@example.com');
-    expect(sendArgs.from).toBe('noreply@clossette.ca');
+    expect(sendArgs.from).toBe('noreply@iyae.ca');
     expect(sendArgs.html).toContain('Verify Email Address');
   });
 
@@ -152,7 +152,7 @@ describe('POST /api/internal/mail/send', () => {
     expect(body.success).toBe(true);
 
     const sendArgs = mockSend.mock.calls[0][0];
-    expect(sendArgs.subject).toBe('Reset your Clossette password');
+    expect(sendArgs.subject).toBe('Reset your IYAE password');
     expect(sendArgs.html).toContain('Reset Password');
   });
 

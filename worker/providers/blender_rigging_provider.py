@@ -39,7 +39,7 @@ class BlenderRiggingProvider:
 
     def __init__(
         self,
-        output_dir: str = "/var/clossette/assets",
+        output_dir: str = "/var/iyae/assets",
         blender_path: str = "blender",
     ) -> None:
         self.output_dir = output_dir

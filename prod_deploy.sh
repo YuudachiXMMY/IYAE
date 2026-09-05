@@ -149,7 +149,7 @@ case "${1:-help}" in
 
     docker compose -f "$COMPOSE_FILE" --profile tools run --rm -p 80:80 \
       certbot certonly --standalone \
-      --cert-name clossette \
+      --cert-name iyae \
       -d "$domain" \
       --agree-tos --no-eff-email \
       $email_flag
@@ -195,7 +195,7 @@ case "${1:-help}" in
     fi
 
     expiry=$(docker compose -f "$COMPOSE_FILE" exec -T nginx \
-      sh -c "cat /etc/letsencrypt/live/clossette/fullchain.pem 2>/dev/null" 2>/dev/null | \
+      sh -c "cat /etc/letsencrypt/live/iyae/fullchain.pem 2>/dev/null" 2>/dev/null | \
       openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)
     if [ -n "$expiry" ]; then
       info "SSL certificate expires: $expiry"

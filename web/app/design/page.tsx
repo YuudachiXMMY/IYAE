@@ -323,7 +323,7 @@ export default function DesignPage() {
         </div>
       </section>
 
-      {/* ─── Why designers choose Clossette ──────────────────────────── */}
+      {/* ─── Why designers choose IYAE ──────────────────────────── */}
       <section className="py-32 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-landing-surface/30 to-transparent" />
 

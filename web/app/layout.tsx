@@ -16,7 +16,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "Clossette — AI-Powered Fashion",
+  title: "IYAE — AI-Powered Fashion",
   description: "Personalized styling with AI and 3D virtual try-on",
 };
 

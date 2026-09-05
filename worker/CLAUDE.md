@@ -1,6 +1,6 @@
 [Root](../CLAUDE.md) > **worker**
 
-# Clossette Worker (Python 3.12)
+# IYAE Worker (Python 3.12)
 
 Python daemon that polls three MySQL task queues (`model_generation_tasks`, `avatar_generation_tasks`, `rigging_tasks`) to generate 3D garment models (GLB/USDZ), SMPL-X body avatars, and rigged garment meshes with skinning weights.
 
@@ -290,14 +290,14 @@ Basic existence and non-empty check only.
 |-----|----------|---------|---------|
 | `DB_HOST` | No | `localhost` | MySQL host |
 | `DB_PORT` | No | `3306` | MySQL port |
-| `DB_NAME` | No | `clossette` | Database name |
-| `DB_USERNAME` | No | `clossette` | DB user |
+| `DB_NAME` | No | `iyae` | Database name |
+| `DB_USERNAME` | No | `iyae` | DB user |
 | `DB_PASSWORD` | Yes | -- | DB password |
 | `MODEL_GENERATION_PROVIDER` | No | `mock` | Provider selection |
 | `WORKER_TRIPO_API_KEY` | For tripo3d | -- | Tripo3D API key |
 | `WORKER_MESHY_API_KEY` | For meshy | -- | Meshy.ai API key |
 | `WORKER_POLL_INTERVAL` | No | `5` | Seconds between polls |
-| `WORKER_OUTPUT_DIR` | No | `/var/clossette/assets` | Output directory (also used by MeshyGenerator for local image file resolution) |
+| `WORKER_OUTPUT_DIR` | No | `/var/iyae/assets` | Output directory (also used by MeshyGenerator for local image file resolution) |
 | `AVATAR_GENERATION_PROVIDER` | No | `mock` | Avatar provider selection (`mock` or `smplx`) |
 | `SMPLX_MODELS_PATH` | For smplx | `./smplx_models` | Host path to SMPL-X model files (mounted read-only into container) |
 | `RIGGING_PROVIDER` | No | `mock` | Rigging provider selection (`mock`, `python`, or `blender`) |
@@ -361,7 +361,7 @@ pytest tests/test_task_queue.py     # Task queue tests only
 - GLB validation is strict: invalid magic header = FAILED task
 - Metadata validation failures also mark task as FAILED (triangle count, bbox, NaN)
 - `SKIP LOCKED` ensures multiple worker instances can run safely in parallel
-- Output files are written to `WORKER_OUTPUT_DIR` (default `/var/clossette/assets`), path pattern: `products/{product_id}/tasks/{task_id}/preview.glb`
+- Output files are written to `WORKER_OUTPUT_DIR` (default `/var/iyae/assets`), path pattern: `products/{product_id}/tasks/{task_id}/preview.glb`
 - `retry_task` has a hard limit of 3 attempts (`attempt_count < 3`); exceeded retries are refused
 - `reclaim_stale_tasks` runs every 12 poll cycles (~1 minute); resets tasks RUNNING for >15 minutes back to PENDING
 - The `MATERIALIZED` status is a server-side concern; the worker should only query for `PENDING` tasks
