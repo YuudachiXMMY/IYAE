@@ -1,5 +1,3 @@
-import type { AvatarStatus } from "./hooks/useAvatarStatus";
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 let isRedirecting = false;
@@ -136,10 +134,14 @@ export interface AvatarResponse {
   status: string;
 }
 
-// Re-export AvatarStatus so `@/lib/api` is the single source for API types.
-// The canonical shape is defined in `lib/hooks/useAvatarStatus.ts` (which already
-// depends on this module at runtime, so this type-only import creates no cycle).
-export type { AvatarStatus };
+// Canonical avatar-status response shape. Defined here so `@/lib/api` owns every
+// API response type; the `useAvatarStatus` hook imports it from this module.
+export interface AvatarStatus {
+  status: "NONE" | "PENDING" | "RUNNING" | "READY" | "FAILED";
+  glbUrl: string | null;
+  errorMessage: string | null;
+  retryCount: number;
+}
 
 export const auth = {
   register: (data: RegisterRequest) => api.post<{ token: string; user: UserResponse }>("/api/auth/register", data),

@@ -26,7 +26,10 @@ def _tris_for_mode(mode: int, count: int) -> int:
         return 0
     if mode in (5, 6):              # strip / fan
         return max(0, count - 2)
-    return count // 3               # 4 TRIANGLES (and the None default)
+    # 4 TRIANGLES (and the None default). Clamp negative ``count`` (provider-
+    # declared, never validated by pygltflib) so a crafted negative accessor
+    # count cannot drag the aggregate triangle_count below the upper-bound cap.
+    return max(0, count) // 3
 
 
 def compute_glb_geometry_stats(gltf) -> dict:

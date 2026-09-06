@@ -42,6 +42,14 @@ class TestTrisForMode:
         assert _tris_for_mode(2, 3000) == 0  # LINE_LOOP
         assert _tris_for_mode(3, 3000) == 0  # LINE_STRIP
 
+    def test_triangles_mode_negative_count_clamped_to_zero(self):
+        # H1: a provider-declared negative accessor count must not yield a
+        # negative triangle contribution (which could drag the aggregate below
+        # the upper-bound cap and pass validation).
+        assert _tris_for_mode(4, -2_100_000) == 0
+        assert _tris_for_mode(4, -1) == 0
+        assert _tris_for_mode(None, -9) == 0  # None default == TRIANGLES
+
 
 class TestComputeGlbGeometryStats:
     def test_triangles_via_index_accessor(self):
@@ -92,3 +100,23 @@ class TestComputeGlbGeometryStats:
         assert stats["triangle_count"] == 0
         assert stats["bounds_found"] is False
         assert stats["mins"] == [math.inf, math.inf, math.inf]
+
+    def test_negative_count_single_primitive_clamped(self):
+        # H1: a single primitive with a crafted negative count contributes 0,
+        # never a negative triangle_count.
+        gltf = _gltf([_acc(-2_100_000)], [[_prim(pos=None, indices=0, mode=4)]])
+        stats = compute_glb_geometry_stats(gltf)
+        assert stats["triangle_count"] == 0
+
+    def test_negative_count_cannot_offset_oversized_primitive(self):
+        # H1 exact scenario: primitive A (+666_666) and primitive B (-700_000)
+        # must NOT sum to a negative aggregate that slips under the cap.
+        accessors = [_acc(2_000_000), _acc(-2_100_000)]
+        gltf = _gltf(
+            accessors,
+            [[_prim(pos=None, indices=0, mode=4)], [_prim(pos=None, indices=1, mode=4)]],
+        )
+        stats = compute_glb_geometry_stats(gltf)
+        assert stats["triangle_count"] >= 0
+        # A clamps to 666_666; B clamps to 0.
+        assert stats["triangle_count"] == 2_000_000 // 3

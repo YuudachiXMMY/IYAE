@@ -1,12 +1,14 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { api, ApiError } from "../api";
+import { api, avatar, ApiError } from "../api";
+import type { AvatarStatus } from "../api";
 
-export interface AvatarStatus {
-  status: "NONE" | "PENDING" | "RUNNING" | "READY" | "FAILED";
-  glbUrl: string | null;
-  errorMessage: string | null;
-  retryCount: number;
+// Re-exported so existing `import { AvatarStatus } from ".../useAvatarStatus"`
+// call sites keep working; the canonical definition lives in `lib/api.ts`.
+export type { AvatarStatus };
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
 }
 
 export function useAvatarStatus() {
@@ -14,28 +16,45 @@ export function useAvatarStatus() {
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchStatus = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const data = await api.get<AvatarStatus>("/api/avatar/status");
-      setStatus(data);
-    } catch {
-      setStatus(null);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+  const fetchStatus = useCallback(
+    async (opts: { silent?: boolean; signal?: AbortSignal } = {}) => {
+      const { silent = false, signal } = opts;
+      if (!silent) setLoading(true);
+      try {
+        const data = await avatar.getStatus(signal);
+        setStatus(data);
+      } catch (err) {
+        // A resolve-after-unmount abort must not clobber state (or flip to null).
+        if (isAbortError(err)) return;
+        setStatus(null);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    []
+  );
 
-  // Initial fetch on mount
+  // Initial fetch on mount — aborted on unmount so a late resolve can't setState
+  // on an unmounted component (M6: refresh is now public API).
   useEffect(() => {
-    fetchStatus();
+    const controller = new AbortController();
+    fetchStatus({ signal: controller.signal });
+    return () => controller.abort();
   }, [fetchStatus]);
 
-  // Poll every 5 seconds while avatar generation is in progress (silent to avoid UI flicker)
+  // Poll every 5 seconds while avatar generation is in progress (silent to avoid
+  // UI flicker). Its own controller so it aborts independently of the mount fetch.
   useEffect(() => {
     if (status?.status === "PENDING" || status?.status === "RUNNING") {
-      const interval = setInterval(() => fetchStatus(true), 5000);
-      return () => clearInterval(interval);
+      const controller = new AbortController();
+      const interval = setInterval(
+        () => fetchStatus({ silent: true, signal: controller.signal }),
+        5000
+      );
+      return () => {
+        clearInterval(interval);
+        controller.abort();
+      };
     }
   }, [fetchStatus, status?.status]);
 

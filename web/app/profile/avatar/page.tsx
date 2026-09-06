@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useAvatarStatus } from "@/lib/hooks/useAvatarStatus";
-import { api, avatar } from "@/lib/api";
+import { api, avatar, ApiError } from "@/lib/api";
 import { toast } from "sonner";
 
 const DEFAULT_AVATAR_URL = "/models/default-avatar.glb";
@@ -226,8 +226,10 @@ export default function AvatarPage() {
       setConfirmingDelete(false);
       setProfile(null);
       refresh();
-    } catch {
-      toast.error("Failed to delete body data");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to delete body data"
+      );
     } finally {
       setDeletingData(false);
     }

@@ -102,6 +102,26 @@ class SizeRecommendationServiceTest {
     }
 
     @Test
+    void recommend_unrecognizedCategory_returnsNoneNotTopSize() {
+        // L1: accessory/bag/jewelry have no meaningful self-reported size, so the
+        // recommendation must be NONE rather than a misleading top-size suggestion.
+        Product product = product("accessory", "[\"S\",\"M\",\"L\"]", null);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user)
+                .topSize("M")
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isNull();
+        assertThat(result.basis()).isEqualTo("NONE");
+    }
+
+    @Test
     void recommend_categoryMapping_dressUsesDressSize() {
         Product product = product("dresses", "[\"6\",\"8\",\"10\"]", null);
         BodyProfile profile = BodyProfile.builder()
