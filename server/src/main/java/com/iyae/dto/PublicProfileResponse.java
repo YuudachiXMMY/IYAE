@@ -8,6 +8,8 @@ import java.util.Collections;
 import java.util.List;
 
 public record PublicProfileResponse(
+    // Phase 6: numeric id lets the web fetch real follower counts + this user's posts (id-keyed APIs)
+    Long id,
     String username,
     String name,
     boolean isDesigner,
@@ -20,6 +22,7 @@ public record PublicProfileResponse(
 
     public static PublicProfileResponse from(User user) {
         return new PublicProfileResponse(
+            user.getId(),
             user.getUsername(),
             user.getName(),
             user.getRole() != null && "DESIGNER".equals(user.getRole().name()),
