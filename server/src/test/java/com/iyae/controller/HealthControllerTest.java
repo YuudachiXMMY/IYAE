@@ -2,6 +2,7 @@ package com.iyae.controller;
 
 import com.iyae.ai.AIProviderFactory;
 import com.iyae.config.BrandProperties;
+import com.iyae.config.RateLimitProperties;
 import com.iyae.security.JwtTokenProvider;
 import com.iyae.security.UserDetailsServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,11 @@ class HealthControllerTest {
 
     @MockBean
     BrandProperties brandProperties;
+
+    // RateLimitFilter (a Filter bean) is picked up by @WebMvcTest and needs its
+    // RateLimitProperties; the mock's enabled() defaults to false so the filter passes through.
+    @MockBean
+    RateLimitProperties rateLimitProperties;
 
     @MockBean
     JwtTokenProvider jwtTokenProvider;

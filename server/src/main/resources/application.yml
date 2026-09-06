@@ -43,3 +43,8 @@ app:
     verification-token-ttl: 24h
     password-reset-ttl: 1h
     require-email-verification: true
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    # Comma-separated IPs and/or CIDR ranges whose X-Forwarded-For is trusted.
+    # Empty by default (uses remoteAddr); set to the Nginx/proxy subnet in prod.
+    trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}

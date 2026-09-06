@@ -237,7 +237,7 @@ On first startup (empty database), `DataSeeder` creates:
 | `/api/checkout` | 5 | 60s |
 | `/api/public/avatar/generate` | 3 | 60s |
 
-Returns HTTP 429 with JSON `{"message":"Too many requests. Please try again later."}` when exceeded. Uses `ConcurrentHashMap` with periodic eviction (every 5 minutes). IP resolved from `request.getRemoteAddr()` (production should configure trusted proxy header parsing).
+Returns HTTP 429 with JSON `{"message":"Too many requests. Please try again later."}` when exceeded. Uses `ConcurrentHashMap` with periodic eviction (every 5 minutes). Client IP resolution is trusted-proxy aware: it uses `request.getRemoteAddr()` unless the direct peer matches `app.rate-limit.trusted-proxies` (a comma-separated list of IPs **and/or CIDR ranges**, bound via the `RateLimitProperties` `@ConfigurationProperties("app.rate-limit")` record), in which case it walks `X-Forwarded-For` right-to-left to the first untrusted hop. Configure via `RATE_LIMIT_TRUSTED_PROXIES` (default empty → remoteAddr; prod compose defaults to the Docker bridge `172.16.0.0/12`). The whole filter can be disabled with `app.rate-limit.enabled=false` (`RATE_LIMIT_ENABLED`). Also includes `POST /api/auth/resend-verification` at 3/60s. `RateLimitFilter` is still in-memory per-instance — behind multiple instances, use an external limiter.
 
 ## Email Verification & Password Reset
 
