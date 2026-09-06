@@ -50,6 +50,9 @@ public class Product {
     @Column(name = "sizes", columnDefinition = "json")
     private String sizes;
 
+    @Column(name = "size_chart", columnDefinition = "json")
+    private String sizeChart;
+
     @Column(name = "media", columnDefinition = "json")
     private String media;
 

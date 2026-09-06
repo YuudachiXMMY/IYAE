@@ -1,3 +1,5 @@
+import type { AvatarStatus } from "./hooks/useAvatarStatus";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 let isRedirecting = false;
@@ -134,11 +136,37 @@ export interface AvatarResponse {
   status: string;
 }
 
+// Re-export AvatarStatus so `@/lib/api` is the single source for API types.
+// The canonical shape is defined in `lib/hooks/useAvatarStatus.ts` (which already
+// depends on this module at runtime, so this type-only import creates no cycle).
+export type { AvatarStatus };
+
 export const auth = {
   register: (data: RegisterRequest) => api.post<{ token: string; user: UserResponse }>("/api/auth/register", data),
   login: (email: string, password: string) => api.post<{ token: string; user: UserResponse }>("/api/auth/login", { email, password }),
   me: () => api.get<UserResponse>("/api/auth/me"),
   updateProfile: (data: UpdateProfileRequest) => api.put<UserResponse>("/api/auth/me", data),
+};
+
+export const avatar = {
+  getStatus: (signal?: AbortSignal) => api.get<AvatarStatus>("/api/avatar/status", { signal }),
+  generate: () => api.post<AvatarStatus>("/api/avatar/generate"),
+  getAvatar: (signal?: AbortSignal) => api.get<AvatarResponse>("/api/avatar", { signal }),
+  delete: () => api.delete<void>("/api/avatar"),
+};
+
+// ── Size recommendation ─────────────────────────────────────────────────────────
+
+export interface SizeRecommendationResponse {
+  recommendedSize: string | null;
+  basis: "MEASUREMENT_CHART" | "SELF_REPORTED" | "NONE";
+  confidence: number;
+  availableSizes: string[];
+}
+
+export const sizing = {
+  getRecommendedSize: (productId: number, signal?: AbortSignal) =>
+    api.get<SizeRecommendationResponse>(`/api/products/${productId}/recommended-size`, { signal }),
 };
 
 export interface RiggingStatusResponse {

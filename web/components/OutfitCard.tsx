@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { api, ApiError, type OutfitResponse, type SlotName } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 
 // AvatarViewer is a heavy client-only 3D component — dynamic import with ssr:false,
 // mounted only when the user expands "Try on my avatar", to keep chat TTI low.
@@ -154,13 +155,21 @@ export function OutfitCard({ outfit, outfitId, avatarUrl }: OutfitCardProps) {
           </Button>
           {showAvatar && (
             <div className="mt-2 h-72 w-full overflow-hidden rounded-xl bg-muted">
-              <AvatarViewer
-                avatarUrl={avatarUrl ?? undefined}
-                garmentUrls={staticGlbUrls}
-                glbUrls={allGlbUrls}
-                riggedGarmentUrls={riggedGlbUrls.length > 0 ? riggedGlbUrls : undefined}
-                riggedGarmentSlots={riggedGlbSlots.length > 0 ? riggedGlbSlots : undefined}
-              />
+              <ViewerErrorBoundary
+                fallback={
+                  <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground italic">
+                    3D preview unavailable
+                  </div>
+                }
+              >
+                <AvatarViewer
+                  avatarUrl={avatarUrl ?? undefined}
+                  garmentUrls={staticGlbUrls}
+                  glbUrls={allGlbUrls}
+                  riggedGarmentUrls={riggedGlbUrls.length > 0 ? riggedGlbUrls : undefined}
+                  riggedGarmentSlots={riggedGlbSlots.length > 0 ? riggedGlbSlots : undefined}
+                />
+              </ViewerErrorBoundary>
             </div>
           )}
         </div>

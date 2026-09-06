@@ -41,6 +41,48 @@ class RateLimitFilterTest {
         assertThat(chain.getRequest()).isNotNull();
     }
 
+    // L1: recommended-size endpoint is rate-limited (30/60s).
+    @Test
+    void recommendedSizeEndpoint_blocksAfterLimit() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 30; i++) {
+            MockHttpServletRequest req =
+                    makeRequest("GET", "/api/products/1/recommended-size", "10.1.0.1");
+            invokeFilter(filter, req, new MockHttpServletResponse(), new MockFilterChain());
+        }
+        MockHttpServletRequest req =
+                makeRequest("GET", "/api/products/1/recommended-size", "10.1.0.1");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        invokeFilter(filter, req, res, new MockFilterChain());
+        assertThat(res.getStatus()).isEqualTo(429);
+    }
+
+    // L1: plain catalog/detail GETs must NOT be throttled by the recommended-size rule.
+    @Test
+    void productCatalogGet_notThrottledByRecommendedSizeRule() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 40; i++) {
+            MockHttpServletRequest req = makeRequest("GET", "/api/products/1", "10.1.0.2");
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            invokeFilter(filter, req, res, new MockFilterChain());
+            assertThat(res.getStatus()).isNotEqualTo(429);
+        }
+    }
+
+    // L1: DELETE /api/avatar is rate-limited (10/60s).
+    @Test
+    void deleteAvatarEndpoint_blocksAfterLimit() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 10; i++) {
+            MockHttpServletRequest req = makeRequest("DELETE", "/api/avatar", "10.1.0.3");
+            invokeFilter(filter, req, new MockHttpServletResponse(), new MockFilterChain());
+        }
+        MockHttpServletRequest req = makeRequest("DELETE", "/api/avatar", "10.1.0.3");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        invokeFilter(filter, req, res, new MockFilterChain());
+        assertThat(res.getStatus()).isEqualTo(429);
+    }
+
     @Test
     void loginEndpoint_allowsUpToLimit() throws Exception {
         RateLimitFilter filter = createFilter("");

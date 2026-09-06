@@ -26,6 +26,8 @@ interface SmartARViewerProps {
   usdzAssetUrl?: string;
   riggedGlbUrl?: string;
   riggedUsdzUrl?: string;
+  /** 2D product still shown while the desktop 3D viewer streams GLBs in. */
+  previewImageUrl?: string;
 }
 
 export function SmartARViewer({
@@ -35,6 +37,7 @@ export function SmartARViewer({
   usdzAssetUrl,
   riggedGlbUrl,
   riggedUsdzUrl,
+  previewImageUrl,
 }: SmartARViewerProps) {
   const { webxr, arQuickLook, sceneViewer, loading } = useARSupport();
 
@@ -78,6 +81,7 @@ export function SmartARViewer({
     <AvatarViewer
       glbUrls={effectiveGlbUrls}
       riggedGarmentUrls={riggedGlbUrl ? [riggedGlbUrl] : undefined}
+      previewImageUrl={previewImageUrl}
     />
   );
 }

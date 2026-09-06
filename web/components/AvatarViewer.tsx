@@ -33,6 +33,29 @@ function Loader() {
   );
 }
 
+/**
+ * Suspense fallback that shows an instant 2D product still while the rigged
+ * avatar/garment GLBs stream in. Renders inside the R3F <Canvas>, so it MUST be
+ * a drei <Html> (a raw <img> at this position breaks reconciliation). Falls back
+ * to the progress spinner when no preview image is available.
+ */
+function PreviewFallback({ previewImageUrl }: { previewImageUrl?: string }) {
+  if (!previewImageUrl) return <Loader />;
+  return (
+    <Html center>
+      <div className="flex flex-col items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={previewImageUrl}
+          className="max-h-[60vh] object-contain opacity-80"
+          alt=""
+        />
+        <p className="text-xs text-muted-foreground">Loading your fit...</p>
+      </div>
+    </Html>
+  );
+}
+
 interface GarmentModelProps {
   url: string;
 }
@@ -157,6 +180,8 @@ interface AvatarViewerProps {
   riggedGarmentUrls?: string[];
   /** Slot names corresponding 1:1 to riggedGarmentUrls (e.g., ["top", "bottom"]) */
   riggedGarmentSlots?: string[];
+  /** Optional 2D product still shown as the Suspense fallback while GLBs stream in. */
+  previewImageUrl?: string;
 }
 
 export default function AvatarViewer({
@@ -165,6 +190,7 @@ export default function AvatarViewer({
   glbUrls,
   riggedGarmentUrls,
   riggedGarmentSlots,
+  previewImageUrl,
 }: AvatarViewerProps) {
   const hasRigged = Boolean(riggedGarmentUrls?.length);
 
@@ -220,7 +246,7 @@ export default function AvatarViewer({
         <ambientLight intensity={0.6} />
         <directionalLight position={[4, 6, 4]} intensity={1.2} />
         <directionalLight position={[-4, 2, -4]} intensity={0.4} />
-        <Suspense fallback={<Loader />}>
+        <Suspense fallback={<PreviewFallback previewImageUrl={previewImageUrl} />}>
           <Bounds fit clip observe margin={1.2}>
             {avatarUrl ? (
               <AvatarModel url={avatarUrl} poseId={activePoseId}>

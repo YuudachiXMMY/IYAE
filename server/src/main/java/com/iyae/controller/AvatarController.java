@@ -32,4 +32,10 @@ public class AvatarController {
         AvatarResponse response = avatarService.getAvatar(auth.getName());
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAvatarData(Authentication auth) {
+        avatarService.deleteAvatarData(auth.getName());
+        return ResponseEntity.noContent().build();
+    }
 }

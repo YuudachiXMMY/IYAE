@@ -35,6 +35,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
                     "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
+                // Must precede the public /api/products/** rule (Spring Security matches first-match)
+                .requestMatchers(HttpMethod.GET, "/api/products/*/recommended-size").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/promotions/featured").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/users/profile/**").permitAll()
