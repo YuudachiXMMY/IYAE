@@ -27,28 +27,28 @@ The edit page loads via `GET /api/designer/products` → `ProductService.getDesi
 
 ### MEDIUM
 
-**M2 — Admin `ARCHIVED` moderation is reversible by the owning designer via `PUT /api/designer/products/{id}`.**
+**M2 — Admin `ARCHIVED` moderation is reversible by the owning designer via `PUT /api/designer/products/{id}`.** ✅ **FIXED in branch `fix/pr10-h1-l6-measurements`**
 `server/.../service/ProductService.java:176-177` (updateProduct status handling); interacts with `AdminModerationService.setProductStatus` (`AdminModerationService.java:53-62`).
 The PR's only mechanism for admin catalog hiding is forcing `ProductStatus=ARCHIVED`. But `ProductStatus` is a designer-writable field on `UpdateProductRequest`, and `updateProduct` applies it after only an ownership check (no distinction between a self-imposed archive and an admin-imposed one, no moderation-lock flag). So the content owner can instantly override any admin decision.
 *Failure scenario:* admin `PUT /api/admin/products/5/status {"status":"ARCHIVED"}` hides product 5; the owning designer `PUT /api/designer/products/5 {"status":"PUBLISHED"}` and the policy-violating listing immediately reappears in the public catalog. (Post moderation is safe by contrast — owners have no path back to `ACTIVE`.)
-*Fix (not in this branch):* make admin moderation durable — add a `moderation_locked`/`admin_hidden` column set by `AdminModerationService` and refuse designer transitions out of `ARCHIVED` while set, or use a dedicated moderation status separate from the designer-controlled lifecycle status.
+*Fix applied:* added a server-internal `products.moderation_locked` flag (V12 migration + `Product.moderationLocked`). `AdminModerationService.setProductStatus` sets it on an admin `ARCHIVED` and clears it on any un-hide (`PUBLISHED`/`DRAFT`); `ProductService.updateProduct` throws `AccessDeniedException` (403) when the owning designer attempts a status transition *out of* a locked product, while all non-status edits (name/price/media/measurements) still pass and a same-status no-op is allowed. The flag stays server-internal (`ProductResponse` and its call sites unchanged). Tests: `ProductServiceTest.updateProduct_moderationLocked_rejectsStatusChangeOutOfArchived` / `_allowsNonStatusEdit` / `updateProduct_notLocked_allowsSelfArchive`; `AdminModerationServiceTest.setProductStatus_archived_setsModerationLocked` / `_published_clearsModerationLocked`.
 
-**M3 — Catalog filter tests stub `findAll(any(Specification))`, so `ProductSpecifications` predicate logic (incl. `localOnly`) is never exercised.**
+**M3 — Catalog filter tests stub `findAll(any(Specification))`, so `ProductSpecifications` predicate logic (incl. `localOnly`) is never exercised.** ✅ **FIXED in branch `fix/pr10-h1-l6-measurements`**
 `server/src/test/java/com/iyae/service/ProductServiceTest.java:170-234`.
 When the four named catalog queries were replaced by `ProductSpecifications.catalog(...)`, every catalog test was re-pointed to `findAll(any(Specification.class), ...)`. Because the Specification is matched with `any()` and the mock returns a fixed page, the predicate builder never runs; assertions merely reflect the stubbed product. `ProductSpecifications.java` (incl. the new `designerProfile` join for `isLocal`) has zero executing coverage.
 *Failure scenario:* mutate the `localOnly` branch (e.g. drop `cb.isTrue(designer.get("isLocal"))`) — every catalog test still passes, so non-local products can leak into the "Local Designers" filter with no failing server test.
-*Fix:* add a `@DataJpaTest` persisting local and non-local designers+products and assert `catalog(PUBLISHED, null, null, true)` returns only local ones (+ category/`q` cases), or capture the `Specification` and assert the predicate tree.
+*Fix applied:* added `server/src/test/java/com/iyae/repository/ProductSpecificationsDataJpaTest.java` (`@DataJpaTest`) that persists local + non-local designers/products and runs the real predicate: `localOnly=true` returns only the local product (kills a dropped `cb.isTrue(designer.get("isLocal"))`), `localOnly=false` returns both, plus status, case-insensitive category, and `q` (matching name-only and description-only) cases. The slice is scoped via `@EnableJpaRepositories` to only `ProductRepository` to avoid eagerly validating an unrelated, pre-existing broken query (`PasswordResetTokenRepository.consumeToken`, `CURRENT_TIMESTAMP`→`Instant`) that Hibernate 6.6 rejects. (Added `com.h2database:h2` as a `testRuntimeOnly` dependency — the configured H2 test datasource was not previously on the classpath.)
 
-**M4 — `replaceMeasurements` write path and `getProductById` recommendation/measurement enrichment have no service-level test coverage.**
+**M4 — `replaceMeasurements` write path and `getProductById` recommendation/measurement enrichment have no service-level test coverage.** ✅ **FIXED in branch `fix/pr10-h1-l6-measurements`**
 `server/.../service/ProductService.java:201-230`.
 `createProduct` tests pass `measurements=null` (early-return branch) and there was no `updateProduct` test at all, so the write path was uncovered: unknown-size-label rejection (400), all-null-dims skip, and delete→flush→insert ordering. `getProductById` was changed to enrich `recommendedSize`/`measurements` yet no test stubbed `findByProductId`/`recommendForBuyer` or asserted those fields.
-*Note:* the fix branch adds `updateProduct` measurement tests (H1/L6), partially closing this; the create-with-valid-measurements, unknown-label-400, and `getProductById` enrichment assertions remain to be added.
+*Fix applied:* on top of the H1/L6 `updateProduct` measurement tests, `ProductServiceTest` now adds `createProduct_withMeasurements_persistsRows` (asserts the delete→flush→insert write path and the persisted row's label/chest), `createProduct_unknownSizeLabel_throws400` (label ∉ product sizes → `IllegalArgumentException` "not one of the product sizes"), and `getProductById_enrichesRecommendationAndMeasurements` (stubs `findByProductId`/`recommendForBuyer` and asserts `recommendedSize` + `measurements`).
 
-**M5 — `SizeRecommendationService` asymmetric tight-penalty and tie-break-to-smaller are unpinned by any distinguishing test.**
+**M5 — `SizeRecommendationService` asymmetric tight-penalty and tie-break-to-smaller are unpinned by any distinguishing test.** ✅ **FIXED in branch `fix/pr10-h1-l6-measurements`**
 `server/src/test/java/com/iyae/service/SizeRecommendationServiceTest.java:54-63`.
 The recommender's whole point is the asymmetric penalty (`TIGHT_WEIGHT=2.0` penalizes too-tight twice as hard). But `pickBestFit_betweenSizes` picks the same winner under symmetric and asymmetric weighting, and the other tests have unique zero-penalty winners.
 *Failure scenario:* mutate `TIGHT_WEIGHT` 2.0→1.0 — all tests still pass, and the recommender silently starts preferring too-tight garments.
-*Fix:* add a test where the 2.0 tight weight flips the answer to the looser size, plus a genuine score-tie test asserting the smaller size is returned.
+*Fix applied:* added `SizeRecommendationServiceTest.pickBestFit_tightWeightFlipsToLooserSize` — body chest 90 with candidates 86 (tight, −4) and 96 (loose, +6): under the 2.0 tight weight the looser 96 wins (6 < 8) but under symmetric weighting the tighter 86 would win (4 < 6), so asserting the looser size kills the `TIGHT_WEIGHT` 2.0→1.0 mutant — plus `pickBestFit_scoreTie_returnsSmallerSize` (two equal-score sizes resolve to the smaller magnitude, killing a reversed ascending sort).
 
 ### LOW
 
@@ -58,11 +58,11 @@ The recommender's whole point is the asymmetric penalty (`TIGHT_WEIGHT=2.0` pena
 *Failure scenario:* product with sizes `[S,M,L]` + measurements; a later API `PUT` sends `sizes=[S,M]` and omits measurements → the `L` row persists → a buyer matching `L` gets `recommendedSize=L`, which `SizeSelector` (S/M only) can't render but is carried into cart-add.
 *Fix applied:* the `measurements==null` branch of `replaceMeasurements` now prunes rows whose `sizeLabel` is no longer in the product's declared sizes (conservative: skips pruning when sizes are absent/unparseable to avoid wiping on a JSON parse hiccup). Regression tests: `updateProduct_shrinkSizesOmitMeasurements_prunesOrphanMeasurements` and `updateProduct_priceOnlyOmitMeasurements_keepsAllMeasurements`.
 
-**L7 — Admin posts/promotions moderation endpoints lack controller tests; `AdminModerationServiceTest` omits `listPostsForModeration` and `setPromotionSlot` not-found.**
+**L7 — Admin posts/promotions moderation endpoints lack controller tests; `AdminModerationServiceTest` omits `listPostsForModeration` and `setPromotionSlot` not-found.** ✅ **FIXED in branch `fix/pr10-h1-l6-measurements`**
 `server/src/test/java/com/iyae/controller/AdminControllerTest.java:1-102`.
 `AdminControllerTest` covers only `GET /products` and `PUT /products/{id}/status`. The five other admin endpoints (`GET /posts`, `PUT /posts/{id}/archive`, `PUT /posts/{id}/remove`, `GET /promotions`, `PUT /promotions/{id}/slot`) have no controller-layer test, so their routing, `@Valid` body binding and serialization are unverified.
 *Failure scenario:* rename `PromotionSlotUpdateRequest.slotType()` or change a `@PathVariable` name — build stays green while the endpoint 400s/404s in production, breaking a destructive moderation action.
-*Fix:* add `AdminControllerTest` cases for the posts/promotions endpoints (≥1 admin happy-path + 1 non-admin 403 for a mutating endpoint), plus `AdminModerationServiceTest` for `listPostsForModeration(null)`, `listPostsForModeration(status)`, and `setPromotionSlot` not-found.
+*Fix applied:* `AdminControllerTest` now covers all five endpoints — `GET /posts`, `PUT /posts/{id}/archive`, `PUT /posts/{id}/remove`, `GET /promotions`, `PUT /promotions/{id}/slot` (admin 200) — plus a non-admin (DESIGNER) 403 on the promotion-slot mutation. `AdminModerationServiceTest` adds `listPostsForModeration_nullStatus_returnsAllOrdered`, `listPostsForModeration_withStatus_filters`, and `setPromotionSlot_notFound_throwsIllegalArgumentException`.
 
 ## Fixes applied in this branch (`fix/pr10-h1-l6-measurements`)
 

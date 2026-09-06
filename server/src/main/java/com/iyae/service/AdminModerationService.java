@@ -58,7 +58,12 @@ public class AdminModerationService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
         product.setStatus(status);
-        log.info("Admin forced product {} to status {}", productId, status);
+        // PR#10 M2: an admin ARCHIVE durably locks the listing so the owning designer cannot
+        // silently republish it via the ordinary update path; an admin un-hide (PUBLISHED/DRAFT)
+        // is the explicit release that hands status control back to the designer.
+        product.setModerationLocked(status == ProductStatus.ARCHIVED);
+        log.info("Admin forced product {} to status {} (moderationLocked={})",
+                productId, status, product.isModerationLocked());
         return ProductResponse.from(productRepository.save(product));
     }
 

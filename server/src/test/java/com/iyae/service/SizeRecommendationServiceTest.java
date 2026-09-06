@@ -72,6 +72,34 @@ class SizeRecommendationServiceTest {
         assertThat(SizeRecommendationService.pickBestFit(sizes, body(90.0, 76.0, 96.0))).isNull();
     }
 
+    @Test
+    void pickBestFit_tightWeightFlipsToLooserSize() {
+        // PR#10 M5: asymmetric weighting (TIGHT_WEIGHT=2.0) must penalize a too-tight garment
+        // more than an equally-off loose one. Body chest 90; only chest is comparable.
+        //   A chest 86 (tight, diff -4)  -> asymmetric 4*2.0 = 8 ; symmetric 4*1.0 = 4
+        //   B chest 96 (loose, diff +6)  -> 6*1.0 = 6 in both weightings
+        // Asymmetric picks the looser B (6 < 8); symmetric would pick the tighter A (4 < 6).
+        // Asserting "B" kills the TIGHT_WEIGHT 2.0 -> 1.0 mutant.
+        List<ProductSizeMeasurement> sizes = List.of(
+                size("A", 86.0, null, null),
+                size("B", 96.0, null, null));
+
+        assertThat(SizeRecommendationService.pickBestFit(sizes, body(90.0, null, null))).isEqualTo("B");
+    }
+
+    @Test
+    void pickBestFit_scoreTie_returnsSmallerSize() {
+        // PR#10 M5: two sizes with identical fit score must resolve to the smaller size (lower
+        // total declared magnitude), per the documented ascending tie-break. Both carry chest 95
+        // (score 5 vs body 90); "L" adds a waist that the body lacks — it raises the magnitude but
+        // not the score. Asserting "M" kills a reversed-sort mutant (which would return "L").
+        List<ProductSizeMeasurement> sizes = List.of(
+                size("M", 95.0, null, null),
+                size("L", 95.0, 80.0, null));
+
+        assertThat(SizeRecommendationService.pickBestFit(sizes, body(90.0, null, null))).isEqualTo("M");
+    }
+
     // ---- recommendForBuyer (loading path) ----
 
     @Test

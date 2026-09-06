@@ -3,6 +3,7 @@ package com.iyae.service;
 import com.iyae.dto.CreateProductRequest;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.ProductResponse;
+import com.iyae.dto.SizeMeasurementDto;
 import com.iyae.dto.UpdateProductRequest;
 import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.GarmentAsset;
@@ -32,6 +33,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -443,6 +445,72 @@ class ProductServiceTest {
     }
 
     // -------------------------------------------------------------------------
+    // updateProduct — moderation lock (PR#10 M2)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void updateProduct_moderationLocked_rejectsStatusChangeOutOfArchived() {
+        // PR#10 M2: an admin-archived + locked product cannot be republished by the owning designer.
+        publishedProduct.setStatus(ProductStatus.ARCHIVED);
+        publishedProduct.setModerationLocked(true);
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                ProductStatus.PUBLISHED, // attempt to republish
+                null);
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+
+        assertThatThrownBy(() -> productService.updateProduct("designer@example.com", 100L, request))
+                .isInstanceOf(AccessDeniedException.class);
+
+        // Guard throws before any write; status must remain ARCHIVED.
+        verify(productRepository, never()).save(any());
+        assertThat(publishedProduct.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+    }
+
+    @Test
+    void updateProduct_moderationLocked_allowsNonStatusEdit() {
+        // A locked product may still have non-status fields edited (e.g. a price correction).
+        publishedProduct.setStatus(ProductStatus.ARCHIVED);
+        publishedProduct.setModerationLocked(true);
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, new BigDecimal("77.77"), null, null, null, null, null, null, null,
+                null, // status omitted
+                null);
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(Collections.emptyList());
+
+        ProductResponse result = productService.updateProduct("designer@example.com", 100L, request);
+
+        assertThat(result.price()).isEqualByComparingTo(new BigDecimal("77.77"));
+        assertThat(result.status()).isEqualTo(ProductStatus.ARCHIVED);
+        assertThat(publishedProduct.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+    }
+
+    @Test
+    void updateProduct_notLocked_allowsSelfArchive() {
+        // A designer may still self-archive an unlocked product (no regression to normal flow).
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                ProductStatus.ARCHIVED,
+                null);
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(Collections.emptyList());
+
+        ProductResponse result = productService.updateProduct("designer@example.com", 100L, request);
+
+        assertThat(result.status()).isEqualTo(ProductStatus.ARCHIVED);
+        assertThat(publishedProduct.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+    }
+
+    // -------------------------------------------------------------------------
     // createProduct
     // -------------------------------------------------------------------------
 
@@ -522,6 +590,102 @@ class ProductServiceTest {
         ProductResponse result = productService.createProduct("designer@example.com", request);
 
         assertThat(result.currency()).isEqualTo("CAD");
+    }
+
+    // -------------------------------------------------------------------------
+    // createProduct / getProductById — measurement write path + enrichment (PR#10 M4)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void createProduct_withMeasurements_persistsRows() {
+        // PR#10 M4: a create carrying per-size measurements must delete-then-insert the rows.
+        CreateProductRequest request = new CreateProductRequest(
+                "New Top", "desc", new BigDecimal("59.99"), "CAD", "Tops",
+                null, null, List.of("S", "M"), null, null,
+                List.of(new SizeMeasurementDto("M", 90.0, 72.0, 96.0, 60.0)));
+
+        Product savedProduct = Product.builder()
+                .id(200L)
+                .designerProfile(designerProfile)
+                .name("New Top")
+                .description("desc")
+                .price(new BigDecimal("59.99"))
+                .currency("CAD")
+                .category("Tops")
+                .sizes("[\"S\",\"M\"]")
+                .status(ProductStatus.DRAFT)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.save(any(Product.class))).thenReturn(savedProduct);
+
+        productService.createProduct("designer@example.com", request);
+
+        verify(productSizeMeasurementRepository).deleteByProductId(200L);
+        verify(productSizeMeasurementRepository).flush();
+        ArgumentCaptor<ProductSizeMeasurement> captor = ArgumentCaptor.forClass(ProductSizeMeasurement.class);
+        verify(productSizeMeasurementRepository).save(captor.capture());
+        assertThat(captor.getValue().getSizeLabel()).isEqualTo("M");
+        assertThat(captor.getValue().getChestCm()).isEqualTo(90.0);
+    }
+
+    @Test
+    void createProduct_unknownSizeLabel_throws400() {
+        // PR#10 M4: a measurement whose label is not one of the product's declared sizes is rejected.
+        CreateProductRequest request = new CreateProductRequest(
+                "New Top", "desc", new BigDecimal("59.99"), "CAD", "Tops",
+                null, null, List.of("S", "M"), null, null,
+                List.of(new SizeMeasurementDto("XXL", 90.0, null, null, null)));
+
+        Product savedProduct = Product.builder()
+                .id(200L)
+                .designerProfile(designerProfile)
+                .name("New Top")
+                .price(new BigDecimal("59.99"))
+                .currency("CAD")
+                .category("Tops")
+                .sizes("[\"S\",\"M\"]")
+                .status(ProductStatus.DRAFT)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.save(any(Product.class))).thenReturn(savedProduct);
+
+        assertThatThrownBy(() -> productService.createProduct("designer@example.com", request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not one of the product sizes");
+    }
+
+    @Test
+    void getProductById_enrichesRecommendationAndMeasurements() {
+        // PR#10 M4: a published-product detail response carries the buyer's recommendedSize and the
+        // product's declared per-size measurements.
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("M")
+                .chestCm(90.0).waistCm(72.0).hipsCm(96.0).lengthCm(60.0)
+                .build();
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(garmentAssetRepository.findTopByProductIdAndStatusOrderByCreatedAtDesc(100L, "ACTIVE"))
+                .thenReturn(Optional.empty());
+        when(garmentAssetRepository.findTopByProductIdOrderByCreatedAtDesc(100L))
+                .thenReturn(Optional.empty());
+        when(modelGenerationTaskRepository.findByProductIdOrderByCreatedAtDesc(100L))
+                .thenReturn(Collections.emptyList());
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(List.of(mRow));
+        when(sizeRecommendationService.recommendForBuyer(anyList(), eq("buyer@example.com")))
+                .thenReturn("M");
+
+        ProductResponse result = productService.getProductById(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.measurements()).hasSize(1);
+        assertThat(result.measurements().get(0).sizeLabel()).isEqualTo("M");
     }
 
     // -------------------------------------------------------------------------

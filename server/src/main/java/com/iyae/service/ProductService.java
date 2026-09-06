@@ -24,6 +24,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -183,7 +184,14 @@ public class ProductService {
         if (request.glbUrl() != null) {
             product.setGlbUrl(request.glbUrl());
         }
-        if (request.status() != null) {
+        if (request.status() != null && request.status() != product.getStatus()) {
+            // PR#10 M2: once an admin ARCHIVE has locked the listing, the owning designer cannot
+            // transition it out of ARCHIVED (a silent republish). Only an admin un-hide releases
+            // the lock. Non-status edits below are unaffected; a no-op same-status request passes.
+            if (product.isModerationLocked()) {
+                throw new AccessDeniedException(
+                        "This product has been archived by moderation and cannot be changed by the designer.");
+            }
             product.setStatus(request.status());
         }
 

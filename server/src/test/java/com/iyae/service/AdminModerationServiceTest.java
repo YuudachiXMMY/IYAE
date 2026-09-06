@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -144,5 +145,70 @@ class AdminModerationServiceTest {
         List<PromotionResponse> result = service.listPromotions();
 
         assertThat(result).hasSize(1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Community + promotion moderation gaps (PR#10 L7)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void listPostsForModeration_nullStatus_returnsAllOrdered() {
+        User author = User.builder().id(5L).email("author@example.com").name("Author").username("author").build();
+        Post post = Post.builder().id(7L).user(author).content("hi").status(PostStatus.ACTIVE)
+                .createdAt(Instant.now()).build();
+        when(postRepository.findAll(any(Sort.class))).thenReturn(List.of(post));
+
+        List<AdminPostResponse> result = service.listPostsForModeration(null);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).authorUsername()).isEqualTo("author");
+    }
+
+    @Test
+    void listPostsForModeration_withStatus_filters() {
+        when(postRepository.findByStatusOrderByCreatedAtDesc(PostStatus.ARCHIVED)).thenReturn(List.of());
+
+        List<AdminPostResponse> result = service.listPostsForModeration(PostStatus.ARCHIVED);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void setPromotionSlot_notFound_throwsIllegalArgumentException() {
+        when(promotionRepository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setPromotionSlot(404L, SlotType.FEATURED))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Promotion not found");
+    }
+
+    // -------------------------------------------------------------------------
+    // Moderation lock set/clear (PR#10 M2)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void setProductStatus_archived_setsModerationLocked() {
+        Product product = ownedByOther(); // PUBLISHED, unlocked
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.setProductStatus(100L, ProductStatus.ARCHIVED);
+
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+        assertThat(product.isModerationLocked()).isTrue();
+    }
+
+    @Test
+    void setProductStatus_published_clearsModerationLocked() {
+        Product product = ownedByOther();
+        product.setStatus(ProductStatus.ARCHIVED);
+        product.setModerationLocked(true);
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.setProductStatus(100L, ProductStatus.PUBLISHED);
+
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.PUBLISHED);
+        assertThat(product.isModerationLocked()).isFalse();
     }
 }

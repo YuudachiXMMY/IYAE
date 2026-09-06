@@ -1,8 +1,13 @@
 package com.iyae.controller;
 
+import com.iyae.dto.AdminPostResponse;
 import com.iyae.dto.ProductResponse;
 import com.iyae.dto.ProductStatusUpdateRequest;
+import com.iyae.dto.PromotionResponse;
+import com.iyae.dto.PromotionSlotUpdateRequest;
+import com.iyae.entity.enums.PostStatus;
 import com.iyae.entity.enums.ProductStatus;
+import com.iyae.entity.enums.SlotType;
 import com.iyae.service.AdminModerationService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +56,14 @@ class AdminControllerTest {
                 false, null, null, null);
     }
 
+    private AdminPostResponse sampleAdminPost() {
+        return new AdminPostResponse(1L, 1L, "Author", "author", "hi", PostStatus.ACTIVE, Instant.now());
+    }
+
+    private PromotionResponse samplePromotion() {
+        return new PromotionResponse(3L, 5L, SlotType.FEATURED, 10, null, null);
+    }
+
     // ---- Role gating: list ----
 
     @Test
@@ -97,6 +110,69 @@ class AdminControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new ProductStatusUpdateRequest(ProductStatus.ARCHIVED))))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---- Community moderation endpoints (PR#10 L7) ----
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void listPosts_admin_returns200() throws Exception {
+        when(adminModerationService.listPostsForModeration(any())).thenReturn(List.of(sampleAdminPost()));
+
+        mockMvc.perform(get("/api/admin/posts"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void archivePost_admin_returns200() throws Exception {
+        when(adminModerationService.archivePost(eq(7L))).thenReturn(sampleAdminPost());
+
+        mockMvc.perform(put("/api/admin/posts/7/archive").with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void removePost_admin_returns200() throws Exception {
+        when(adminModerationService.removePost(eq(7L))).thenReturn(sampleAdminPost());
+
+        mockMvc.perform(put("/api/admin/posts/7/remove").with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    // ---- Promotion moderation endpoints (PR#10 L7) ----
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void listPromotions_admin_returns200() throws Exception {
+        when(adminModerationService.listPromotions()).thenReturn(List.of(samplePromotion()));
+
+        mockMvc.perform(get("/api/admin/promotions"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void setPromotionSlot_admin_returns200() throws Exception {
+        when(adminModerationService.setPromotionSlot(eq(3L), eq(SlotType.FEATURED)))
+                .thenReturn(samplePromotion());
+
+        mockMvc.perform(put("/api/admin/promotions/3/slot")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PromotionSlotUpdateRequest(SlotType.FEATURED))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "designer@iyae.ca", roles = "DESIGNER")
+    void setPromotionSlot_designer_returns403() throws Exception {
+        mockMvc.perform(put("/api/admin/promotions/3/slot")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PromotionSlotUpdateRequest(SlotType.FEATURED))))
                 .andExpect(status().isForbidden());
     }
 }
