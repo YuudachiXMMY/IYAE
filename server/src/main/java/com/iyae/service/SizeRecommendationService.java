@@ -288,7 +288,10 @@ public class SizeRecommendationService {
         if (cat.contains("top")) {
             return profile.getTopSize();
         }
-        return profile.getTopSize();
+        // Unrecognized categories (accessory/bag/jewelry, etc.) have no meaningful
+        // self-reported size — return null so the caller emits a NONE recommendation
+        // rather than a misleading top-size suggestion (L1).
+        return null;
     }
 
     private List<String> parseStringArray(String json) {
@@ -321,6 +324,10 @@ public class SizeRecommendationService {
             return List.of();
         }
         try {
+            // NOTE (M4): readTree fully materializes the JSON before MAX_CHART_ENTRIES
+            // bounds the loop below. Not attacker-reachable today (no write path/DTO
+            // field for size_chart). TODO(size-chart-authoring): enforce array length
+            // and total size at write time when authoring lands.
             JsonNode root = objectMapper.readTree(json);
             if (!root.isArray()) {
                 return List.of();

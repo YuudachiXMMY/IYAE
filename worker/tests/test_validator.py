@@ -576,3 +576,54 @@ class TestValidateGlbGeometry:
             assert any("out of range" in e for e in result["errors"])
         finally:
             os.unlink(path)
+
+    def test_negative_triangle_count_rejected(self):
+        """H1: a negative aggregate triangle_count must fail closed.
+
+        The shared helper now clamps per-primitive so a negative count can no
+        longer reach here in practice, but validate_glb_geometry keeps an explicit
+        lower-bound guard against any future caller that bypasses the helper. Force
+        the negative aggregate by stubbing the helper directly.
+        """
+        path = _make_valid_glb_file()
+        try:
+            negative_stats = {
+                "triangle_count": -33334,
+                "mins": [math.inf, math.inf, math.inf],
+                "maxs": [-math.inf, -math.inf, -math.inf],
+                "bounds_found": False,
+                "errors": [],
+            }
+            with patch("pygltflib.GLTF2") as MockGLTF2, patch(
+                "glb_geometry.compute_glb_geometry_stats", return_value=negative_stats
+            ):
+                MockGLTF2.load.return_value = MagicMock()
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("is negative" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_geometry_present_without_bounds_fails(self):
+        """M2: geometry present but POSITION min/max omitted must fail closed.
+
+        A provider could otherwise ship a degenerate/oversized garment simply by
+        not populating bounds, silently skipping the bbox range/NaN checks.
+        """
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.5]
+            )
+            # POSITION accessor carries no bounds -> bounds_found stays False while
+            # triangle_count (from the index accessor) is > 0.
+            gltf.accessors[1].min = None
+            gltf.accessors[1].max = None
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("bounds absent" in e for e in result["errors"])
+            assert result["triangle_count"] > 0
+        finally:
+            os.unlink(path)

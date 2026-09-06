@@ -4,6 +4,8 @@ import time
 import logging
 import requests
 
+from providers.meshy_generator import stream_to_file_capped
+
 logger = logging.getLogger(__name__)
 
 TRIPO_API_BASE = "https://api.tripo3d.ai/v2"
@@ -66,10 +68,9 @@ class TripoGenerator:
 
         glb_url = data["output"]["model"]
         glb_path = os.path.join(output_dir, "preview.glb")
-        glb_resp = requests.get(glb_url, timeout=60)
+        glb_resp = requests.get(glb_url, timeout=60, stream=True)
         glb_resp.raise_for_status()
-        with open(glb_path, "wb") as f:
-            f.write(glb_resp.content)
+        stream_to_file_capped(glb_resp, glb_path, glb_url)
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 

@@ -39,6 +39,50 @@ def _enforce_download_cap(resp, url: str, max_bytes: int = MAX_DOWNLOAD_BYTES) -
         raise RuntimeError(f"Download exceeds {max_bytes}-byte cap: {url}")
 
 
+def _check_declared_length(resp, url: str, max_bytes: int) -> None:
+    """Raise if the ``Content-Length`` header already declares an oversized body."""
+    headers = getattr(resp, "headers", None)
+    declared = headers.get("Content-Length") if headers is not None else None
+    if declared is not None:
+        try:
+            if int(declared) > max_bytes:
+                raise RuntimeError(
+                    f"Download exceeds {max_bytes}-byte cap "
+                    f"(Content-Length {declared}): {url}"
+                )
+        except (ValueError, TypeError):
+            pass
+
+
+def stream_to_file_capped(
+    resp, dest_path: str, url: str, max_bytes: int = MAX_DOWNLOAD_BYTES
+) -> None:
+    """Stream a response body to ``dest_path`` while enforcing a byte cap.
+
+    Unlike :func:`_enforce_download_cap` (which only sees an already-buffered
+    ``resp.content``), this consumes ``resp.iter_content`` incrementally so a
+    chunked or lying-``Content-Length`` body is aborted mid-stream before it can
+    exhaust memory. Callers must request the response with ``stream=True``. The
+    partially-written file is removed on cap breach so no truncated GLB is left
+    behind for the geometry validator to choke on.
+    """
+    _check_declared_length(resp, url, max_bytes)
+    total = 0
+    with open(dest_path, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=1 << 20):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_bytes:
+                f.close()
+                try:
+                    os.remove(dest_path)
+                except OSError:
+                    pass
+                raise RuntimeError(f"Download exceeds {max_bytes}-byte cap: {url}")
+            f.write(chunk)
+
+
 def _compute_glb_metadata(glb_path: str) -> dict:
     """Compute real geometry metadata (triangle_count, bbox, has_nan) from a GLB.
 
@@ -204,11 +248,9 @@ class MeshyGenerator:
         # Download GLB
         glb_url = data["model_urls"]["glb"]
         glb_path = os.path.join(output_dir, "preview.glb")
-        glb_resp = requests.get(glb_url, timeout=60)
+        glb_resp = requests.get(glb_url, timeout=60, stream=True)
         glb_resp.raise_for_status()
-        _enforce_download_cap(glb_resp, glb_url)
-        with open(glb_path, "wb") as f:
-            f.write(glb_resp.content)
+        stream_to_file_capped(glb_resp, glb_path, glb_url)
 
         # Download USDZ (Meshy supports USDZ unlike Tripo3D)
         usdz_path_str = None
@@ -216,11 +258,9 @@ class MeshyGenerator:
         usdz_url = data["model_urls"].get("usdz")
         if usdz_url:
             usdz_local_path = os.path.join(output_dir, "preview.usdz")
-            usdz_resp = requests.get(usdz_url, timeout=60)
+            usdz_resp = requests.get(usdz_url, timeout=60, stream=True)
             usdz_resp.raise_for_status()
-            _enforce_download_cap(usdz_resp, usdz_url)
-            with open(usdz_local_path, "wb") as f:
-                f.write(usdz_resp.content)
+            stream_to_file_capped(usdz_resp, usdz_local_path, usdz_url)
             usdz_path_str = f"products/{product_id}/tasks/{task_id}/preview.usdz"
             usdz_url_str = f"/assets/products/{product_id}/tasks/{task_id}/preview.usdz"
 

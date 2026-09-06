@@ -173,8 +173,12 @@ export default function ProductDetailPage({
       .getRecommendedSize(product.id, controller.signal)
       .then((rec) => {
         setSizeRec(rec);
-        if (rec.recommendedSize) {
-          const size = rec.recommendedSize;
+        // Only pre-select a recommendation that is actually stocked. Guarding on
+        // product.sizes (the exact array SizeSelector renders, case-sensitive)
+        // prevents an unstocked/mis-cased size from leaving the selector blank
+        // while Add-to-Cart stays enabled (M5).
+        const size = rec.recommendedSize;
+        if (size && product.sizes?.includes(size)) {
           setSelectedSize((prev) => prev ?? size);
         }
       })

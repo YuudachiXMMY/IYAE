@@ -163,6 +163,13 @@ def validate_glb_geometry(file_path: str) -> dict:
             f"triangle_count {triangle_count} exceeds limit of {MAX_TRIANGLE_COUNT}"
         )
 
+    # A negative aggregate can only arise from a provider-declared negative
+    # accessor ``count`` (the shared helper now clamps per-primitive, so this is
+    # belt-and-suspenders against any future caller that bypasses it). Fail closed
+    # -- an upper-bound-only cap would otherwise pass a negative total.
+    if triangle_count < 0:
+        result["errors"].append(f"triangle_count {triangle_count} is negative")
+
     if stats["bounds_found"]:
         mins, maxs = stats["mins"], stats["maxs"]
         result["bbox"] = {"min": mins, "max": maxs}
@@ -182,6 +189,15 @@ def validate_glb_geometry(file_path: str) -> dict:
                 result["errors"].append(
                     f"bbox dimension on axis {axis} is {dim:.4f}m, above maximum {BBOX_MAX_DIM}m"
                 )
+    elif triangle_count > 0:
+        # Geometry is present but no POSITION accessor carried min/max bounds, so
+        # the bbox range/NaN checks above were skipped entirely. Fail closed: a
+        # provider could otherwise ship a degenerate/oversized garment simply by
+        # omitting bounds. An empty scene (triangle_count == 0, e.g. the stub GLB)
+        # legitimately has no bounds and still passes.
+        result["errors"].append(
+            "geometry present but POSITION min/max bounds absent -- cannot validate bbox"
+        )
 
     result["valid"] = len(result["errors"]) == 0
     return result

@@ -10,6 +10,20 @@ from providers.meshy_generator import (
 )
 
 
+def _streaming_download_mock(content: bytes):
+    """A mock download response matching the streaming contract (stream=True).
+
+    Provides ``headers`` (empty -> no Content-Length short-circuit) and an
+    ``iter_content`` that yields the body as a single chunk, so the file written
+    by ``stream_to_file_capped`` equals ``content``.
+    """
+    m = MagicMock()
+    m.headers = {}
+    m.content = content
+    m.iter_content = lambda chunk_size=1 << 20: iter([content])
+    return m
+
+
 def _real_box_glb_bytes(extents=(0.4, 1.0, 0.3)):
     """Build a real, parseable box GLB and return ``(glb_bytes, trimesh_box)``.
 
@@ -117,13 +131,9 @@ class TestMeshyGeneratorGenerate:
             if "image-to-3d" in url:
                 return status_mock
             elif url.endswith(".glb"):
-                m = MagicMock()
-                m.content = glb_content
-                return m
+                return _streaming_download_mock(glb_content)
             else:
-                m = MagicMock()
-                m.content = usdz_content
-                return m
+                return _streaming_download_mock(usdz_content)
 
         mock_get.side_effect = get_side_effect
 
@@ -146,13 +156,9 @@ class TestMeshyGeneratorGenerate:
             if "image-to-3d" in url:
                 return status_mock
             elif url.endswith(".glb"):
-                m = MagicMock()
-                m.content = b"glTF" + b"\x00" * 8
-                return m
+                return _streaming_download_mock(b"glTF" + b"\x00" * 8)
             else:
-                m = MagicMock()
-                m.content = usdz_content
-                return m
+                return _streaming_download_mock(usdz_content)
 
         mock_get.side_effect = get_side_effect
 
@@ -173,9 +179,7 @@ class TestMeshyGeneratorGenerate:
         def get_side_effect(url, **kwargs):
             if "image-to-3d" in url:
                 return status_mock
-            m = MagicMock()
-            m.content = b"data"
-            return m
+            return _streaming_download_mock(b"data")
 
         mock_get.side_effect = get_side_effect
 
@@ -199,9 +203,7 @@ class TestMeshyGeneratorGenerate:
         def get_side_effect(url, **kwargs):
             if "image-to-3d" in url:
                 return status_mock
-            m = MagicMock()
-            m.content = b"data"
-            return m
+            return _streaming_download_mock(b"data")
 
         mock_get.side_effect = get_side_effect
 
@@ -297,9 +299,7 @@ class TestMeshyGeneratorPayload:
             def get_side_effect(url, **kwargs):
                 if "image-to-3d" in url:
                     return status_mock
-                m = MagicMock()
-                m.content = b"data"
-                return m
+                return _streaming_download_mock(b"data")
 
             mock_get.side_effect = get_side_effect
 
@@ -356,9 +356,9 @@ class TestMeshyGeneratorPayload:
             def get_side_effect(url, **kwargs):
                 if "image-to-3d" in url:
                     return status_mock
-                m = MagicMock()
-                m.content = glb_bytes if url.endswith(".glb") else b"usdz-stub"
-                return m
+                return _streaming_download_mock(
+                    glb_bytes if url.endswith(".glb") else b"usdz-stub"
+                )
 
             mock_get.side_effect = get_side_effect
 
@@ -428,3 +428,45 @@ class TestDownloadCap:
 
     def test_default_cap_is_100mb(self):
         assert MAX_DOWNLOAD_BYTES == 100 * 1024 * 1024
+
+
+class TestStreamingDownloadCap:
+    """M1/M3: streaming cap aborts mid-body, before the whole response is buffered."""
+
+    def test_streaming_body_over_cap_raises_and_removes_partial(self, tmp_path):
+        from providers.meshy_generator import stream_to_file_capped
+
+        dest = tmp_path / "preview.glb"
+        resp = MagicMock()
+        resp.headers = {}  # lying/absent Content-Length -> header check passes
+
+        # Yield chunks that individually fit but cumulatively exceed the cap.
+        resp.iter_content = lambda chunk_size=1 << 20: iter([b"x" * 60, b"x" * 60])
+        with pytest.raises(RuntimeError, match="exceeds"):
+            stream_to_file_capped(resp, str(dest), "https://example.com/huge.glb", max_bytes=100)
+        # Partial file must be cleaned up, not left for the geometry validator.
+        assert not dest.exists()
+
+    def test_streaming_declared_length_short_circuits(self, tmp_path):
+        from providers.meshy_generator import stream_to_file_capped
+
+        dest = tmp_path / "preview.glb"
+        resp = MagicMock()
+        resp.headers = {"Content-Length": "999"}
+
+        def _boom(chunk_size=1 << 20):
+            raise AssertionError("body must not be streamed when header over cap")
+
+        resp.iter_content = _boom
+        with pytest.raises(RuntimeError, match="Content-Length"):
+            stream_to_file_capped(resp, str(dest), "https://example.com/huge.glb", max_bytes=100)
+
+    def test_streaming_within_cap_writes_file(self, tmp_path):
+        from providers.meshy_generator import stream_to_file_capped
+
+        dest = tmp_path / "preview.glb"
+        resp = MagicMock()
+        resp.headers = {}
+        resp.iter_content = lambda chunk_size=1 << 20: iter([b"abc", b"def"])
+        stream_to_file_capped(resp, str(dest), "https://example.com/ok.glb", max_bytes=100)
+        assert dest.read_bytes() == b"abcdef"

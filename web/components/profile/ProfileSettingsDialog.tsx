@@ -13,6 +13,7 @@ import { LocalImagePicker } from "@/components/profile/LocalImagePicker";
 import { getBodyMeasurementCoverage } from "@/lib/profile-dashboard";
 import { STYLE_AESTHETICS, FIT_PREFERENCES } from "@/lib/profile-options";
 import { api, auth, avatar, ApiError } from "@/lib/api";
+import { useAvatarStatus } from "@/lib/hooks/useAvatarStatus";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Lock, Camera } from "lucide-react";
@@ -103,6 +104,12 @@ export function ProfileSettingsDialog({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  // Gate the delete trigger while an avatar is generating so a concurrent
+  // delete + in-flight generation can't race (M7 — mirrors the avatar page).
+  const { status: avatarStatus } = useAvatarStatus();
+  const isGenerating =
+    avatarStatus?.status === "PENDING" || avatarStatus?.status === "RUNNING";
 
   // Move focus to Cancel when entering the two-step confirm so keyboard/SR users are
   // not left on <body>, one blind activation away from an irreversible delete (M10).
@@ -226,8 +233,10 @@ export function ProfileSettingsDialog({
         return cleared;
       });
       onUserRefresh();
-    } catch {
-      toast.error("Failed to delete body data");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to delete body data"
+      );
     } finally {
       setDeletingData(false);
     }
@@ -451,6 +460,8 @@ export function ProfileSettingsDialog({
                     variant="destructive"
                     size="sm"
                     className="rounded-full text-xs"
+                    aria-expanded={confirmingDelete}
+                    disabled={isGenerating}
                     onClick={() => setConfirmingDelete(true)}
                   >
                     Delete my avatar &amp; body data
