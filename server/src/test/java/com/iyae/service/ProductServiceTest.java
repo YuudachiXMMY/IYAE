@@ -3,10 +3,13 @@ package com.iyae.service;
 import com.iyae.dto.CreateProductRequest;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.ProductResponse;
+import com.iyae.dto.SizeMeasurementDto;
+import com.iyae.dto.UpdateProductRequest;
 import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.GarmentAsset;
 import com.iyae.entity.ModelGenerationTask;
 import com.iyae.entity.Product;
+import com.iyae.entity.ProductSizeMeasurement;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
 import com.iyae.entity.enums.Role;
@@ -15,11 +18,13 @@ import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.GarmentAssetRepository;
 import com.iyae.repository.ModelGenerationTaskRepository;
 import com.iyae.repository.ProductRepository;
+import com.iyae.repository.ProductSizeMeasurementRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -27,6 +32,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -61,6 +68,12 @@ class ProductServiceTest {
 
     @Mock
     ModelGenerationTaskRepository modelGenerationTaskRepository;
+
+    @Mock
+    ProductSizeMeasurementRepository productSizeMeasurementRepository;
+
+    @Mock
+    SizeRecommendationService sizeRecommendationService;
 
     @Spy
     ObjectMapper objectMapper = new ObjectMapper();
@@ -145,12 +158,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_noFilters_returnsPublishedProducts() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatus(eq(ProductStatus.PUBLISHED), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, null);
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, null, false);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).name()).isEqualTo("Silk Blouse");
@@ -160,13 +173,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_withCategory_filtersByCategory() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatusAndCategory(
-                eq(ProductStatus.PUBLISHED), eq("Tops"), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", null);
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", null, false);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).category()).isEqualTo("Tops");
@@ -175,13 +187,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_withSearchQuery_filtersByNameOrDescription() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatusAndSearch(
-                eq(ProductStatus.PUBLISHED), eq("silk"), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, "silk");
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, "silk", false);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).name()).isEqualTo("Silk Blouse");
@@ -190,13 +201,12 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_withCategoryAndSearch_appliesBothFilters() {
         Page<Product> page = new PageImpl<>(List.of(publishedProduct));
-        when(productRepository.findByStatusAndCategoryAndSearch(
-                eq(ProductStatus.PUBLISHED), eq("Tops"), eq("silk"), any(Pageable.class)))
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
         when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
                 .thenReturn(Collections.emptyList());
 
-        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", "silk");
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, "Tops", "silk", false);
 
         assertThat(result.content()).hasSize(1);
     }
@@ -204,13 +214,28 @@ class ProductServiceTest {
     @Test
     void getPublicCatalog_pageSizeClamped_toMaxPageSize() {
         Page<Product> page = new PageImpl<>(Collections.emptyList());
-        when(productRepository.findByStatus(eq(ProductStatus.PUBLISHED), any(Pageable.class)))
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(page);
 
-        productService.getPublicCatalog(0, 500, null, null);
+        productService.getPublicCatalog(0, 500, null, null, false);
 
-        // Verify the repository was called (size clamping is internal; we verify no error)
-        verify(productRepository).findByStatus(eq(ProductStatus.PUBLISHED), any(Pageable.class));
+        verify(productRepository).findAll(any(Specification.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    void getPublicCatalog_localOnly_delegatesToSpecification() {
+        Page<Product> page = new PageImpl<>(List.of(publishedProduct));
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(page);
+        when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
+                .thenReturn(Collections.emptyList());
+
+        PagedResponse<ProductResponse> result = productService.getPublicCatalog(0, 10, null, null, true);
+
+        assertThat(result.content()).hasSize(1);
+        verify(productRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
     // -------------------------------------------------------------------------
@@ -327,6 +352,164 @@ class ProductServiceTest {
                 .hasMessageContaining("Designer profile not found");
     }
 
+    @Test
+    void getDesignerProducts_enrichesMeasurements() {
+        // Regression (PR#10 H1): the designer list path must return per-size measurements so the
+        // edit form can round-trip them. Previously measurements were always null here, so the
+        // form saved an empty list and the server wiped the product's measurements.
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findByDesignerProfileId(10L)).thenReturn(List.of(publishedProduct));
+        when(garmentAssetRepository.findByProductIdInOrderByCreatedAtDesc(anyList()))
+                .thenReturn(Collections.emptyList());
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("M")
+                .chestCm(90.0).waistCm(72.0).hipsCm(96.0).lengthCm(60.0)
+                .build();
+        when(productSizeMeasurementRepository.findByProductIdIn(anyList()))
+                .thenReturn(List.of(mRow));
+
+        List<ProductResponse> result = productService.getDesignerProducts("designer@example.com");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).measurements()).hasSize(1);
+        assertThat(result.get(0).measurements().get(0).sizeLabel()).isEqualTo("M");
+        assertThat(result.get(0).measurements().get(0).chestCm()).isEqualTo(90.0);
+    }
+
+    // -------------------------------------------------------------------------
+    // updateProduct — measurement reconciliation (PR#10 H1/L6 regression)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void updateProduct_shrinkSizesOmitMeasurements_prunesOrphanMeasurements() {
+        // Regression (PR#10 L6): shrinking the size list while omitting measurements (null) must
+        // prune measurement rows for sizes no longer offered, so getProductById cannot later
+        // recommend a size the product no longer sells.
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, null, null, null, null, null,
+                List.of("S", "M"), // sizes shrink from [S,M,L] -> [S,M]
+                null, null, null,
+                null); // measurements omitted
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        ProductSizeMeasurement sRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("S").chestCm(84.0).build();
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(2L).product(publishedProduct).sizeLabel("M").chestCm(90.0).build();
+        ProductSizeMeasurement lRow = ProductSizeMeasurement.builder()
+                .id(3L).product(publishedProduct).sizeLabel("L").chestCm(96.0).build();
+        when(productSizeMeasurementRepository.findByProductId(100L))
+                .thenReturn(List.of(sRow, mRow, lRow));
+
+        productService.updateProduct("designer@example.com", 100L, request);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProductSizeMeasurement>> captor = ArgumentCaptor.forClass(List.class);
+        verify(productSizeMeasurementRepository).deleteAll(captor.capture());
+        assertThat(captor.getValue())
+                .extracting(ProductSizeMeasurement::getSizeLabel)
+                .containsExactly("L");
+        // Null measurements must NOT trigger the delete-all "clear" path.
+        verify(productSizeMeasurementRepository, never()).deleteByProductId(anyLong());
+    }
+
+    @Test
+    void updateProduct_priceOnlyOmitMeasurements_keepsAllMeasurements() {
+        // Guard against over-deletion: a price-only edit (sizes unchanged, measurements omitted)
+        // must not prune or clear any measurement rows.
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, new BigDecimal("99.99"), null, null, null, null,
+                null, // sizes unchanged
+                null, null, null,
+                null); // measurements omitted
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        ProductSizeMeasurement sRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("S").chestCm(84.0).build();
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(2L).product(publishedProduct).sizeLabel("M").chestCm(90.0).build();
+        ProductSizeMeasurement lRow = ProductSizeMeasurement.builder()
+                .id(3L).product(publishedProduct).sizeLabel("L").chestCm(96.0).build();
+        when(productSizeMeasurementRepository.findByProductId(100L))
+                .thenReturn(List.of(sRow, mRow, lRow));
+
+        productService.updateProduct("designer@example.com", 100L, request);
+
+        verify(productSizeMeasurementRepository, never()).deleteAll(any());
+        verify(productSizeMeasurementRepository, never()).deleteByProductId(anyLong());
+    }
+
+    // -------------------------------------------------------------------------
+    // updateProduct — moderation lock (PR#10 M2)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void updateProduct_moderationLocked_rejectsStatusChangeOutOfArchived() {
+        // PR#10 M2: an admin-archived + locked product cannot be republished by the owning designer.
+        publishedProduct.setStatus(ProductStatus.ARCHIVED);
+        publishedProduct.setModerationLocked(true);
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                ProductStatus.PUBLISHED, // attempt to republish
+                null);
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+
+        assertThatThrownBy(() -> productService.updateProduct("designer@example.com", 100L, request))
+                .isInstanceOf(AccessDeniedException.class);
+
+        // Guard throws before any write; status must remain ARCHIVED.
+        verify(productRepository, never()).save(any());
+        assertThat(publishedProduct.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+    }
+
+    @Test
+    void updateProduct_moderationLocked_allowsNonStatusEdit() {
+        // A locked product may still have non-status fields edited (e.g. a price correction).
+        publishedProduct.setStatus(ProductStatus.ARCHIVED);
+        publishedProduct.setModerationLocked(true);
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, new BigDecimal("77.77"), null, null, null, null, null, null, null,
+                null, // status omitted
+                null);
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(Collections.emptyList());
+
+        ProductResponse result = productService.updateProduct("designer@example.com", 100L, request);
+
+        assertThat(result.price()).isEqualByComparingTo(new BigDecimal("77.77"));
+        assertThat(result.status()).isEqualTo(ProductStatus.ARCHIVED);
+        assertThat(publishedProduct.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+    }
+
+    @Test
+    void updateProduct_notLocked_allowsSelfArchive() {
+        // A designer may still self-archive an unlocked product (no regression to normal flow).
+        UpdateProductRequest request = new UpdateProductRequest(
+                null, null, null, null, null, null, null, null, null, null,
+                ProductStatus.ARCHIVED,
+                null);
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(Collections.emptyList());
+
+        ProductResponse result = productService.updateProduct("designer@example.com", 100L, request);
+
+        assertThat(result.status()).isEqualTo(ProductStatus.ARCHIVED);
+        assertThat(publishedProduct.getStatus()).isEqualTo(ProductStatus.ARCHIVED);
+    }
+
     // -------------------------------------------------------------------------
     // createProduct
     // -------------------------------------------------------------------------
@@ -343,6 +526,7 @@ class ProductServiceTest {
                 List.of("blue"),
                 List.of("S", "M"),
                 List.of("photo.jpg"),
+                null,
                 null
         );
 
@@ -383,7 +567,7 @@ class ProductServiceTest {
                 new BigDecimal("29.99"),
                 null,
                 "Tops",
-                null, null, null, null, null
+                null, null, null, null, null, null
         );
 
         Product savedProduct = Product.builder()
@@ -406,6 +590,102 @@ class ProductServiceTest {
         ProductResponse result = productService.createProduct("designer@example.com", request);
 
         assertThat(result.currency()).isEqualTo("CAD");
+    }
+
+    // -------------------------------------------------------------------------
+    // createProduct / getProductById — measurement write path + enrichment (PR#10 M4)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void createProduct_withMeasurements_persistsRows() {
+        // PR#10 M4: a create carrying per-size measurements must delete-then-insert the rows.
+        CreateProductRequest request = new CreateProductRequest(
+                "New Top", "desc", new BigDecimal("59.99"), "CAD", "Tops",
+                null, null, List.of("S", "M"), null, null,
+                List.of(new SizeMeasurementDto("M", 90.0, 72.0, 96.0, 60.0)));
+
+        Product savedProduct = Product.builder()
+                .id(200L)
+                .designerProfile(designerProfile)
+                .name("New Top")
+                .description("desc")
+                .price(new BigDecimal("59.99"))
+                .currency("CAD")
+                .category("Tops")
+                .sizes("[\"S\",\"M\"]")
+                .status(ProductStatus.DRAFT)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.save(any(Product.class))).thenReturn(savedProduct);
+
+        productService.createProduct("designer@example.com", request);
+
+        verify(productSizeMeasurementRepository).deleteByProductId(200L);
+        verify(productSizeMeasurementRepository).flush();
+        ArgumentCaptor<ProductSizeMeasurement> captor = ArgumentCaptor.forClass(ProductSizeMeasurement.class);
+        verify(productSizeMeasurementRepository).save(captor.capture());
+        assertThat(captor.getValue().getSizeLabel()).isEqualTo("M");
+        assertThat(captor.getValue().getChestCm()).isEqualTo(90.0);
+    }
+
+    @Test
+    void createProduct_unknownSizeLabel_throws400() {
+        // PR#10 M4: a measurement whose label is not one of the product's declared sizes is rejected.
+        CreateProductRequest request = new CreateProductRequest(
+                "New Top", "desc", new BigDecimal("59.99"), "CAD", "Tops",
+                null, null, List.of("S", "M"), null, null,
+                List.of(new SizeMeasurementDto("XXL", 90.0, null, null, null)));
+
+        Product savedProduct = Product.builder()
+                .id(200L)
+                .designerProfile(designerProfile)
+                .name("New Top")
+                .price(new BigDecimal("59.99"))
+                .currency("CAD")
+                .category("Tops")
+                .sizes("[\"S\",\"M\"]")
+                .status(ProductStatus.DRAFT)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(userRepository.findByEmail("designer@example.com")).thenReturn(Optional.of(designerUser));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(designerProfile));
+        when(productRepository.save(any(Product.class))).thenReturn(savedProduct);
+
+        assertThatThrownBy(() -> productService.createProduct("designer@example.com", request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not one of the product sizes");
+    }
+
+    @Test
+    void getProductById_enrichesRecommendationAndMeasurements() {
+        // PR#10 M4: a published-product detail response carries the buyer's recommendedSize and the
+        // product's declared per-size measurements.
+        ProductSizeMeasurement mRow = ProductSizeMeasurement.builder()
+                .id(1L).product(publishedProduct).sizeLabel("M")
+                .chestCm(90.0).waistCm(72.0).hipsCm(96.0).lengthCm(60.0)
+                .build();
+        when(productRepository.findById(100L)).thenReturn(Optional.of(publishedProduct));
+        when(garmentAssetRepository.findTopByProductIdAndStatusOrderByCreatedAtDesc(100L, "ACTIVE"))
+                .thenReturn(Optional.empty());
+        when(garmentAssetRepository.findTopByProductIdOrderByCreatedAtDesc(100L))
+                .thenReturn(Optional.empty());
+        when(modelGenerationTaskRepository.findByProductIdOrderByCreatedAtDesc(100L))
+                .thenReturn(Collections.emptyList());
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(List.of(mRow));
+        when(sizeRecommendationService.recommendForBuyer(anyList(), eq("buyer@example.com")))
+                .thenReturn("M");
+
+        ProductResponse result = productService.getProductById(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.measurements()).hasSize(1);
+        assertThat(result.measurements().get(0).sizeLabel()).isEqualTo("M");
     }
 
     // -------------------------------------------------------------------------

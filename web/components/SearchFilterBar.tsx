@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MagnifyingGlass } from "@phosphor-icons/react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
@@ -35,6 +36,8 @@ interface SearchFilterBarProps {
   onSearch: (query: string) => void;
   onCategory: (category: string) => void;
   onSort: (sort: string) => void;
+  onLocal?: (next: boolean) => void;
+  localActive?: boolean;
   className?: string;
 }
 
@@ -42,6 +45,8 @@ export function SearchFilterBar({
   onSearch,
   onCategory,
   onSort,
+  onLocal,
+  localActive = false,
   className,
 }: SearchFilterBarProps) {
   const [rawQuery, setRawQuery] = useState("");
@@ -126,6 +131,20 @@ export function SearchFilterBar({
           ))}
         </SelectContent>
       </Select>
+
+      {/* Local designers toggle */}
+      {onLocal && (
+        <label className="flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-full bg-card px-4 shadow-soft">
+          <Checkbox
+            checked={localActive}
+            onCheckedChange={(v) => onLocal(v === true)}
+            aria-label="Show only local designers"
+          />
+          <span className="whitespace-nowrap text-sm text-muted-foreground">
+            Local designers
+          </span>
+        </label>
+      )}
     </div>
   );
 }

@@ -139,6 +139,7 @@ export default function ProductDetailPage({
           colorTags: p.colorTags ?? [],
         });
         setSelectedImage(0);
+        if (p.recommendedSize) setSelectedSize(p.recommendedSize);
       })
       .catch(() => setError("Product not found."))
       .finally(() => setProductLoading(false));

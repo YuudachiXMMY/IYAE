@@ -30,6 +30,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ProductRepository productRepository;
     private final PromotionRepository promotionRepository;
     private final GarmentAssetRepository garmentAssetRepository;
+    private final ProductSizeMeasurementRepository productSizeMeasurementRepository;
     private final PasswordEncoder passwordEncoder;
     private final BrandProperties brandProperties;
 
@@ -89,12 +90,23 @@ public class DataSeeder implements CommandLineRunner {
                 .emailVerified(true)
                 .build());
 
+        // ADMIN operator — granted only via seed/DB (public registration rejects ADMIN).
+        userRepository.save(User.builder()
+                .email("admin@" + domain)
+                .passwordHash(encodedPassword)
+                .name("IYAE Admin")
+                .role(Role.ADMIN)
+                .emailVerified(true)
+                .build());
+
         // 2. Create designer profiles
         DesignerProfile lunaProfile = designerProfileRepository.save(DesignerProfile.builder()
                 .user(luna)
                 .displayName("Luna Kim")
                 .shopName("Luna Studio")
                 .bio("Minimalist aesthetic rooted in clean silhouettes and purposeful design. Every piece tells a quiet story.")
+                .city("Toronto")
+                .isLocal(true)
                 .build());
 
         DesignerProfile marcoProfile = designerProfileRepository.save(DesignerProfile.builder()
@@ -109,6 +121,8 @@ public class DataSeeder implements CommandLineRunner {
                 .displayName("Aria Chen")
                 .shopName("Aria Atelier")
                 .bio("Artisanal handcraft meets slow fashion. Each garment is individually made with organic materials and old-world techniques.")
+                .city("Toronto")
+                .isLocal(true)
                 .build());
 
         // 3. Create body profiles for buyers
@@ -791,7 +805,31 @@ public class DataSeeder implements CommandLineRunner {
                     .build());
         }
 
-        log.info("DataSeeder: complete — 5 users, 3 designer profiles, 2 body profiles, 36 PUBLISHED products (all with GLB), 10 promotions, 36 garment assets created.");
+        // 7. Seed per-size cm measurements for a few products (powers cross-brand "your size").
+        // Rows are {chest, waist, hips, length} in cm, aligned to each product's declared sizes.
+        seedMeasurements(lunaTop1, List.of("XS", "S", "M", "L"), new double[][]{
+                {84, 68, 88, 58}, {88, 72, 92, 60}, {92, 76, 96, 62}, {96, 80, 100, 64}});
+        seedMeasurements(marcoTop1, List.of("S", "M", "L", "XL", "XXL"), new double[][]{
+                {96, 88, 98, 70}, {102, 94, 104, 72}, {108, 100, 110, 74}, {114, 106, 116, 76}, {120, 112, 122, 78}});
+        seedMeasurements(ariaTop1, List.of("XS", "S", "M", "L"), new double[][]{
+                {82, 66, 86, 56}, {86, 70, 90, 58}, {90, 74, 94, 60}, {94, 78, 98, 62}});
+
+        log.info("DataSeeder: complete — 6 users (incl. ADMIN), 3 designer profiles (2 Toronto-local), 2 body profiles, "
+                + "36 PUBLISHED products (all with GLB), 10 promotions, 36 garment assets, size measurements on 3 products.");
+    }
+
+    private void seedMeasurements(Product product, List<String> labels, double[][] dims) {
+        for (int i = 0; i < labels.size(); i++) {
+            double[] d = dims[i];
+            productSizeMeasurementRepository.save(ProductSizeMeasurement.builder()
+                    .product(product)
+                    .sizeLabel(labels.get(i))
+                    .chestCm(d[0])
+                    .waistCm(d[1])
+                    .hipsCm(d[2])
+                    .lengthCm(d[3])
+                    .build());
+        }
     }
 
     private static GarmentSlotHint slotHintFromCategory(String category) {

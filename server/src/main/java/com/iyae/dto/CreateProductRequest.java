@@ -1,5 +1,6 @@
 package com.iyae.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -29,5 +30,7 @@ public record CreateProductRequest(
 
         List<String> media,
 
-        String glbUrl
+        String glbUrl,
+
+        @Valid List<SizeMeasurementDto> measurements
 ) {}

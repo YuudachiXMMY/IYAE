@@ -176,7 +176,7 @@ User (hub)
 
 | Enum | Values |
 |------|--------|
-| Role | `BUYER`, `DESIGNER` |
+| Role | `BUYER`, `DESIGNER`, `ADMIN` |
 | ProductStatus | `DRAFT`, `PUBLISHED`, `ARCHIVED` |
 | TaskStatus | `PENDING`, `RUNNING`, `READY`, `FAILED`, `MATERIALIZED` |
 | SessionStatus | `ACTIVE`, `COMPLETED` |
@@ -457,6 +457,8 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `src/main/resources/db/migration/V9__checkout_orders.sql` | Stripe payment columns on orders (stripe_session_id, stripe_payment_intent, payment_status) |
 | `src/main/resources/db/migration/V10__cart_item_selected_size.sql` | Add selected_size to cart_items, change unique key to (cart_id, product_id, selected_size) |
 | `src/main/resources/db/migration/V11__product_size_chart.sql` | Add nullable `size_chart` JSON column to products (stores a size chart array for size recommendation) |
+| `src/main/resources/db/migration/V12__marketplace_local_and_measurements.sql` | Add ADMIN to users.role enum; city/is_local on designer_profiles; new product_size_measurements table |
+| `src/main/resources/db/migration/V13__product_moderation_lock.sql` | Add products.moderation_locked for durable admin moderation (M2) |
 
 ## Changelog
 
@@ -470,3 +472,6 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | 2026-09-05 | Email consolidated onto Resend: removed `spring-boot-starter-mail` + all `spring.mail.*`/`SMTP_*` config; `AuthMailService` is Resend-only (POSTs to Next.js internal route). Added `BrandProperties` (`app.brand.*`, config 9->10). Main class/context test renamed Clossett->Iyae. Tests 338->336 (AuthMailServiceTest 8->6; Health*/Avatar now mock BrandProperties) |
 | 2026-09-05 | Phase 4 Virtual Fitting: V11 size_chart migration + Product.sizeChart; SizeRecommendationService/Controller/DTO (`GET /api/products/{id}/recommended-size`, authenticated matcher before public products rule); AvatarController `DELETE /api/avatar` one-tap delete + AvatarService.deleteAvatarData; tests 336->349 (+SizeRecommendation service/controller, +AvatarService/Controller delete) |
 | 2026-09-05 | PR #8 follow-up: SizeRecommendationService selects chart entry on RMS to match the confidence metric (M2); added `SizeRecommendationBasis` enum backing the `basis` string (L6); capped `size_chart` parsing at 50 entries (L7); RateLimitFilter gained a nullable `pathSuffix` + rules for `DELETE /api/avatar` (10/60s) and `GET /api/products/*/recommended-size` (30/60s) (L1); AvatarService.deleteAvatarData logs active-task purge (L3). Added tests to SizeRecommendationServiceTest (M2/tie-break/malformed/empty/cap), RateLimitFilterTest (L1), AvatarServiceTest (L3) |
+| 2026-09-05 | Phase 5 (Marketplace + Local Designers + ADMIN): marketplace migration (ADMIN role, designer_profiles.city/is_local, product_size_measurements table); +ADMIN enum value (auto ROLE_ADMIN via UserDetailsServiceImpl); `/api/admin/**` gated to ADMIN in SecurityConfig; new AdminController + AdminModerationService (privileged catalog/community/promotion moderation, no ownership check); SizeRecommendationService gains cm-based `recommendForBuyer` "your size" normalization vs BodyProfile (unified with the chart-based `recommend`); catalog `localOnly` filter via new ProductSpecifications; ProductResponse gains designerLocal/designerCity/recommendedSize/measurements; DesignerProduct create/update accept per-size measurements; AuthService rejects public ADMIN registration |
+| 2026-09-05 | PR#10 follow-up (`fix/pr10-h1-l6-measurements`): product_moderation_lock migration + `Product.moderationLocked` for M2 durable admin moderation; `ProductService.updateProduct` throws `AccessDeniedException` (403) on moving a locked product out of ARCHIVED; new `ProductSpecificationsDataJpaTest`. NOTE latent pre-existing bug: `PasswordResetTokenRepository.consumeToken` assigns `CURRENT_TIMESTAMP` to `Instant` |
+| 2026-09-06 | Merge #10 into main: reconciled two independent size-recommendation seams into one `SizeRecommendationService` (chart-based `recommend` + cm-measurement `recommendForBuyer`); renumbered Phase-5 migrations to avoid a V11 collision with `V11__product_size_chart` (marketplace -> V12, moderation_lock -> V13) |

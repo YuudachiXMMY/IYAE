@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth-context";
 
-export function useRequireAuth(requiredRole?: "BUYER" | "DESIGNER") {
+export function useRequireAuth(requiredRole?: "BUYER" | "DESIGNER" | "ADMIN") {
   const { user, loading } = useAuth();
   const router = useRouter();
 

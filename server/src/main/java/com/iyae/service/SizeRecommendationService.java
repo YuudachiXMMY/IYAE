@@ -3,6 +3,7 @@ package com.iyae.service;
 import com.iyae.dto.SizeRecommendationResponse;
 import com.iyae.entity.BodyProfile;
 import com.iyae.entity.Product;
+import com.iyae.entity.ProductSizeMeasurement;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
 import com.iyae.entity.enums.SizeRecommendationBasis;
@@ -18,22 +19,34 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Two-tier "recommended size" logic:
- * <ol>
- *   <li><b>Tier 1 — MEASUREMENT_CHART:</b> when the product has a measurement size chart
- *       and the user has measurements, pick the chart entry with the smallest Euclidean
- *       distance over the dimensions present on both sides.</li>
- *   <li><b>Tier 2 — SELF_REPORTED:</b> otherwise map the product category to the user's
- *       self-reported size (topSize/bottomSize/dressSize/jacketSize/shoeSize) and return it
- *       when it is one of the product's available sizes.</li>
- * </ol>
- * When neither tier yields a size (no profile, no comparable data), returns {@code NONE}.
+ * "Recommended size" logic, exposing two complementary entry points that were developed on
+ * separate seams and unified here:
+ *
+ * <ul>
+ *   <li><b>{@link #recommend(Long, String)} — chart/self-reported (public endpoint):</b> a
+ *       two-tier recommendation returning a rich {@link SizeRecommendationResponse}.
+ *       <ol>
+ *         <li><b>Tier 1 — MEASUREMENT_CHART:</b> when the product has a measurement size chart
+ *             and the user has measurements, pick the chart entry with the smallest RMS deviation
+ *             over the dimensions present on both sides.</li>
+ *         <li><b>Tier 2 — SELF_REPORTED:</b> otherwise map the product category to the user's
+ *             self-reported size and return it when it is one of the product's available sizes.</li>
+ *       </ol>
+ *       When neither tier yields a size, returns {@code NONE}.</li>
+ *   <li><b>{@link #recommendForBuyer(List, String)} — cm-measurement normalization
+ *       (Marketplace):</b> normalizes garment cm-measurements ({@link ProductSizeMeasurement})
+ *       against a buyer's {@link BodyProfile} to produce a consistent size label — independent of
+ *       each designer's arbitrary S/M/L labelling. This is the cm-based normalization deliverable
+ *       for Phase 5. SMPL-X betas-based refinement (Phase 4) is a deliberately separate seam; do
+ *       NOT couple this to avatar generation here.</li>
+ * </ul>
  */
 @Slf4j
 @Service
@@ -52,6 +65,10 @@ public class SizeRecommendationService {
 
     /** Fixed confidence for self-reported recommendations (no measurement verification). */
     private static final double SELF_REPORTED_CONFIDENCE = 0.5;
+
+    // Penalize "too tight" (garment smaller than body) more heavily than "too loose".
+    private static final double TIGHT_WEIGHT = 2.0;
+    private static final double LOOSE_WEIGHT = 1.0;
 
     private final ProductRepository productRepository;
     private final DesignerProfileRepository designerProfileRepository;
@@ -114,6 +131,82 @@ public class SizeRecommendationService {
 
         return new SizeRecommendationResponse(
                 null, SizeRecommendationBasis.NONE.name(), 0.0, availableSizes);
+    }
+
+    /**
+     * Recommend a size label for the given buyer email from the product's cm-measurements.
+     * Returns null when there is no email, no {@link BodyProfile}, no measurements, or no
+     * comparable dimension.
+     */
+    @Transactional(readOnly = true)
+    public String recommendForBuyer(List<ProductSizeMeasurement> measurements, String email) {
+        if (measurements == null || measurements.isEmpty() || email == null || email.isBlank()) {
+            return null;
+        }
+        BodyProfile body = userRepository.findByEmail(email)
+                .flatMap(user -> bodyProfileRepository.findByUserId(user.getId()))
+                .orElse(null);
+        if (body == null) {
+            return null;
+        }
+        return pickBestFit(measurements, body);
+    }
+
+    /**
+     * Pure best-fit selection. Prefers a garment that is &ge; the body (fits, not too tight) with
+     * the least ease; ties break to the smaller size. Returns null if no size has a comparable dim.
+     */
+    static String pickBestFit(List<ProductSizeMeasurement> measurements, BodyProfile body) {
+        if (measurements == null || measurements.isEmpty() || body == null) {
+            return null;
+        }
+        // Ascending by total declared measurement so score ties resolve to the smaller size.
+        List<ProductSizeMeasurement> ordered = measurements.stream()
+                .sorted(Comparator.comparingDouble(SizeRecommendationService::sizeMagnitude))
+                .toList();
+
+        ProductSizeMeasurement best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (ProductSizeMeasurement m : ordered) {
+            Double score = fitScore(m, body);
+            if (score == null) {
+                continue;
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                best = m;
+            }
+        }
+        return best != null ? best.getSizeLabel() : null;
+    }
+
+    private static Double fitScore(ProductSizeMeasurement m, BodyProfile body) {
+        double total = 0.0;
+        boolean comparable = false;
+        Double chest = dimPenalty(m.getChestCm(), body.getChestCm());
+        if (chest != null) { total += chest; comparable = true; }
+        Double waist = dimPenalty(m.getWaistCm(), body.getWaistCm());
+        if (waist != null) { total += waist; comparable = true; }
+        Double hips = dimPenalty(m.getHipsCm(), body.getHipsCm());
+        if (hips != null) { total += hips; comparable = true; }
+        return comparable ? total : null;
+    }
+
+    private static Double dimPenalty(Double garment, Double bodyDim) {
+        if (garment == null || bodyDim == null) {
+            return null;
+        }
+        double diff = garment - bodyDim;
+        return diff >= 0 ? diff * LOOSE_WEIGHT : (-diff) * TIGHT_WEIGHT;
+    }
+
+    private static double sizeMagnitude(ProductSizeMeasurement m) {
+        double sum = 0.0;
+        if (m.getChestCm() != null) sum += m.getChestCm();
+        if (m.getWaistCm() != null) sum += m.getWaistCm();
+        if (m.getHipsCm() != null) sum += m.getHipsCm();
+        if (m.getLengthCm() != null) sum += m.getLengthCm();
+        return sum;
     }
 
     private SizeRecommendationResponse recommendFromChart(

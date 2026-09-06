@@ -1,5 +1,5 @@
 package com.iyae.entity.enums;
 
 public enum Role {
-    BUYER, DESIGNER
+    BUYER, DESIGNER, ADMIN
 }
