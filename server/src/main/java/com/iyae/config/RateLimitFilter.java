@@ -18,17 +18,22 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private record RateRule(String method, String pathPrefix, int maxRequests, long windowMs) {}
+    // pathSuffix is nullable: when set, the rule matches only when the URI also ends with
+    // it (used to isolate /api/products/*/recommended-size without catching catalog/detail).
+    private record RateRule(String method, String pathPrefix, String pathSuffix,
+                            int maxRequests, long windowMs) {}
 
     private static final List<RateRule> RULES = List.of(
-            new RateRule("POST", "/api/auth/login", 5, 60_000),
-            new RateRule("POST", "/api/auth/register", 3, 60_000),
-            new RateRule("POST", "/api/auth/forgot-password", 3, 60_000),
-            new RateRule("POST", "/api/auth/resend-verification", 3, 60_000),
-            new RateRule("PUT",  "/api/auth/me", 10, 60_000),
-            new RateRule(null,   "/api/chat/", 10, 60_000),
-            new RateRule(null,   "/api/checkout", 5, 60_000),
-            new RateRule("POST", "/api/public/avatar/generate", 3, 60_000)
+            new RateRule("POST", "/api/auth/login", null, 5, 60_000),
+            new RateRule("POST", "/api/auth/register", null, 3, 60_000),
+            new RateRule("POST", "/api/auth/forgot-password", null, 3, 60_000),
+            new RateRule("POST", "/api/auth/resend-verification", null, 3, 60_000),
+            new RateRule("PUT",  "/api/auth/me", null, 10, 60_000),
+            new RateRule(null,   "/api/chat/", null, 10, 60_000),
+            new RateRule(null,   "/api/checkout", null, 5, 60_000),
+            new RateRule("POST", "/api/public/avatar/generate", null, 3, 60_000),
+            new RateRule("DELETE", "/api/avatar", null, 10, 60_000),
+            new RateRule("GET", "/api/products/", "/recommended-size", 30, 60_000)
     );
 
     private record BucketKey(String ip, String methodKey, String pathPrefix) {}
@@ -59,9 +64,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         for (RateRule rule : RULES) {
             if ((rule.method() == null || rule.method().equals(request.getMethod()))
-                    && path.startsWith(rule.pathPrefix())) {
+                    && path.startsWith(rule.pathPrefix())
+                    && (rule.pathSuffix() == null || path.endsWith(rule.pathSuffix()))) {
                 String methodKey = rule.method() == null ? "*" : rule.method();
-                if (!tryConsume(new BucketKey(ip, methodKey, rule.pathPrefix()), rule)) {
+                String pathKey = rule.pathSuffix() == null
+                        ? rule.pathPrefix()
+                        : rule.pathPrefix() + rule.pathSuffix();
+                if (!tryConsume(new BucketKey(ip, methodKey, pathKey), rule)) {
                     response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                     response.setContentType("application/json");
                     response.getWriter().write("{\"message\":\"Too many requests. Please try again later.\"}");

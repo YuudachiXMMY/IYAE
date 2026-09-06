@@ -10,7 +10,7 @@ import { GenerationStatusCard } from "@/components/GenerationStatusCard";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useGenerationStatus } from "@/lib/hooks/useGenerationStatus";
 import { RiggingStatusCard } from "@/components/RiggingStatusCard";
-import { api } from "@/lib/api";
+import { api, type SizeMeasurement } from "@/lib/api";
 import type { Product } from "@/components/ProductListItem";
 
 interface UpdateProductRequest {
@@ -23,6 +23,7 @@ interface UpdateProductRequest {
   sizes: string[];
   status: string;
   media: string[];
+  measurements: SizeMeasurement[];
 }
 
 export default function EditProductPage() {
@@ -80,6 +81,7 @@ export default function EditProductPage() {
           sizes: data.sizes,
           status: data.status ?? product.status,
           media: data.imageUrl ? [data.imageUrl] : [],
+          measurements: data.measurements ?? [],
         };
         await api.put(`/api/designer/products/${product.id}`, body);
         router.push("/designer/products");
@@ -133,6 +135,7 @@ export default function EditProductPage() {
     sizes: product.sizes,
     status: product.status,
     imageUrl: product.media?.[0] ?? null,
+    measurements: product.measurements ?? [],
   };
 
   return (

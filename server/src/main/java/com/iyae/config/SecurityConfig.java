@@ -36,6 +36,8 @@ public class SecurityConfig {
                     "/api/auth/verify-email", "/api/auth/resend-verification",
                     "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
+                // Must precede the public /api/products/** rule (Spring Security matches first-match)
+                .requestMatchers(HttpMethod.GET, "/api/products/*/recommended-size").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/promotions/featured").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/users/profile/**").permitAll()
@@ -44,8 +46,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/api/designer/**").hasRole("DESIGNER")
                 .requestMatchers("/api/promotions/**").hasRole("DESIGNER")
-                // KPI dashboard: interim elevated-role gate until the Phase-5 ADMIN role lands.
-                .requestMatchers("/api/admin/**").hasRole("DESIGNER")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

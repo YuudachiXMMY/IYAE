@@ -85,8 +85,8 @@ class AnalyticsControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "designer@example.com", roles = "DESIGNER")
-    void kpis_asElevatedRole_returns200() throws Exception {
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void kpis_asAdmin_returns200() throws Exception {
         when(analyticsService.kpisByCohort())
                 .thenReturn(new KpiSummaryResponse(List.of(), List.of()));
 

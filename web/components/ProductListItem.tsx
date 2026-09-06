@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import type { SizeMeasurement } from "@/lib/api";
 
 export interface Product {
   id: number;
@@ -17,6 +18,10 @@ export interface Product {
   media: string[];
   glbUrl: string | null;
   status: string;
+  designerLocal?: boolean;
+  designerCity?: string | null;
+  recommendedSize?: string | null;
+  measurements?: SizeMeasurement[] | null;
 }
 
 interface ProductListItemProps {
@@ -85,10 +90,17 @@ export function ProductListItem({ product, className, priority = false }: Produc
 
       {/* Info area */}
       <div className="flex flex-1 flex-col gap-2 p-4">
-        {/* Category badge */}
-        <span className="w-fit rounded-full border border-border/50 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          {product.category}
-        </span>
+        {/* Category + locality badges */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="w-fit rounded-full border border-border/50 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {product.category}
+          </span>
+          {product.designerLocal && (
+            <span className="w-fit rounded-full bg-brand/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-brand">
+              Local
+            </span>
+          )}
+        </div>
 
         {/* Name */}
         <h3 className="line-clamp-2 text-sm font-medium text-foreground leading-snug">

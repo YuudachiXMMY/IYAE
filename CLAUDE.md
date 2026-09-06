@@ -177,6 +177,12 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `WORKER_POLL_INTERVAL` | No | `5` | Seconds between task queue polls |
 | `WORKER_OUTPUT_DIR` | No | `/var/iyae/assets` | Directory for generated 3D model output |
 | `FRONTEND_BASE_URL` | No | `http://localhost:3000` | Base URL for email links (verification, password reset) |
+| `WEATHER_ENABLED` | No | `true` | Enable live weather context for the AI stylist |
+| `WEATHER_API_URL` | No | `https://api.open-meteo.com/v1/forecast` | Open-Meteo forecast endpoint (keyless) |
+| `WEATHER_LATITUDE` | No | `43.6532` | Latitude for weather lookup (default Toronto) |
+| `WEATHER_LONGITUDE` | No | `-79.3832` | Longitude for weather lookup (default Toronto) |
+| `WEATHER_TIMEZONE` | No | `America/Toronto` | Timezone for weather lookup |
+| `WEATHER_CACHE_TTL` | No | `1800` | Weather cache TTL in seconds; also the off-path cache pre-warm cadence |
 | `AVATAR_GENERATION_PROVIDER` | No | `mock` | `mock` / `smplx` (avatar body model provider) |
 | `SMPLX_MODELS_PATH` | For smplx | `./smplx_models` | Host path to SMPL-X model files (mounted read-only into worker container) |
 | `RIGGING_PROVIDER` | No | `mock` | `mock` / `python` / `blender` (garment rigging provider) |
@@ -377,3 +383,5 @@ cd worker && pytest                    # Worker (unit tests)
 | 2026-06-14 | Count audit: server tests 339->338 (service 220->215, controller 105->100 -- corrected sum errors from 2026-06-07 sync); AuthMailServiceTest 5->8 (3 Resend fallback tests were undercounted); web components 98->91 total (79->72 app-specific -- previous count inflated by 7); lib domain modules 10->13 (added demo-looks.ts, email-templates.ts, utils.ts to count); Mermaid diagram updated |
 | 2026-06-19 | Doc sync: fixed web component count 72->74 app-specific / 91->93 total (section sums 31+18+1+9+6+2+7=74 were correct; Mermaid header was understated by 2) |
 | 2026-09-05 | Email consolidated onto Resend (removed spring-boot-starter-mail + Mailpit + all SMTP config; dev now 4 services; server tests 338->336, AuthMailServiceTest 8->6); added BrandProperties (`app.brand.*`) + `web/lib/brand.ts` for brand centralization; web tests 227->222 / 17->16 files (internal-mail.test.ts removed) |
+| 2026-09-05 | Phase 5 — Marketplace + Local Designers + ADMIN: new ADMIN role + `/api/admin/**` moderation API (AdminController/AdminModerationService) + `/admin` console (catalog/community/promotion tabs, ADMIN-gated); "Local Designers" filter end-to-end (V11 designer_profiles.city/is_local → ProductSpecifications `localOnly` → shop toggle + card badge); per-size garment measurements (V11 product_size_measurements) + SizeRecommendationService producing a consistent `recommendedSize` on PDP from the buyer's BodyProfile; ProductForm gains optional cm inputs. Server tests 336->361; web tests 222->230 (+api admin, +SearchFilterBar); 3 stacked commits (ADMIN / Local / measurements) |
+| 2026-09-05 | PR#10 review follow-up on `fix/pr10-h1-l6-measurements`: H1 (designer-edit measurement data-loss) + L6 (orphan-measurement prune) fixed; M2 authz fix — admin `ARCHIVED` now durably locks a listing (`products.moderation_locked`, V12 migration) so the owning designer can't republish it via `PUT /api/designer/products/{id}` (403); test gaps M3 (new `ProductSpecificationsDataJpaTest` @DataJpaTest), M4 (measurement write-path + `getProductById` enrichment), M5 (asymmetric size weighting), L7 (admin posts/promotions endpoints) closed. Server tests 361→388 (+H2 test dep). Flagged pre-existing latent bug: `PasswordResetTokenRepository.consumeToken` assigns `CURRENT_TIMESTAMP` to an `Instant` (breaks full JPA bootstrap; unfixed, out of scope) |

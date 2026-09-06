@@ -4,6 +4,8 @@ import com.iyae.ai.AIProvider;
 import com.iyae.ai.AIProviderException;
 import com.iyae.ai.AIProviderFactory;
 import com.iyae.dto.ChatMessageResponse;
+import com.iyae.dto.GenerateOutfitRequest;
+import com.iyae.dto.OutfitResponse;
 import com.iyae.entity.ChatMessage;
 import com.iyae.entity.ChatSession;
 import com.iyae.entity.User;
@@ -23,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +46,7 @@ class ChatServiceTest {
     @Mock ChatMessageRepository chatMessageRepository;
     @Mock UserRepository userRepository;
     @Mock OutfitService outfitService;
+    @Mock WeatherService weatherService;
 
     @InjectMocks
     ChatService chatService;
@@ -63,6 +67,8 @@ class ChatServiceTest {
         when(chatSessionRepository.findByIdAndUser(10L, user)).thenReturn(Optional.of(session));
         when(chatMessageRepository.findBySessionOrderByCreatedAtAsc(session)).thenReturn(Collections.emptyList());
         when(aiProviderFactory.getProvider()).thenReturn(aiProvider);
+        // Default: no live weather so tests behave as weather-absent (plain SYSTEM_PROMPT)
+        when(weatherService.getCurrentToronto()).thenReturn(Optional.empty());
 
         // Default: save returns a message with an id
         when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(inv -> {
@@ -207,5 +213,52 @@ class ChatServiceTest {
         String input = "[SUGGESTIONS][\"  Valid  \",\"  \",\"\",\"Another\"][/SUGGESTIONS]";
         List<String> result = chatService.extractSuggestions(input);
         assertThat(result).containsExactly("Valid", "Another");
+    }
+
+    @Test
+    void sendMessage_weatherPresent_injectsWeatherContextIntoSystemPrompt() {
+        WeatherService.WeatherSnapshot snapshot =
+            new WeatherService.WeatherSnapshot(4.0, -1.0, "light snow", Instant.now());
+        when(weatherService.getCurrentToronto()).thenReturn(Optional.of(snapshot));
+        when(weatherService.toPromptContext(snapshot))
+            .thenReturn("Current Toronto weather: 4°C (feels like -1°C), light snow.");
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        when(aiProvider.sendMessage(promptCaptor.capture(), anyList())).thenReturn("Here's a warm idea!");
+
+        chatService.sendMessage(10L, "test@example.com", "what should I wear?");
+
+        assertThat(promptCaptor.getValue()).contains("CONTEXT —");
+        assertThat(promptCaptor.getValue()).contains("Current Toronto weather");
+    }
+
+    @Test
+    void sendMessage_weatherAbsent_usesPlainSystemPrompt() {
+        // Default setUp stubs getCurrentToronto() -> empty
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        when(aiProvider.sendMessage(promptCaptor.capture(), anyList())).thenReturn("Here's an idea!");
+
+        ChatMessageResponse response = chatService.sendMessage(10L, "test@example.com", "help");
+
+        assertThat(promptCaptor.getValue()).doesNotContain("CONTEXT —");
+        assertThat(response.content()).isEqualTo("Here's an idea!");
+    }
+
+    @Test
+    void sendMessage_outfitMarkerWithWeatherAndMood_parsedIntoRequest() {
+        String aiText = "Here's your look!\n\n[GENERATE_OUTFIT]"
+            + "{\"event\":\"dinner\",\"style\":\"elegant\",\"colorPalette\":[\"black\"],"
+            + "\"weather\":\"cold\",\"mood\":\"bold\"}[/GENERATE_OUTFIT]";
+        when(aiProvider.sendMessage(anyString(), anyList())).thenReturn(aiText);
+
+        OutfitResponse outfitResponse = new OutfitResponse(null, List.of(), "expl", Instant.now());
+        ArgumentCaptor<GenerateOutfitRequest> reqCaptor = ArgumentCaptor.forClass(GenerateOutfitRequest.class);
+        when(outfitService.generateOutfitAnonymous(reqCaptor.capture())).thenReturn(outfitResponse);
+
+        chatService.sendMessage(10L, "test@example.com", "make me a look");
+
+        GenerateOutfitRequest captured = reqCaptor.getValue();
+        assertThat(captured.weather()).isEqualTo("cold");
+        assertThat(captured.mood()).isEqualTo("bold");
     }
 }

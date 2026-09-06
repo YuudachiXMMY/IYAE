@@ -50,6 +50,9 @@ public class Product {
     @Column(name = "sizes", columnDefinition = "json")
     private String sizes;
 
+    @Column(name = "size_chart", columnDefinition = "json")
+    private String sizeChart;
+
     @Column(name = "media", columnDefinition = "json")
     private String media;
 
@@ -59,6 +62,9 @@ public class Product {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ProductStatus status;
+
+    @Column(name = "moderation_locked", nullable = false)
+    private boolean moderationLocked;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

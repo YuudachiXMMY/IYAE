@@ -12,6 +12,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -62,6 +63,23 @@ class AvatarControllerTest {
     @Test
     void getStatus_unauthenticated_returns403() throws Exception {
         mockMvc.perform(get("/api/avatar/status"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "user@example.com")
+    void deleteAvatarData_authenticated_returns204() throws Exception {
+        mockMvc.perform(delete("/api/avatar")
+                        .with(csrf()))
+                .andExpect(status().isNoContent());
+
+        verify(avatarService).deleteAvatarData("user@example.com");
+    }
+
+    @Test
+    void deleteAvatarData_unauthenticated_returns403() throws Exception {
+        mockMvc.perform(delete("/api/avatar")
+                        .with(csrf()))
                 .andExpect(status().isForbidden());
     }
 }

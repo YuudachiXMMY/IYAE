@@ -22,9 +22,11 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String category,
-            @RequestParam(required = false) String q
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean localOnly
     ) {
-        return ResponseEntity.ok(productService.getPublicCatalog(page, size, category, q));
+        return ResponseEntity.ok(productService.getPublicCatalog(page, size, category, q,
+                Boolean.TRUE.equals(localOnly)));
     }
 
     @GetMapping("/categories")

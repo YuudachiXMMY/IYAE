@@ -32,7 +32,7 @@ main.py           --> Entry point: polling loop, provider selection, stale recla
 task_queue.py     --> MySQL-based queue (claim, complete, fail, retry, reclaim_stale) for model tasks
 avatar_task_queue.py --> MySQL-based queue (claim, complete, fail, reclaim_stale) for avatar tasks
 rigging_task_queue.py --> MySQL-based queue (claim, complete, fail, reclaim_stale) for rigging tasks
-validator.py      --> GLB/USDZ validation + metadata validation (triangle count, bbox, NaN) + rigged GLB validation
+validator.py      --> GLB/USDZ validation + metadata validation (triangle count, bbox, NaN) + independent GLB geometry validation (validate_glb_geometry) + rigged GLB validation
 providers/
   stub_generator.py      --> Creates minimal valid GLB files for development
   tripo_generator.py     --> Calls Tripo3D API (image-to-3D) for production
@@ -59,11 +59,11 @@ scripts/
   pose_manifest.py           --> Pose manifest generator for web/lib/poses-manifest.json
 tests/
   test_task_queue.py       --> Unit tests for task claiming, retry, stale reclamation (7 tests)
-  test_validator.py        --> Unit tests for GLB/USDZ/metadata/bbox/NaN/rigged-GLB/skin/bones validation (37 tests)
+  test_validator.py        --> Unit tests for GLB/USDZ/metadata/bbox/NaN/geometry/rigged-GLB/skin/bones validation (44 tests)
   test_stub_generator.py   --> Unit tests for StubGenerator output validation (13 tests)
-  test_meshy_generator.py  --> Unit tests for MeshyGenerator output + image URL resolve (30 tests)
+  test_meshy_generator.py  --> Unit tests for MeshyGenerator output (real GLB metadata) + image URL resolve (31 tests)
   test_avatar_task_queue.py --> Unit tests for AvatarTaskQueue (4 tests)
-  test_smplx_provider.py   --> Unit tests for SmplxProvider + SmplxStubProvider (54 tests)
+  test_smplx_provider.py   --> Unit tests for SmplxProvider + SmplxStubProvider (betas clamp/gender, fit_accuracy) (62 tests)
   test_rigging_task_queue.py     --> Unit tests for RiggingTaskQueue (8 tests)
   test_python_rigging_provider.py --> Unit tests for PythonRiggingProvider (19 tests)
   test_weight_transfer.py        --> Unit tests for weight transfer pipeline (18 tests)
@@ -89,13 +89,17 @@ tests/
 4. If task found, UPDATE status -> 'RUNNING', increment attempt_count
 5. Provider.generate(task_id, product_id, input_payload) runs
 6. validator.validate_glb() checks output (magic header, non-empty, version)
-7. validator.validate_metadata() checks output payload (triangle count <= 500k,
+7. validator.validate_glb_geometry() independently re-parses the GLB and checks
+   real triangle count + bbox (defense-in-depth: catches a provider that lies)
+8. validator.validate_metadata() checks output payload (triangle count <= 500k,
    bbox dimensions 0.01m-10m, no NaN/Inf in bbox or vertices)
-8. On success: TaskQueue.complete_task() -> status = 'READY' with output_payload JSON
-9. On failure: TaskQueue.fail_task() -> status = 'FAILED' with error_message
-10. Spring Scheduler (server-side) materializes READY tasks into GarmentAsset rows
+9. On success: TaskQueue.complete_task() -> status = 'READY' with output_payload JSON
+10. On failure (any check above): TaskQueue.fail_task() -> status = 'FAILED' with error_message
+11. Spring Scheduler (server-side) materializes READY tasks into GarmentAsset rows
     and sets status -> 'MATERIALIZED'
-11. Sleep POLL_INTERVAL seconds, repeat
+12. Sleep POLL_INTERVAL seconds, repeat
+
+The avatar task flow is identical (validate_glb -> validate_glb_geometry -> validate_metadata).
 
 Rigging task flow (runs in parallel with model/avatar tasks in main.py):
 1. RiggingTaskQueue.claim_task() uses FOR UPDATE SKIP LOCKED on rigging_tasks table
@@ -182,8 +186,7 @@ The worker only interacts with `PENDING`, `RUNNING`, `READY`, and `FAILED`. The 
 - Request params: `ai_model="meshy-6"`, `should_remesh=true`, `target_polycount=30000`, `target_formats=["glb","usdz"]`, `enable_pbr=false`
 - **Image URL resolution** (`_resolve_image_url()`): HTTP/HTTPS URLs and `data:` URIs are passed through directly; relative file paths (e.g., `/uploads/products/xxx.jpg`) are resolved against `WORKER_OUTPUT_DIR`, read from disk, and encoded as base64 data URIs with correct MIME type
 - Produces both GLB and USDZ (unlike TripoGenerator)
-- `triangle_count` uses `target_polycount` estimate (30000); Meshy API doesn't return actual count
-- `bbox` set to `None` (Meshy API doesn't return bounding box; validator permits None)
+- `triangle_count` and `bbox` are computed from the **downloaded GLB** via `_compute_glb_metadata()` (module-level helper): reads POSITION accessor `min`/`max` (unioned across meshes) and index accessor counts through `pygltflib` (no buffer decode); falls back to `trimesh.load` when accessor bounds are absent. `sanity.has_nan_vertices` reflects a NaN/Inf scan of those bounds. If the GLB cannot be parsed at all, all three degrade to `None`/`None`/`False` (generation never crashes) and `validate_glb_geometry` in the worker loop remains the authoritative gate
 - Logs `consumed_credits` per task (30 credits/task typical)
 - Returns schema v1 output payload with `provider_used: "MESHY"`
 
@@ -213,6 +216,22 @@ The worker only interacts with `PENDING`, `RUNNING`, `READY`, and `FAILED`. The 
   "public_usdz_url": "/assets/products/{pid}/tasks/{tid}/preview.usdz"
 }
 ```
+
+### Avatar Payload — `fit_accuracy` (SmplxProvider)
+
+`SmplxProvider.generate()` emits the schema-v1 avatar payload plus a `skin` block and a tracked **`fit_accuracy`** block:
+
+```json
+{
+  "fit_accuracy": {
+    "height_error_cm": 1.24,
+    "betas_in_range": true
+  }
+}
+```
+
+- `height_error_cm` = `abs(mesh_height_cm - input_heightCm)` where `mesh_height_cm = (bbox_max[1] - bbox_min[1]) * 100`; an observable proxy for how measurement-true the generated body is.
+- `betas_in_range` = whether every shape beta stayed within `[-4.0, 4.0]`. `SmplxProvider.measurements_to_betas()` now clamps each beta to that range and accepts an optional `gender` arg that shifts the population means used for normalization when `gender in ("male", "female")` (`neutral` reproduces the original mapping exactly).
 
 ### Rigging Output Payload Schema (v2)
 
@@ -254,6 +273,19 @@ The worker only interacts with `PENDING`, `RUNNING`, `READY`, and `FAILED`. The 
 | `validate_no_nan` | No NaN/Inf in bbox coords or sanity flag | -- | `"NaN vertices"` / `"NaN or Inf"` |
 
 Missing fields pass silently (validation is permissive for optional metadata).
+
+### Independent GLB Geometry Validation (`validate_glb_geometry`)
+
+`validate_glb_geometry(file_path)` is **defense-in-depth**: it re-parses the GLB file's own glTF JSON instead of trusting the provider-supplied output metadata. NOTE (honest scope): it reads the **accessor-declared** `count`/`min`/`max` (themselves part of the provider-controlled JSON chunk) and does **not** decode `bufferView`/`buffer` bytes -- so it catches metadata that is inconsistent with the file's own declared accessors, but does not prove those accessors match the underlying buffer data. The accessor traversal (mode-aware triangle counting, bbox union, out-of-range-index guard) lives in the shared `glb_geometry.compute_glb_geometry_stats` helper, reused by `meshy_generator._compute_glb_metadata`. It is wired into `main.py` for the **model**, **avatar**, and (as of the L4 fix) **rigging** task paths (after `validate_glb`/`validate_rigged_glb`).
+
+| Check | Source | Threshold | Failure Mode |
+|-------|--------|-----------|-------------|
+| Triangle count | Sum of index accessor counts / 3 (or POSITION count / 3) | `MAX_TRIANGLE_COUNT` (500k) | `"triangle_count {n} exceeds limit of 500000"` |
+| Bounding box dims | POSITION accessor `min`/`max`, unioned across meshes | `BBOX_MIN_DIM`-`BBOX_MAX_DIM` (0.01m-10m) | `"below minimum"` / `"above maximum"` |
+| NaN/Inf bounds | POSITION accessor `min`/`max` | -- | `"bbox coordinate on axis {n} is NaN or Inf"` |
+| Parse failure | `pygltflib.GLTF2.load` | -- | `"Failed to parse GLB geometry: {e}"` (task FAILED, never crashes the poll loop) |
+
+Returns `{"valid": bool, "errors": list, "triangle_count": int|None, "bbox": dict|None}`. A GLB with **no geometry** (e.g. the stub empty-scene GLB) passes -- there is nothing to reject. Uses a lazy `pygltflib` import inside the function.
 
 ### Rigged GLB Validation (`validate_rigged_glb`)
 
@@ -306,10 +338,10 @@ Basic existence and non-empty check only.
 ## Test & Quality
 
 - **Framework**: pytest
-- **Test files**: `tests/test_task_queue.py` (7 tests), `tests/test_validator.py` (37 tests), `tests/test_stub_generator.py` (13 tests), `tests/test_meshy_generator.py` (30 tests), `tests/test_avatar_task_queue.py` (4 tests), `tests/test_smplx_provider.py` (54 tests), `tests/test_rigging_task_queue.py` (8 tests), `tests/test_python_rigging_provider.py` (19 tests), `tests/test_weight_transfer.py` (18 tests), `tests/test_mesh_preflight.py` (9 tests), `tests/test_skinned_glb_writer.py` (17 tests), `tests/test_blender_rigging_provider.py` (46 tests), `tests/test_a_pose.py` (5 tests), `tests/test_scale_normalizer.py` (15 tests)
-- **Total tests**: 292
+- **Test files**: `tests/test_task_queue.py` (7 tests), `tests/test_validator.py` (44 tests), `tests/test_stub_generator.py` (13 tests), `tests/test_meshy_generator.py` (31 tests), `tests/test_avatar_task_queue.py` (4 tests), `tests/test_smplx_provider.py` (62 tests), `tests/test_rigging_task_queue.py` (8 tests), `tests/test_python_rigging_provider.py` (19 tests), `tests/test_weight_transfer.py` (18 tests), `tests/test_mesh_preflight.py` (9 tests), `tests/test_skinned_glb_writer.py` (17 tests), `tests/test_blender_rigging_provider.py` (46 tests), `tests/test_a_pose.py` (5 tests), `tests/test_scale_normalizer.py` (15 tests)
+- **Total tests**: 308
 - **Strategy**: Unit tests with mocked MySQL connections, mocked HTTP requests, and temp files (no integration tests)
-- **Coverage**: Task queue (claim/retry/reclaim), validator (GLB header, USDZ, triangle count, bounding box, NaN/Inf, metadata composition, rigged GLB header+skin+bones), StubGenerator (GLB output, payload schema, validator integration), MeshyGenerator (init, generate flow, error handling, payload schema, image URL resolution for local/http/data-uri inputs), AvatarTaskQueue (claim/complete/fail/reclaim), SmplxProvider + SmplxStubProvider (generate, measurements, errors, GLB output, gender handling, LFS file detection, model caching, skin metadata), RiggingTaskQueue (claim/complete/fail/reclaim), PythonRiggingProvider (input validation, path resolution, output format, call chain, SMPLX path validation, scale normalization integration), weight transfer (surface matching, inpainting, prune & normalize, pipeline, dense-to-top4), mesh preflight (valid mesh, degenerate faces, loose vertices, non-manifold edges, garment size warnings), skinned GLB writer (joint hierarchy, inverse bind matrices, round-trip GLB, buffer alignment, shape validation, child joint positioning), A-pose vector (length, shoulder values, immutability), scale normalizer (bbox computation, slot ratios, centering, immutability, edge cases); TripoGenerator not tested
+- **Coverage**: Task queue (claim/retry/reclaim), validator (GLB header, USDZ, triangle count, bounding box, NaN/Inf, metadata composition, independent GLB geometry validation, rigged GLB header+skin+bones), StubGenerator (GLB output, payload schema, validator integration), MeshyGenerator (init, generate flow, error handling, payload schema with real GLB-derived triangle_count/bbox, image URL resolution for local/http/data-uri inputs), AvatarTaskQueue (claim/complete/fail/reclaim), SmplxProvider + SmplxStubProvider (generate, measurements-to-betas with clamping + gender-conditioned means, fit_accuracy block, errors, GLB output, gender handling, LFS file detection, model caching, skin metadata), RiggingTaskQueue (claim/complete/fail/reclaim), PythonRiggingProvider (input validation, path resolution, output format, call chain, SMPLX path validation, scale normalization integration), weight transfer (surface matching, inpainting, prune & normalize, pipeline, dense-to-top4), mesh preflight (valid mesh, degenerate faces, loose vertices, non-manifold edges, garment size warnings), skinned GLB writer (joint hierarchy, inverse bind matrices, round-trip GLB, buffer alignment, shape validation, child joint positioning), A-pose vector (length, shoulder values, immutability), scale normalizer (bbox computation, slot ratios, centering, immutability, edge cases); TripoGenerator not tested
 
 ### Test Inventory
 
@@ -324,6 +356,7 @@ Basic existence and non-empty check only.
 | `test_validator.py` | `TestValidateBoundingBox` | 6 | Valid bbox, missing bbox, dimension too small, dimension too large, missing min/max keys, wrong component count |
 | `test_validator.py` | `TestValidateNoNan` | 5 | Clean metadata, has_nan_vertices flag, NaN in bbox min, Inf in bbox max, missing sanity |
 | `test_validator.py` | `TestValidateMetadata` | 5 | Normal model passes, triangle count over limit, bbox out of range, NaN vertices, empty metadata |
+| `test_validator.py` | `TestValidateGlbGeometry` | 7 | valid box geometry, oversized triangle count, NaN bounds, degenerate (flat) bbox, oversized bbox, parse-failure-is-error, empty-geometry passes |
 | `test_validator.py` | `TestValidateRiggedGlb` | 2 | Calls validate_glb first, valid rigged GLB passes |
 | `test_validator.py` | `TestValidateSkinMetadata` | 5 | No skins, no joints, no inverse bind matrices, no JOINTS_0 attribute, no WEIGHTS_0 attribute |
 | `test_validator.py` | `TestValidateRequiredBones` | 3 | TOP valid bones, TOP missing bones, returns bone names |
@@ -335,7 +368,7 @@ Basic existence and non-empty check only.
 | `test_meshy_generator.py` | `TestMeshyGeneratorInit` | 5 | api_key storage, default/custom output_dir, Authorization header, Content-Type header |
 | `test_meshy_generator.py` | `TestMeshyGeneratorGenerate` | 4 | GLB/USDZ file creation, POST request params (ai_model, topology, target_polycount), directory structure |
 | `test_meshy_generator.py` | `TestMeshyGeneratorErrors` | 5 | None input_payload, missing image_url, FAILED status, CANCELED status, timeout after 120 polls |
-| `test_meshy_generator.py` | `TestMeshyGeneratorPayload` | 10 | All required keys, schemaVersion=1, provider_used=MESHY, provider_request_id, paths contain IDs, triangle_count=30000, bbox=None, sanity.has_nan_vertices=False, elapsed_ms type |
+| `test_meshy_generator.py` | `TestMeshyGeneratorPayload` | 11 | All required keys, schemaVersion=1, provider_used=MESHY, provider_request_id, paths contain IDs, **real** triangle_count from GLB, **real** bbox from GLB, has_nan_vertices false for valid GLB, metadata degrades to None when GLB unparseable, elapsed_ms type |
 | `test_rigging_task_queue.py` | `TestRiggingTaskQueueClaim`, `TestRiggingTaskQueueComplete`, `TestRiggingTaskQueueFail`, `TestRiggingReclaimStaleTasks` | 8 | claim returns dict/none, skips max attempts, complete updates status, fail with/without code, reclaim stale, fail max attempts |
 | `test_python_rigging_provider.py` | `TestInputValidation`, `TestResolvePath`, `TestOutputFormat`, `TestCallChain`, `TestSmplxPathValidation` | 19 | None/missing/empty payload, invalid slot, default DRESS, HTTP/assets path resolve, schema v2 keys, rigged_glb_url prefix, elapsed_ms type, bbox keys, slot_hint forwarded, preflight errors, write_skinned_glb params, missing SMPLX dir, scale normalization integration |
 | `test_weight_transfer.py` | `TestFindClosestSurfaceMatches`, `TestInpaintWeights`, `TestPruneAndNormalizeWeights`, `TestTransferWeightsPipeline`, `TestDenseWeightsToTop4` | 18 | Phase 1 match rate/far verts/shape, Phase 2 nonzero/immutable/all-matched, Phase 3 max-4/row-sums/TOP-masking/DRESS-all/immutable, pipeline shape+normalization, top4 shapes/dtypes/sums/max4/pelvis-fallback/immutable |
@@ -360,6 +393,9 @@ pytest tests/test_task_queue.py     # Task queue tests only
 - Connection created per operation (no pool) -- acceptable for low-throughput worker
 - GLB validation is strict: invalid magic header = FAILED task
 - Metadata validation failures also mark task as FAILED (triangle count, bbox, NaN)
+- `validate_glb_geometry` runs after `validate_glb` on model, avatar, and rigging tasks and re-parses the file independently. It reads accessor-declared metadata only (NOT buffer bytes -- see the honest-scope note above), so it catches metadata inconsistent with the file's own declared accessors, e.g. Meshy's old hardcoded `triangle_count=30000`/`bbox=None`. It imports `pygltflib` lazily inside the function, delegates the traversal to `glb_geometry.compute_glb_geometry_stats` (mode-aware: LINES/POINTS add 0 triangles, TRIANGLE_STRIP/FAN add `count-2`), and treats a parse failure as a validation error (task FAILED) rather than crashing the poll loop
+- `MeshyGenerator` no longer fabricates `triangle_count`/`bbox`; `_compute_glb_metadata()` derives them from the downloaded GLB (pygltflib accessor bounds, trimesh fallback). Fake/stub GLB bytes used in tests are unparseable, so metadata degrades to `None` there -- production Meshy GLBs are real v2 files
+- `SmplxProvider.measurements_to_betas(measurements, gender="neutral")` clamps every beta to `[-4.0, 4.0]` (`BETA_MIN`/`BETA_MAX`); the `neutral` path is byte-for-byte unchanged from the original mapping (the near-zero regression test still holds). The avatar payload now carries a `fit_accuracy` block (`height_error_cm`, `betas_in_range`)
 - `SKIP LOCKED` ensures multiple worker instances can run safely in parallel
 - Output files are written to `WORKER_OUTPUT_DIR` (default `/var/iyae/assets`), path pattern: `products/{product_id}/tasks/{task_id}/preview.glb`
 - `retry_task` has a hard limit of 3 attempts (`attempt_count < 3`); exceeded retries are refused
@@ -386,7 +422,7 @@ pytest tests/test_task_queue.py     # Task queue tests only
 |------|---------|
 | `main.py` | Entry point, polling loop, stale reclamation scheduling |
 | `task_queue.py` | MySQL task queue (claim/complete/fail/retry/reclaim) |
-| `validator.py` | GLB header validation + metadata validation (triangle count, bbox, NaN) + rigged GLB validation (skin, bones) |
+| `validator.py` | GLB header validation + metadata validation (triangle count, bbox, NaN) + independent GLB geometry validation (`validate_glb_geometry`) + rigged GLB validation (skin, bones) |
 | `providers/stub_generator.py` | Mock 3D generation |
 | `providers/tripo_generator.py` | Tripo3D API integration |
 | `providers/meshy_generator.py` | Meshy.ai API integration (GLB + USDZ, local path to base64 resolution) |
@@ -433,3 +469,5 @@ pytest tests/test_task_queue.py     # Task queue tests only
 | 2026-06-03 | Added a_pose.py, scale_normalizer.py, generate_pose_glbs.py; tests 12->14 files / 235->282 (SmplxProvider, mesh_preflight, skinned_glb_writer, python_rigging expansions) |
 | 2026-06-07 | A-pose corrected 165->63 dimensions; tests 14->15 files / 282->292 (+pose GLBs); new scripts (import_fbx_pose, import_smplx_pose, pose_manifest, fbx_to_pose_glb) |
 | 2026-06-08 | Quality audit: fixed test_a_pose description "165 floats"→"63 floats", trimmed changelog |
+| 2026-09-05 | Phase 4 PR-A worker hardening: Meshy computes real triangle_count/bbox/NaN from the downloaded GLB (`_compute_glb_metadata`); added independent `validate_glb_geometry` (wired into model + avatar task paths); `measurements_to_betas` clamps betas to [-4,4] + optional gender-conditioned means; avatar payload gains `fit_accuracy` (height_error_cm, betas_in_range). Tests 292->308 (validator 37->44, meshy 30->31, smplx 54->62) |
+| 2026-09-05 | PR #8 follow-up: extracted shared `glb_geometry.compute_glb_geometry_stats` (M7) with mode-aware triangle counting (M6, LINES/POINTS=0, STRIP/FAN=count-2); honest `validate_glb_geometry` docstring/docs (M3, accessor-declared not buffer-verified); wired geometry check into the rigging path (L4); capped Meshy asset downloads at 100 MB (L2, `_enforce_download_cap`). Added `tests/test_glb_geometry.py` (8) + meshy download-cap tests (4) |

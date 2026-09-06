@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ImageUploader } from "@/components/ImageUploader";
-import { api } from "@/lib/api";
+import { api, type SizeMeasurement } from "@/lib/api";
 
 const FALLBACK_CATEGORIES = [
   "TOPS",
@@ -39,6 +39,7 @@ export interface ProductFormData {
   sizes: string[];
   status?: string;
   imageUrl?: string | null;
+  measurements?: SizeMeasurement[];
 }
 
 interface ProductFormProps {
@@ -59,6 +60,30 @@ function tagsToString(tags: string[]): string {
   return tags.join(", ");
 }
 
+type MeasureRow = { chestCm: string; waistCm: string; hipsCm: string; lengthCm: string };
+const EMPTY_ROW: MeasureRow = { chestCm: "", waistCm: "", hipsCm: "", lengthCm: "" };
+const MEASURE_FIELDS = ["chestCm", "waistCm", "hipsCm", "lengthCm"] as const;
+
+function measurementsToState(measurements?: SizeMeasurement[]): Record<string, MeasureRow> {
+  const map: Record<string, MeasureRow> = {};
+  for (const m of measurements ?? []) {
+    map[m.sizeLabel] = {
+      chestCm: m.chestCm != null ? String(m.chestCm) : "",
+      waistCm: m.waistCm != null ? String(m.waistCm) : "",
+      hipsCm: m.hipsCm != null ? String(m.hipsCm) : "",
+      lengthCm: m.lengthCm != null ? String(m.lengthCm) : "",
+    };
+  }
+  return map;
+}
+
+function parseNum(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function ProductForm({ mode, initialData, onSubmit, submitting = false }: ProductFormProps) {
   const [name, setName] = useState(initialData?.name ?? "");
   const [description, setDescription] = useState(initialData?.description ?? "");
@@ -77,6 +102,21 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
   const [imageUrl, setImageUrl] = useState<string | null>(initialData?.imageUrl ?? null);
   const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>(FALLBACK_CATEGORIES);
+  const [measures, setMeasures] = useState<Record<string, MeasureRow>>(
+    measurementsToState(initialData?.measurements),
+  );
+
+  const sizeLabels = tagsFromString(sizesRaw);
+
+  const updateMeasure = useCallback(
+    (label: string, field: keyof MeasureRow, value: string) => {
+      setMeasures((prev) => ({
+        ...prev,
+        [label]: { ...(prev[label] ?? EMPTY_ROW), [field]: value },
+      }));
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -112,6 +152,23 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
         return;
       }
 
+      const parsedSizes = tagsFromString(sizesRaw);
+      const measurements: SizeMeasurement[] = parsedSizes
+        .map((label) => {
+          const row = measures[label] ?? EMPTY_ROW;
+          return {
+            sizeLabel: label,
+            chestCm: parseNum(row.chestCm),
+            waistCm: parseNum(row.waistCm),
+            hipsCm: parseNum(row.hipsCm),
+            lengthCm: parseNum(row.lengthCm),
+          };
+        })
+        .filter(
+          (m) =>
+            m.chestCm != null || m.waistCm != null || m.hipsCm != null || m.lengthCm != null,
+        );
+
       const data: ProductFormData = {
         name: name.trim(),
         description: description.trim(),
@@ -119,7 +176,8 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
         category,
         styleTags: tagsFromString(styleTagsRaw),
         colorTags: tagsFromString(colorTagsRaw),
-        sizes: tagsFromString(sizesRaw),
+        sizes: parsedSizes,
+        measurements,
         imageUrl,
         ...(mode === "edit" && { status }),
       };
@@ -130,7 +188,7 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
         setError(err instanceof Error ? err.message : "Submission failed. Please try again.");
       }
     },
-    [name, description, price, category, styleTagsRaw, colorTagsRaw, sizesRaw, status, imageUrl, mode, onSubmit],
+    [name, description, price, category, styleTagsRaw, colorTagsRaw, sizesRaw, measures, status, imageUrl, mode, onSubmit],
   );
 
   return (
@@ -250,6 +308,44 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
               disabled={submitting}
             />
           </div>
+
+          {/* Per-size measurements (optional) */}
+          {sizeLabels.length > 0 && (
+            <div className="space-y-2" role="group" aria-labelledby="pf-measure-label">
+              <Label id="pf-measure-label">Size measurements (cm, optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Chest · Waist · Hips · Length. Powers cross-brand “your recommended size”; leave blank to skip.
+              </p>
+              <div className="space-y-2">
+                {sizeLabels.map((label) => {
+                  const row = measures[label] ?? EMPTY_ROW;
+                  return (
+                    <div
+                      key={label}
+                      className="grid grid-cols-[2.5rem_repeat(4,1fr)] items-center gap-2"
+                    >
+                      <span className="text-xs font-medium text-foreground">{label}</span>
+                      {MEASURE_FIELDS.map((f) => (
+                        <Input
+                          key={f}
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          inputMode="decimal"
+                          value={row[f]}
+                          disabled={submitting}
+                          onChange={(e) => updateMeasure(label, f, e.target.value)}
+                          placeholder={f.replace("Cm", "")}
+                          aria-label={`${label} ${f.replace("Cm", "")} cm`}
+                          className="h-9"
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Status — edit mode only */}
           {mode === "edit" && (

@@ -46,7 +46,7 @@ class OutfitControllerTest {
     void generateOutfit_authenticated_returns201() throws Exception {
         when(outfitService.generateOutfit(any(), anyString())).thenReturn(sampleOutfit());
 
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimalist", List.of("black"), List.of());
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimalist", List.of("black"), null, null, List.of());
         String body = objectMapper.writeValueAsString(request);
 
         mockMvc.perform(post("/api/outfits/generate")
@@ -59,7 +59,7 @@ class OutfitControllerTest {
 
     @Test
     void generateOutfit_unauthenticated_returns403() throws Exception {
-        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimalist", List.of("black"), List.of());
+        GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimalist", List.of("black"), null, null, List.of());
         String body = objectMapper.writeValueAsString(request);
 
         mockMvc.perform(post("/api/outfits/generate")

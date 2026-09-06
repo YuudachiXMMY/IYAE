@@ -9,7 +9,8 @@ import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SizeSelector } from "@/components/SizeSelector";
-import { api, ApiError } from "@/lib/api";
+import { RecommendedSizeHint } from "@/components/RecommendedSizeHint";
+import { api, ApiError, sizing, type SizeRecommendationResponse } from "@/lib/api";
 import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 import { SmartARViewer } from "@/components/SmartARViewer";
@@ -118,10 +119,15 @@ export default function ProductDetailPage({
   const [addedMessage, setAddedMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [sizeRec, setSizeRec] = useState<SizeRecommendationResponse | null>(null);
 
   useEffect(() => {
     setProductLoading(true);
     setError("");
+    // Reset size state so a stale size/rec from the previous product can't be
+    // carried over (and later added to cart) when navigating between products.
+    setSelectedSize(null);
+    setSizeRec(null);
     api
       .get<ProductWithAsset>(`/api/products/${id}`)
       .then((p) => {
@@ -133,6 +139,7 @@ export default function ProductDetailPage({
           colorTags: p.colorTags ?? [],
         });
         setSelectedImage(0);
+        if (p.recommendedSize) setSelectedSize(p.recommendedSize);
       })
       .catch(() => setError("Product not found."))
       .finally(() => setProductLoading(false));
@@ -156,6 +163,26 @@ export default function ProductDetailPage({
       .catch(() => setReviews([]))
       .finally(() => setReviewsLoading(false));
   }, [id]);
+
+  // Recommended size — authed users only. Guests skip silently: an unauthenticated
+  // 401 in api.ts would redirect a browsing guest to /login, which we must avoid.
+  useEffect(() => {
+    if (!user || !product) return;
+    const controller = new AbortController();
+    sizing
+      .getRecommendedSize(product.id, controller.signal)
+      .then((rec) => {
+        setSizeRec(rec);
+        if (rec.recommendedSize) {
+          const size = rec.recommendedSize;
+          setSelectedSize((prev) => prev ?? size);
+        }
+      })
+      .catch(() => {
+        // Aborted, unauthorized, or endpoint unavailable — degrade gracefully (hide hint).
+      });
+    return () => controller.abort();
+  }, [user, product]);
 
   async function handleAddToCart() {
     if (!product) return;
@@ -303,6 +330,12 @@ export default function ProductDetailPage({
               {product.sizes && product.sizes.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <span className="text-sm font-medium text-foreground">Size</span>
+                  {sizeRec && (
+                    <RecommendedSizeHint
+                      recommendedSize={sizeRec.recommendedSize}
+                      basis={sizeRec.basis}
+                    />
+                  )}
                   <SizeSelector
                     sizes={product.sizes}
                     selectedSize={selectedSize}
@@ -353,6 +386,7 @@ export default function ProductDetailPage({
                     <SmartARViewer
                       glbUrls={[glbUrl]}
                       usdzUrl={usdzUrl}
+                      previewImageUrl={product.media?.[0] ?? undefined}
                     />
                   </ViewerErrorBoundary>
                 ) : null;

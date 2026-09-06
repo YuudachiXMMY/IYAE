@@ -282,6 +282,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void register_adminRole_throwsIllegalArgumentException() {
+        RegisterRequest request = minimalRequest("admin@example.com", "password123", "Sneaky Admin", Role.ADMIN);
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Cannot register with ADMIN role");
+    }
+
+    @Test
     void register_duplicateUsername_throwsException() {
         RegisterRequest request = new RegisterRequest(
                 "another@example.com", "password123", "Another User", Role.BUYER,

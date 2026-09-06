@@ -3,11 +3,13 @@ package com.iyae.service;
 import com.iyae.dto.CreateProductRequest;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.ProductResponse;
+import com.iyae.dto.SizeMeasurementDto;
 import com.iyae.dto.UpdateProductRequest;
 import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.GarmentAsset;
 import com.iyae.entity.ModelGenerationTask;
 import com.iyae.entity.Product;
+import com.iyae.entity.ProductSizeMeasurement;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
 import com.iyae.entity.enums.TaskStatus;
@@ -15,10 +17,14 @@ import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.GarmentAssetRepository;
 import com.iyae.repository.ModelGenerationTaskRepository;
 import com.iyae.repository.ProductRepository;
+import com.iyae.repository.ProductSizeMeasurementRepository;
+import com.iyae.repository.ProductSpecifications;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +32,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -41,6 +48,8 @@ public class ProductService {
     private final UserRepository userRepository;
     private final GarmentAssetRepository garmentAssetRepository;
     private final ModelGenerationTaskRepository modelGenerationTaskRepository;
+    private final ProductSizeMeasurementRepository productSizeMeasurementRepository;
+    private final SizeRecommendationService sizeRecommendationService;
     private final ObjectMapper objectMapper;
 
     // -------------------------------------------------------------------------
@@ -48,23 +57,12 @@ public class ProductService {
     // -------------------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    public PagedResponse<ProductResponse> getPublicCatalog(int page, int size, String category, String q) {
+    public PagedResponse<ProductResponse> getPublicCatalog(int page, int size, String category, String q, boolean localOnly) {
         int clampedSize = Math.min(size, MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(page, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        boolean hasCategory = category != null && !category.isBlank();
-        boolean hasQ = q != null && !q.isBlank();
-
-        Page<Product> result;
-        if (hasCategory && hasQ) {
-            result = productRepository.findByStatusAndCategoryAndSearch(ProductStatus.PUBLISHED, category, q, pageable);
-        } else if (hasCategory) {
-            result = productRepository.findByStatusAndCategory(ProductStatus.PUBLISHED, category, pageable);
-        } else if (hasQ) {
-            result = productRepository.findByStatusAndSearch(ProductStatus.PUBLISHED, q, pageable);
-        } else {
-            result = productRepository.findByStatus(ProductStatus.PUBLISHED, pageable);
-        }
+        Page<Product> result = productRepository.findAll(
+                ProductSpecifications.catalog(ProductStatus.PUBLISHED, category, q, localOnly), pageable);
 
         List<Product> products = result.getContent();
         Map<Long, String> taskStatusMap = buildTaskStatusFallbackMap(products);
@@ -77,21 +75,24 @@ public class ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + id));
 
-        if (product.getStatus() == ProductStatus.PUBLISHED) {
-            return buildProductResponseWithTaskFallback(product);
+        if (product.getStatus() != ProductStatus.PUBLISHED) {
+            // Non-published: only the owner may access
+            if (email == null) {
+                throw new IllegalArgumentException("Product not found: " + id);
+            }
+            DesignerProfile profile = resolveDesignerProfile(email);
+            if (!product.getDesignerProfile().getId().equals(profile.getId())) {
+                throw new IllegalArgumentException("Product not found: " + id);
+            }
         }
 
-        // Non-published: only the owner may access
-        if (email == null) {
-            throw new IllegalArgumentException("Product not found: " + id);
-        }
-
-        DesignerProfile profile = resolveDesignerProfile(email);
-        if (!product.getDesignerProfile().getId().equals(profile.getId())) {
-            throw new IllegalArgumentException("Product not found: " + id);
-        }
-
-        return buildProductResponseWithTaskFallback(product);
+        ProductResponse base = buildProductResponseWithTaskFallback(product);
+        List<ProductSizeMeasurement> rows = productSizeMeasurementRepository.findByProductId(id);
+        List<SizeMeasurementDto> measurements = (rows == null || rows.isEmpty())
+                ? null
+                : rows.stream().map(SizeMeasurementDto::from).toList();
+        String recommendedSize = sizeRecommendationService.recommendForBuyer(rows, email);
+        return base.withRecommendation(recommendedSize, measurements);
     }
 
     @Transactional(readOnly = true)
@@ -109,8 +110,18 @@ public class ProductService {
         List<Product> products = productRepository.findByDesignerProfileId(profile.getId());
         Map<Long, String> taskStatusMap = buildTaskStatusFallbackMap(products);
         Map<Long, GarmentAsset> assetMap = buildAssetMap(products);
+        // Enrich with per-size measurements so the designer edit form can round-trip them.
+        // Without this the form loads a blank grid and saving PUTs an empty list, which the
+        // server would treat as "clear", silently deleting the product's measurements.
+        Map<Long, List<SizeMeasurementDto>> measurementMap = buildMeasurementMap(products);
         return products.stream()
-                .map(p -> buildProductResponse(p, assetMap.get(p.getId()), taskStatusMap.get(p.getId())))
+                .map(p -> {
+                    ProductResponse base = buildProductResponse(p, assetMap.get(p.getId()), taskStatusMap.get(p.getId()));
+                    List<SizeMeasurementDto> measurements = measurementMap.get(p.getId());
+                    return (measurements == null || measurements.isEmpty())
+                            ? base
+                            : base.withRecommendation(base.recommendedSize(), measurements);
+                })
                 .toList();
     }
 
@@ -133,7 +144,9 @@ public class ProductService {
                 .status(ProductStatus.DRAFT)
                 .build();
 
-        return ProductResponse.from(productRepository.save(product));
+        Product saved = productRepository.save(product);
+        replaceMeasurements(saved, request.measurements());
+        return ProductResponse.from(saved);
     }
 
     @Transactional
@@ -171,11 +184,20 @@ public class ProductService {
         if (request.glbUrl() != null) {
             product.setGlbUrl(request.glbUrl());
         }
-        if (request.status() != null) {
+        if (request.status() != null && request.status() != product.getStatus()) {
+            // PR#10 M2: once an admin ARCHIVE has locked the listing, the owning designer cannot
+            // transition it out of ARCHIVED (a silent republish). Only an admin un-hide releases
+            // the lock. Non-status edits below are unaffected; a no-op same-status request passes.
+            if (product.isModerationLocked()) {
+                throw new AccessDeniedException(
+                        "This product has been archived by moderation and cannot be changed by the designer.");
+            }
             product.setStatus(request.status());
         }
 
-        return ProductResponse.from(productRepository.save(product));
+        Product saved = productRepository.save(product);
+        replaceMeasurements(saved, request.measurements());
+        return ProductResponse.from(saved);
     }
 
     @Transactional
@@ -188,6 +210,63 @@ public class ProductService {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Delete-then-insert the product's per-size measurements. A null list means "no change"
+     * (create with no measurements, or an update that omits them) — but we still prune rows
+     * whose size label is no longer offered, so shrinking a product's sizes cannot leave orphan
+     * measurements that would surface a recommendedSize for an unavailable size. Rows with an
+     * unknown size label are rejected; rows with all-null dims are skipped (no empty rows persisted).
+     */
+    private void replaceMeasurements(Product product, List<SizeMeasurementDto> measurements) {
+        if (measurements == null) {
+            pruneOrphanMeasurements(product);
+            return;
+        }
+        productSizeMeasurementRepository.deleteByProductId(product.getId());
+        // Force the DELETE before the INSERTs so the (product_id, size_label) unique key holds
+        // (Hibernate otherwise orders deletes last within a single flush).
+        productSizeMeasurementRepository.flush();
+        if (measurements.isEmpty()) {
+            return;
+        }
+        List<String> declaredSizes = parseProductSizes(product);
+        for (SizeMeasurementDto dto : measurements) {
+            if (dto == null || dto.sizeLabel() == null || dto.sizeLabel().isBlank()) {
+                continue;
+            }
+            String label = dto.sizeLabel().trim();
+            if (!declaredSizes.isEmpty() && !declaredSizes.contains(label)) {
+                throw new IllegalArgumentException(
+                        "Measurement size '" + label + "' is not one of the product sizes: " + declaredSizes);
+            }
+            boolean allNull = dto.chestCm() == null && dto.waistCm() == null
+                    && dto.hipsCm() == null && dto.lengthCm() == null;
+            if (allNull) {
+                continue; // no signal — don't persist an empty row
+            }
+            productSizeMeasurementRepository.save(ProductSizeMeasurement.builder()
+                    .product(product)
+                    .sizeLabel(label)
+                    .chestCm(dto.chestCm())
+                    .waistCm(dto.waistCm())
+                    .hipsCm(dto.hipsCm())
+                    .lengthCm(dto.lengthCm())
+                    .build());
+        }
+    }
+
+    private List<String> parseProductSizes(Product product) {
+        String json = product.getSizes();
+        if (json == null || json.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
 
     private GarmentAsset resolveAsset(Long productId) {
         // Prefer ACTIVE (materialized from READY task); fall back to any latest asset for status
@@ -213,6 +292,43 @@ public class ProductService {
     }
 
     /**
+     * Batch-load per-size measurements for a list of products, grouped by product id.
+     * Uses a single query; {@code m.getProduct().getId()} only reads the lazy proxy's
+     * identifier (no extra SELECT per row), matching the pattern in {@link #buildAssetMap}.
+     */
+    private Map<Long, List<SizeMeasurementDto>> buildMeasurementMap(List<Product> products) {
+        if (products.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = products.stream().map(Product::getId).toList();
+        List<ProductSizeMeasurement> rows = productSizeMeasurementRepository.findByProductIdIn(ids);
+        return rows.stream().collect(Collectors.groupingBy(
+                m -> m.getProduct().getId(),
+                Collectors.mapping(SizeMeasurementDto::from, Collectors.toList())
+        ));
+    }
+
+    /**
+     * Delete measurement rows whose size label is no longer one of the product's declared sizes.
+     * Called on the "no measurement change" update path so shrinking sizes cannot leave orphans.
+     * Conservative: if the product has no parseable declared sizes we skip pruning rather than
+     * mass-delete (a sizes JSON parse failure must not wipe measurements).
+     */
+    private void pruneOrphanMeasurements(Product product) {
+        List<String> declaredSizes = parseProductSizes(product);
+        if (declaredSizes.isEmpty()) {
+            return;
+        }
+        List<ProductSizeMeasurement> existing = productSizeMeasurementRepository.findByProductId(product.getId());
+        List<ProductSizeMeasurement> orphans = existing.stream()
+                .filter(m -> !declaredSizes.contains(m.getSizeLabel()))
+                .toList();
+        if (!orphans.isEmpty()) {
+            productSizeMeasurementRepository.deleteAll(orphans);
+        }
+    }
+
+    /**
      * For products with no GarmentAsset, surface the status of the latest PENDING or RUNNING
      * ModelGenerationTask so the UI can show progress.
      */
@@ -220,8 +336,6 @@ public class ProductService {
         if (products.isEmpty()) {
             return Map.of();
         }
-        // Batch-fetch via per-product query is acceptable here; task rows are few per product.
-        // Results keyed by productId; only store PENDING/RUNNING entries.
         Map<Long, String> map = new java.util.HashMap<>();
         for (Product product : products) {
             List<ModelGenerationTask> tasks =
@@ -246,7 +360,7 @@ public class ProductService {
         if (!tasks.isEmpty()) {
             TaskStatus status = tasks.get(0).getStatus();
             if (status == TaskStatus.PENDING || status == TaskStatus.RUNNING) {
-                return buildProductResponse(product, null, status.name());
+                return ProductResponse.from(product, null).withAssetStatus(status.name());
             }
         }
         return ProductResponse.from(product, null);
@@ -257,29 +371,7 @@ public class ProductService {
             return ProductResponse.from(product, asset);
         }
         if (fallbackTaskStatus != null) {
-            // Reuse from(product, null) to get parsed JSON list fields, then override assetStatus
-            ProductResponse base = ProductResponse.from(product, null);
-            return new ProductResponse(
-                    base.id(),
-                    base.designerProfileId(),
-                    base.designerDisplayName(),
-                    base.name(),
-                    base.description(),
-                    base.price(),
-                    base.currency(),
-                    base.category(),
-                    base.styleTags(),
-                    base.colorTags(),
-                    base.sizes(),
-                    base.media(),
-                    base.glbUrl(),
-                    base.status(),
-                    base.createdAt(),
-                    base.updatedAt(),
-                    null,
-                    null,
-                    fallbackTaskStatus
-            );
+            return ProductResponse.from(product, null).withAssetStatus(fallbackTaskStatus);
         }
         return ProductResponse.from(product, null);
     }

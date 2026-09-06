@@ -32,6 +32,9 @@ class IyaeApplicationTests {
     ProductRepository productRepository;
 
     @MockBean
+    ProductSizeMeasurementRepository productSizeMeasurementRepository;
+
+    @MockBean
     CartRepository cartRepository;
 
     @MockBean

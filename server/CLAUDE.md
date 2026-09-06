@@ -27,17 +27,17 @@ The server is the central backend service. It exposes all REST endpoints, manage
 ## Architecture
 
 ```
-controller/ (21)  --> REST endpoints (@Valid DTO binding, incl. StripeWebhookController, GuestAvatarController)
-service/    (27)  --> Business logic + ownership checks + orchestration + email delivery + Stripe checkout (incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway) + GuestAvatarService
+controller/ (22)  --> REST endpoints (@Valid DTO binding, incl. StripeWebhookController, GuestAvatarController, SizeRecommendationController)
+service/    (28)  --> Business logic + ownership checks + orchestration + email delivery + Stripe checkout (incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway) + GuestAvatarService + SizeRecommendationService
 repository/ (22)  --> Spring Data JPA interfaces
-entity/     (22)  --> JPA entities (incl. PasswordResetToken, AvatarGenerationTask, RiggingTask, Post, PostLike, PostComment, Follow)
+entity/     (22)  --> JPA entities (incl. PasswordResetToken, AvatarGenerationTask, RiggingTask, Post, PostLike, PostComment, Follow); Product carries a size_chart JSON column
 entity/enums/ (9) --> Role, ProductStatus, TaskStatus (incl. MATERIALIZED), SessionStatus, PostStatus, etc.
-dto/        (46)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse)
+dto/        (47)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse, SizeRecommendationResponse)
 ai/          (7)  --> Pluggable AI provider system (interface, factory, exception, 4 impls)
 security/    (3)  --> JWT filter + token provider + UserDetailsService
 config/     (10)  --> SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig, BrandProperties (@ConfigurationProperties "app.brand")
 util/        (1)  --> GlbPlaceholderGenerator (minimal GLB file generation)
-test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controller WebMvcTest + 4 other) + 4 test support (336 methods total)
+test/       (54)  --> 50 JUnit 5 + Mockito test files (25 service + 21 controller WebMvcTest + 4 other) + 4 test support (349 methods total)
 ```
 
 ## API Endpoints (External Interface)
@@ -68,12 +68,14 @@ test/       (52)  --> 48 JUnit 5 + Mockito test files (24 service + 20 controlle
 | Method | Path | Controller | Purpose |
 |--------|------|------------|---------|
 | GET | `/api/auth/me` | AuthController | Current user (incl. emailVerified) |
+| GET | `/api/products/{id}/recommended-size` | SizeRecommendationController | Recommended size (measurement-chart / self-reported basis) |
 | GET/POST/PUT/DELETE | `/api/cart/**` | CartController | Cart operations |
 | POST | `/api/checkout` | CheckoutController | Create order (stubbed) |
 | POST/GET | `/api/outfits/**` | OutfitController | Generate/view outfits |
 | POST/GET | `/api/chat/sessions/**` | ChatController | AI chat |
 | GET/POST | `/api/body-profile` | BodyProfileController | Body measurements |
 | POST | `/api/avatar/generate` | AvatarController | Generate avatar |
+| DELETE | `/api/avatar` | AvatarController | One-tap delete of avatar + body data (returns 204 No Content) |
 | GET/POST/PUT/DELETE | `/api/looks/**` | SavedLookController | Saved looks |
 | POST/DELETE | `/api/products/{id}/reviews` | ReviewController | Reviews |
 | GET | `/api/orders/**` | OrderController | Order history |
@@ -143,7 +145,7 @@ There is no SMTP path in any profile. `AuthMailService` POSTs the mail `{type, t
 
 ## Data Model
 
-21 tables managed by Flyway migrations (`V1__baseline_schema.sql` through `V10__cart_item_selected_size.sql`).
+22 tables managed by Flyway migrations (`V1__baseline_schema.sql` through `V11__product_size_chart.sql`). `products.size_chart` is a nullable JSON column that stores a size chart array (per-size measurement entries) used by size recommendation.
 
 ### Entity Relationship
 
@@ -174,7 +176,7 @@ User (hub)
 
 | Enum | Values |
 |------|--------|
-| Role | `BUYER`, `DESIGNER` |
+| Role | `BUYER`, `DESIGNER`, `ADMIN` |
 | ProductStatus | `DRAFT`, `PUBLISHED`, `ARCHIVED` |
 | TaskStatus | `PENDING`, `RUNNING`, `READY`, `FAILED`, `MATERIALIZED` |
 | SessionStatus | `ACTIVE`, `COMPLETED` |
@@ -194,7 +196,7 @@ On first startup (empty database), `DataSeeder` creates:
 - **10 promotions**: 6 FEATURED (homepage carousel, weights 10-60) + 4 SPONSORED (in-feed, weights 1-4)
 - **10 garment assets**: 5 READY (placeholder.glb) + 5 PENDING (demo.glb or null)
 
-## Service Layer (27 services)
+## Service Layer (28 services)
 
 | Service | Purpose |
 |---------|---------|
@@ -211,7 +213,7 @@ On first startup (empty database), `DataSeeder` creates:
 | PromotionService | Promotional slot management (FEATURED/SPONSORED) |
 | OrderService | Order history retrieval |
 | CheckoutService | Checkout flow (Stripe stub) |
-| AvatarService | Avatar generation (gender identity mapping, body measurement validation, task supersession) |
+| AvatarService | Avatar generation (gender identity mapping, body measurement validation, task supersession); `@Transactional deleteAvatarData(email)` one-tap purge (nulls `user.avatarGlbUrl`, idempotently deletes BodyProfile, deletes the user's AvatarGenerationTask rows; does NOT delete the User) |
 | DesignerProfileService | Designer profile management |
 | FileStorageService | File upload handling (JPEG, PNG, WebP; 10MB max; atomic write via temp file) |
 | UserService | User account operations |
@@ -223,6 +225,7 @@ On first startup (empty database), `DataSeeder` creates:
 | PostService | Community post CRUD (create, list feed, single post, delete with ownership, toggle like, add comment) |
 | FollowService | User follow/unfollow toggle, list followers/following |
 | GuestAvatarService | Anonymous avatar generation for unauthenticated users (creates/reuses internal guest user, body type mapping, waist estimation from BMI, task creation + status polling) |
+| SizeRecommendationService | Two-tier recommended-size resolution: Tier 1 MEASUREMENT_CHART (Euclidean distance over {chestCm,waistCm,hipsCm,inseamCm} vs product `size_chart` entries), Tier 2 SELF_REPORTED (category->self-reported size mapping), else NONE |
 
 ## Rate Limiting
 
@@ -332,10 +335,11 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 
 ## Scheduled Tasks
 
-`SchedulerConfig` enables `@EnableScheduling` and runs three fixed-delay tasks every 5 seconds:
-- `processReadyGenerationTasks()` calls `GenerationService.processReadyTasks()` to materialize READY `ModelGenerationTask` rows into `GarmentAsset` entries, then marks them as `MATERIALIZED`
-- `processReadyAvatarTasks()` calls `AvatarService.processReadyTasks()` to materialize READY `AvatarGenerationTask` rows into `User.avatarGlbUrl`, then marks them as `MATERIALIZED`
-- `processReadyRiggingTasks()` calls `RiggingService.processReadyTasks()` to materialize READY `RiggingTask` rows into `GarmentAsset` rigging columns (riggedGlbUrl, riggingStatus, riggedAt), then marks them as `MATERIALIZED`
+`SchedulerConfig` enables `@EnableScheduling`, provides a multi-threaded `TaskScheduler` bean (pool size 3, `iyae-sched-` threads) so a slow task can never starve the others, and runs four tasks:
+- `processReadyGenerationTasks()` (every 5s) calls `GenerationService.processReadyTasks()` to materialize READY `ModelGenerationTask` rows into `GarmentAsset` entries, then marks them as `MATERIALIZED`
+- `processReadyAvatarTasks()` (every 5s) calls `AvatarService.processReadyTasks()` to materialize READY `AvatarGenerationTask` rows into `User.avatarGlbUrl`, then marks them as `MATERIALIZED`
+- `processReadyRiggingTasks()` (every 5s) calls `RiggingService.processReadyTasks()` to materialize READY `RiggingTask` rows into `GarmentAsset` rigging columns (riggedGlbUrl, riggingStatus, riggedAt), then marks them as `MATERIALIZED`
+- `refreshWeatherCache()` (every `app.weather.cache-ttl-seconds`, default 30 min, first run 5s after boot) calls `WeatherService.refresh()` to pre-warm the Toronto weather cache OFF the chat hot path, so `WeatherService.getCurrentToronto()` stays a non-blocking in-memory read (a slow/unreachable Open-Meteo never adds latency to a stylist turn)
 - Errors are caught and logged (no propagation)
 
 ## Security
@@ -343,7 +347,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - JWT HS256, 24h TTL, secret from `app.jwt.secret` (>=32 bytes)
 - `JwtAuthenticationFilter` extracts token from `Authorization: Bearer` header
 - `RateLimitFilter` applied before JWT filter in the security filter chain
-- `SecurityConfig` defines route-level access (public incl. `GET /api/auth/users/profile/**`, authenticated, DESIGNER role)
+- `SecurityConfig` defines route-level access (public incl. `GET /api/auth/users/profile/**`, authenticated, DESIGNER role); an explicit `GET /api/products/*/recommended-size` -> `authenticated()` matcher is placed BEFORE the public `/api/products/**` permitAll rule so the recommended-size endpoint requires auth
 - CORS configured via dedicated `CorsConfig` bean injected into `SecurityConfig` -- origins from `app.cors.origins` (comma-separated), credentials allowed, scoped to `/api/**`
 - Ownership enforced in service layer (not controller)
 - Login returns **400** (not 401) on invalid credentials to prevent user enumeration
@@ -359,7 +363,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - **Framework**: JUnit 5 + Mockito + MockMvc + AssertJ (via `spring-boot-starter-test`)
 - **Test profile**: `application-test.yml` (H2 in-memory, Flyway disabled, mock AI)
 - **Test directory**: `server/src/test/java/com/iyae/`
-- **Current state**: 48 test files, 336 test methods (+ 4 test support files)
+- **Current state**: 50 test files, 349 test methods (+ 4 test support files)
 
 ### Test Inventory
 
@@ -381,7 +385,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `BodyProfileServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | Get profile (existing/new), upsert (create/update), ownership checks |
 | `SavedLookServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | List looks, save/update/delete look, ownership checks, invalid outfit |
 | `ReviewServiceTest` | `@ExtendWith(MockitoExtension)` | 9 | Create review, delete review, get reviews, summary, ownership, duplicate prevention |
-| `AvatarServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | Gender identity mapping for avatar payload (null/blank->neutral, Male->male, Female->female, Non-binary->neutral, Prefer-not-to-say->neutral); declares a `BrandProperties` mock (guest email) |
+| `AvatarServiceTest` | `@ExtendWith(MockitoExtension)` | 8 | Gender identity mapping for avatar payload (null/blank->neutral, Male->male, Female->female, Non-binary->neutral, Prefer-not-to-say->neutral); deleteAvatarData clears avatar URL + body profile + avatar tasks, idempotent when no profile/tasks; declares a `BrandProperties` mock (guest email) |
 | `OutfitServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | Generate outfit (slot matching, scoring), manual outfit builder, get outfits, ownership |
 | `CheckoutServiceTest` | `@ExtendWith(MockitoExtension)` | 14 | Stripe checkout (session creation, webhook handling, order fulfillment, size in line items) |
 | `PostServiceTest` | `@ExtendWith(MockitoExtension)` | 13 | Community post CRUD, feed, like, comment |
@@ -394,6 +398,9 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `FileStorageServiceTest` | `@ExtendWith(MockitoExtension)` | 5 | File upload (JPEG/PNG/WebP, atomic write) |
 | `GarmentAssetServiceTest` | `@ExtendWith(MockitoExtension)` | 4 | Garment asset retrieval |
 | `HealthServiceTest` | `@ExtendWith(MockitoExtension)` | 2 | Server and AI health probes; declares a `BrandProperties` mock (service id) |
+| `SizeRecommendationServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | measurement-chart picks nearest size, self-reported returns top size (tops category), category mapping (dress uses dress size), no body profile -> NONE with zero confidence, self-reported size not available -> NONE, product not found -> IllegalArgumentException |
+| `SizeRecommendationControllerTest` | `@WebMvcTest` | 2 | GET /api/products/{id}/recommended-size authenticated returns 200 with shape, unauthenticated is denied |
+| `AvatarControllerTest` | `@WebMvcTest` | 6 | Avatar generate endpoint; DELETE /api/avatar authenticated returns 204, unauthenticated returns 403 |
 
 ### Untested Areas (coverage gaps)
 
@@ -449,6 +456,9 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `src/main/resources/db/migration/V8__community_tables.sql` | Community tables (posts, post_comments, post_likes, follows) |
 | `src/main/resources/db/migration/V9__checkout_orders.sql` | Stripe payment columns on orders (stripe_session_id, stripe_payment_intent, payment_status) |
 | `src/main/resources/db/migration/V10__cart_item_selected_size.sql` | Add selected_size to cart_items, change unique key to (cart_id, product_id, selected_size) |
+| `src/main/resources/db/migration/V11__product_size_chart.sql` | Add nullable `size_chart` JSON column to products (stores a size chart array for size recommendation) |
+| `src/main/resources/db/migration/V12__marketplace_local_and_measurements.sql` | Add ADMIN to users.role enum; city/is_local on designer_profiles; new product_size_measurements table |
+| `src/main/resources/db/migration/V13__product_moderation_lock.sql` | Add products.moderation_locked for durable admin moderation (M2) |
 
 ## Changelog
 
@@ -460,3 +470,8 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | 2026-06-14 | Doc sync: +GuestAvatarController/Service (public avatar API), cart size selection (V10 migration), V9+V10 migration refs, services 26->27, controllers 20->21, DTOs 44->46, tests 333->339 |
 | 2026-06-14 | Count audit: tests 339->338 (service header 220->215, controller header 105->100 -- corrected sum errors); AuthMailServiceTest 5->8 (Resend fallback tests were undercounted); added GuestAvatar to untested areas |
 | 2026-09-05 | Email consolidated onto Resend: removed `spring-boot-starter-mail` + all `spring.mail.*`/`SMTP_*` config; `AuthMailService` is Resend-only (POSTs to Next.js internal route). Added `BrandProperties` (`app.brand.*`, config 9->10). Main class/context test renamed Clossett->Iyae. Tests 338->336 (AuthMailServiceTest 8->6; Health*/Avatar now mock BrandProperties) |
+| 2026-09-05 | Phase 4 Virtual Fitting: V11 size_chart migration + Product.sizeChart; SizeRecommendationService/Controller/DTO (`GET /api/products/{id}/recommended-size`, authenticated matcher before public products rule); AvatarController `DELETE /api/avatar` one-tap delete + AvatarService.deleteAvatarData; tests 336->349 (+SizeRecommendation service/controller, +AvatarService/Controller delete) |
+| 2026-09-05 | PR #8 follow-up: SizeRecommendationService selects chart entry on RMS to match the confidence metric (M2); added `SizeRecommendationBasis` enum backing the `basis` string (L6); capped `size_chart` parsing at 50 entries (L7); RateLimitFilter gained a nullable `pathSuffix` + rules for `DELETE /api/avatar` (10/60s) and `GET /api/products/*/recommended-size` (30/60s) (L1); AvatarService.deleteAvatarData logs active-task purge (L3). Added tests to SizeRecommendationServiceTest (M2/tie-break/malformed/empty/cap), RateLimitFilterTest (L1), AvatarServiceTest (L3) |
+| 2026-09-05 | Phase 5 (Marketplace + Local Designers + ADMIN): marketplace migration (ADMIN role, designer_profiles.city/is_local, product_size_measurements table); +ADMIN enum value (auto ROLE_ADMIN via UserDetailsServiceImpl); `/api/admin/**` gated to ADMIN in SecurityConfig; new AdminController + AdminModerationService (privileged catalog/community/promotion moderation, no ownership check); SizeRecommendationService gains cm-based `recommendForBuyer` "your size" normalization vs BodyProfile (unified with the chart-based `recommend`); catalog `localOnly` filter via new ProductSpecifications; ProductResponse gains designerLocal/designerCity/recommendedSize/measurements; DesignerProduct create/update accept per-size measurements; AuthService rejects public ADMIN registration |
+| 2026-09-05 | PR#10 follow-up (`fix/pr10-h1-l6-measurements`): product_moderation_lock migration + `Product.moderationLocked` for M2 durable admin moderation; `ProductService.updateProduct` throws `AccessDeniedException` (403) on moving a locked product out of ARCHIVED; new `ProductSpecificationsDataJpaTest`. NOTE latent pre-existing bug: `PasswordResetTokenRepository.consumeToken` assigns `CURRENT_TIMESTAMP` to `Instant` |
+| 2026-09-06 | Merge #10 into main: reconciled two independent size-recommendation seams into one `SizeRecommendationService` (chart-based `recommend` + cm-measurement `recommendForBuyer`); renumbered Phase-5 migrations to avoid a V11 collision with `V11__product_size_chart` (marketplace -> V12, moderation_lock -> V13) |

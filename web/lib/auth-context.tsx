@@ -7,7 +7,7 @@ interface User {
   id: number;
   email: string;
   name: string | null;
-  role: "BUYER" | "DESIGNER";
+  role: "BUYER" | "DESIGNER" | "ADMIN";
   emailVerified: boolean;
   username?: string | null;
   ageRange?: string | null;

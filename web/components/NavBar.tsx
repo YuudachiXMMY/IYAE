@@ -27,6 +27,7 @@ import {
   GearSix,
   Storefront,
   Megaphone,
+  ShieldCheck,
   SignOut,
 } from "@phosphor-icons/react";
 
@@ -85,6 +86,7 @@ export function NavBar({ className }: NavBarProps) {
 
   const displayName = surface.displayName ?? user?.name ?? null;
   const isDesigner = user?.role === "DESIGNER";
+  const isAdmin = user?.role === "ADMIN";
 
   const handleMouseEnter = useCallback(() => {
     if (closeTimerRef.current) {
@@ -143,6 +145,7 @@ export function NavBar({ className }: NavBarProps) {
                   {/* <NavLink href="/designer/promotions">Promotions</NavLink> */}
                 </>
               )}
+              {isAdmin && <NavLink href="/admin">Admin</NavLink>}
             </>
           ) : (
             <NavLink href="/products">Browse</NavLink>
@@ -246,6 +249,21 @@ export function NavBar({ className }: NavBarProps) {
                       </>
                     )}
 
+                    {/* Section 3b: Admin-only */}
+                    {isAdmin && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem asChild>
+                            <Link href="/admin">
+                              <ShieldCheck size={16} weight="regular" />
+                              Admin
+                            </Link>
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </>
+                    )}
+
                     {/* Section 4: Sign out */}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -323,6 +341,14 @@ export function NavBar({ className }: NavBarProps) {
                           Promotions
                         </NavLink>
                       </>
+                    )}
+                    {isAdmin && (
+                      <NavLink
+                        href="/admin"
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        Admin
+                      </NavLink>
                     )}
                     <NavLink
                       href="/products"

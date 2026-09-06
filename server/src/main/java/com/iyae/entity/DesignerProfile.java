@@ -33,6 +33,12 @@ public class DesignerProfile {
     @Column(name = "bio", columnDefinition = "TEXT")
     private String bio;
 
+    @Column(name = "city", length = 120)
+    private String city;
+
+    @Column(name = "is_local", nullable = false)
+    private boolean isLocal;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

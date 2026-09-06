@@ -1,6 +1,7 @@
 package com.iyae.dto;
 
 import com.iyae.entity.enums.ProductStatus;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 
 import java.math.BigDecimal;
@@ -28,5 +29,7 @@ public record UpdateProductRequest(
 
         String glbUrl,
 
-        ProductStatus status
+        ProductStatus status,
+
+        @Valid List<SizeMeasurementDto> measurements
 ) {}

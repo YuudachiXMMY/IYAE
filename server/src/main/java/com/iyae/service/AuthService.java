@@ -61,6 +61,11 @@ public class AuthService {
             throw new IllegalArgumentException("Username already taken");
         }
 
+        // Privilege-escalation guard: ADMIN is granted only via seed/DB, never public registration.
+        if (request.role() == Role.ADMIN) {
+            throw new IllegalArgumentException("Cannot register with ADMIN role");
+        }
+
         String rawToken = secureTokenService.generateRawToken();
         String tokenHash = secureTokenService.hashToken(rawToken);
 

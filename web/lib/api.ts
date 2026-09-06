@@ -1,3 +1,5 @@
+import type { AvatarStatus } from "./hooks/useAvatarStatus";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 let isRedirecting = false;
@@ -127,7 +129,7 @@ export interface UserResponse {
   id: number;
   email: string;
   name: string | null;
-  role: "BUYER" | "DESIGNER";
+  role: "BUYER" | "DESIGNER" | "ADMIN";
   emailVerified: boolean;
   username?: string | null;
   ageRange?: string | null;
@@ -153,11 +155,37 @@ export interface AvatarResponse {
   status: string;
 }
 
+// Re-export AvatarStatus so `@/lib/api` is the single source for API types.
+// The canonical shape is defined in `lib/hooks/useAvatarStatus.ts` (which already
+// depends on this module at runtime, so this type-only import creates no cycle).
+export type { AvatarStatus };
+
 export const auth = {
   register: (data: RegisterRequest) => api.post<{ token: string; user: UserResponse }>("/api/auth/register", data),
   login: (email: string, password: string) => api.post<{ token: string; user: UserResponse }>("/api/auth/login", { email, password }),
   me: () => api.get<UserResponse>("/api/auth/me"),
   updateProfile: (data: UpdateProfileRequest) => api.put<UserResponse>("/api/auth/me", data),
+};
+
+export const avatar = {
+  getStatus: (signal?: AbortSignal) => api.get<AvatarStatus>("/api/avatar/status", { signal }),
+  generate: () => api.post<AvatarStatus>("/api/avatar/generate"),
+  getAvatar: (signal?: AbortSignal) => api.get<AvatarResponse>("/api/avatar", { signal }),
+  delete: () => api.delete<void>("/api/avatar"),
+};
+
+// ── Size recommendation ─────────────────────────────────────────────────────────
+
+export interface SizeRecommendationResponse {
+  recommendedSize: string | null;
+  basis: "MEASUREMENT_CHART" | "SELF_REPORTED" | "NONE";
+  confidence: number;
+  availableSizes: string[];
+}
+
+export const sizing = {
+  getRecommendedSize: (productId: number, signal?: AbortSignal) =>
+    api.get<SizeRecommendationResponse>(`/api/products/${productId}/recommended-size`, { signal }),
 };
 
 export interface RiggingStatusResponse {
@@ -179,8 +207,15 @@ export const rigging = {
 
 // ── Outfit types ──────────────────────────────────────────────────────────────
 
+/**
+ * The four garment slots an outfit item can occupy. Mirrors the server contract
+ * (`OutfitService.VALID_SLOT_NAMES`); typing `slot` as this union — instead of a
+ * bare `string` — keeps slot label/order maps exhaustive on the consuming pages.
+ */
+export type SlotName = "top" | "bottom" | "shoes" | "accessory";
+
 export interface OutfitItem {
-  slot: string;
+  slot: SlotName;
   productId: number;
   productName: string;
   productPrice: number;
@@ -233,4 +268,105 @@ export const promotions = {
   create: (data: CreatePromotionRequest) => api.post<PromotionResponse>("/api/promotions", data),
   update: (id: number, data: UpdatePromotionRequest) => api.put<PromotionResponse>(`/api/promotions/${id}`, data),
   delete: (id: number) => api.delete(`/api/promotions/${id}`),
+};
+
+// ── Marketplace: cross-brand sizing ─────────────────────────────────────────────
+
+export interface SizeMeasurement {
+  sizeLabel: string;
+  chestCm: number | null;
+  waistCm: number | null;
+  hipsCm: number | null;
+  lengthCm: number | null;
+}
+
+// ── Admin moderation ────────────────────────────────────────────────────────────
+
+export type AdminProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+
+export interface AdminProduct {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  currency: string;
+  status: AdminProductStatus;
+  designerDisplayName: string | null;
+  designerLocal: boolean;
+  designerCity: string | null;
+}
+
+export type AdminPostStatus = "ACTIVE" | "ARCHIVED" | "PENDING_DELETE";
+
+export interface AdminPost {
+  id: number;
+  authorId: number;
+  authorName: string | null;
+  authorUsername: string | null;
+  content: string | null;
+  status: AdminPostStatus;
+  createdAt: string;
+}
+
+export const admin = {
+  listProducts: (status?: AdminProductStatus) =>
+    api.get<AdminProduct[]>(`/api/admin/products${status ? `?status=${status}` : ""}`),
+  setProductStatus: (id: number, status: AdminProductStatus) =>
+    api.put<AdminProduct>(`/api/admin/products/${id}/status`, { status }),
+  listPosts: (status?: AdminPostStatus) =>
+    api.get<AdminPost[]>(`/api/admin/posts${status ? `?status=${status}` : ""}`),
+  archivePost: (id: number) => api.put<AdminPost>(`/api/admin/posts/${id}/archive`),
+  removePost: (id: number) => api.put<AdminPost>(`/api/admin/posts/${id}/remove`),
+  listPromotions: () => api.get<PromotionResponse[]>("/api/admin/promotions"),
+  setPromotionSlot: (id: number, slotType: PromotionSlotType) =>
+    api.put<PromotionResponse>(`/api/admin/promotions/${id}/slot`, { slotType }),
+};
+
+// ── Chat + Weather types & helpers ──────────────────────────────────────────────
+
+export interface ChatSession {
+  id: number;
+  status: "ACTIVE" | "COMPLETED";
+  createdAt: string;
+}
+
+/** Outfit payload returned inline in a chat message (id is null until persisted). */
+export interface OutfitResponse {
+  id: number | null;
+  items: OutfitItem[];
+  explanation: string;
+  createdAt?: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  outfit?: OutfitResponse | null;
+  outfitRecommendationId?: number | null;
+  suggestions?: string[];
+  createdAt: string;
+}
+
+export interface Weather {
+  temperatureC: number | null;
+  feelsLikeC: number | null;
+  condition: string | null;
+  available: boolean;
+}
+
+export const chat = {
+  listSessions: (signal?: AbortSignal) => api.get<ChatSession[]>("/api/chat/sessions", { signal }),
+  createSession: () => api.post<ChatSession>("/api/chat/sessions"),
+  getMessages: (sessionId: number, signal?: AbortSignal) =>
+    api.get<ChatMessage[]>(`/api/chat/sessions/${sessionId}/messages`, { signal }),
+  sendMessage: (sessionId: number, content: string) =>
+    api.post<ChatMessage>(`/api/chat/sessions/${sessionId}/messages`, { content }),
+  getWeather: (signal?: AbortSignal) => api.get<Weather>("/api/chat/weather", { signal }),
+};
+
+// Canonical helper lives on `chat` (the endpoint is /api/chat/weather); this
+// namespaced alias delegates so there is only one implementation to maintain.
+export const weather = {
+  get: (signal?: AbortSignal) => chat.getWeather(signal),
 };

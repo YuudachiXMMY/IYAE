@@ -35,7 +35,7 @@ app/           (37 page routes)  --> All "use client", no RSC or server actions
 app/not-found.tsx                --> Custom 404 page (static, no "use client")
 app/error.tsx                    --> Global error boundary ("use client")
 app/layout.tsx                   --> Root layout (AuthProvider -> CartProvider, fonts, metadata)
-components/    (93 total)        --> 74 app-specific + 19 shadcn/ui primitives
+components/    (94 total)        --> 75 app-specific + 19 shadcn/ui primitives
 components/register/ (7)         --> Multi-step registration wizard components
 components/community/ (1)        --> PostMedia (community post media rendering)
 components/profile/ (9)          --> Profile page components (header, stats, settings, posts, actions)
@@ -43,7 +43,7 @@ components/home/ (18)            --> Landing page sections + shared motion prese
 components/outfits/ (6)          --> Manual outfit builder (OutfitSlotCard, ProductPickerDialog, ProductSelectCard, OutfitDetailsForm, OutfitBuilderPreview, OutfitSlotSidebarItem)
 components/designer/ (2)         --> Designer studio (PromotionList, PromotionForm)
 components/ui/ (19)              --> shadcn/ui (Radix-based, CLI-generated, DO NOT edit)
-lib/api.ts                       --> Typed fetch wrapper with auto JWT injection + AbortSignal + auth/rigging helpers + outfit types
+lib/api.ts                       --> Typed fetch wrapper with auto JWT injection + AbortSignal + auth/rigging/avatar/sizing helpers + outfit types
 lib/auth-context.tsx             --> AuthProvider (JWT lifecycle, hydration via GET /me)
 lib/cart-context.tsx             --> CartProvider (server + demo hybrid cart)
 lib/utils.ts                     --> cn() utility for Tailwind class merging + humanizeNumber() for compact display
@@ -57,11 +57,11 @@ lib/pose-config.ts               --> Pose preset definitions (5 poses, 3 categor
 lib/demo-looks.ts                --> Demo saved looks data for development
 lib/brand.ts                     --> Single source of brand values (BRAND: name, tagline, url, mailFrom); consumed by wordmark sites, document title/metadataBase, email subjects, and email-templates.ts
 lib/email-templates.ts           --> Email template utilities for Resend integration (reads copy/sender from BRAND)
-lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation (11 hooks)
+lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatar, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation, useWeather (13 hooks)
 middleware.ts                    --> CSP headers + Permissions-Policy (camera on AR routes only)
 public/assets/                   --> Static assets (product placeholder SVG)
 public/models/                   --> 3D model files (demo-outfit.glb for DemoOutfitModel, default-avatar.glb for guest avatar, poses/ directory for pose animation GLBs)
-__tests__/                       --> Vitest test suite (16 files, 222 cases, jsdom environment)
+__tests__/                       --> Vitest test suite (17 files, 230 cases, jsdom environment)
 e2e/                             --> Playwright E2E specs
 ```
 
@@ -79,7 +79,7 @@ e2e/                             --> Playwright E2E specs
 | `/verify-email` | `app/verify-email/page.tsx` | Email verification confirmation |
 | `/status` | `app/status/page.tsx` | Health diagnostics |
 | `/products` | `app/products/page.tsx` | Catalog browse with search/filter (Suspense boundary) |
-| `/products/[id]` | `app/products/[id]/page.tsx` | Product detail |
+| `/products/[id]` | `app/products/[id]/page.tsx` | Product detail (authed-only recommended-size fetch pre-selects size; `<RecommendedSizeHint/>` above `<SizeSelector/>`; product image passed as `previewImageUrl`) |
 
 ### Authenticated (any role)
 
@@ -101,7 +101,7 @@ e2e/                             --> Playwright E2E specs
 | `/orders` | `app/orders/page.tsx` | Order history |
 | `/orders/[id]` | `app/orders/[id]/page.tsx` | Order detail |
 | `/profile/body` | `app/profile/body/page.tsx` | Body measurements |
-| `/profile/avatar` | `app/profile/avatar/page.tsx` | Avatar generation |
+| `/profile/avatar` | `app/profile/avatar/page.tsx` | Avatar generation + one-tap "Delete my avatar & body data" |
 | `/profile/preferences` | `app/profile/preferences/page.tsx` | Style preferences and settings |
 | `/profile/[username]` | `app/profile/[username]/page.tsx` | Public user profile |
 | `/community` | `app/community/page.tsx` | Community feed and discovery |
@@ -133,7 +133,7 @@ e2e/                             --> Playwright E2E specs
 
 ## Key Components
 
-### App-Specific (root, 31)
+### App-Specific (root, 32)
 
 | Component | Purpose |
 |-----------|---------|
@@ -145,7 +145,7 @@ e2e/                             --> Playwright E2E specs
 | ChatSidebar | Session list for AI chat |
 | ChatMessageBubble | Individual chat message display |
 | TypingIndicator | AI typing animation |
-| OutfitCard | Outfit recommendation card |
+| OutfitCard | Outfit recommendation card; AI-chat outfit has an inline "Try on" toggle that lazy-mounts a `dynamic(ssr:false)` AvatarViewer (replaces the old "View in 3D" link-out); collapsed 2x2 grid stays default |
 | ImageUploader | Image upload with drag-and-drop (JPEG, PNG, WebP; 10MB max) |
 | GenerationStatusBadge | Inline 3D generation status |
 | GenerationStatusCard | Expanded generation status with actions |
@@ -153,6 +153,7 @@ e2e/                             --> Playwright E2E specs
 | RiggingStatusCard | Expanded rigging status with trigger/retry actions |
 | FittingHelper | Fitting assistance component for try-on flows |
 | SizeSelector | Cloth size selection buttons (aria-pressed, disabled state support) |
+| RecommendedSizeHint | Presentational recommended-size hint ("Your recommended size: M"); renders nothing when basis is NONE; "based on your saved sizes" caption for SELF_REPORTED |
 | Footer | Site footer |
 | theme-provider | next-themes ThemeProvider wrapper |
 | theme-toggle | Dark/light mode toggle button |
@@ -164,9 +165,9 @@ e2e/                             --> Playwright E2E specs
 | PoseSelector | Horizontal pose preset strip overlay for AvatarViewer (categories: stationary/movement/lifestyle) |
 | ModelViewer | `@google/model-viewer` fallback (iOS AR Quick Look, Android Scene Viewer) |
 | DemoOutfitModel | Demo mannequin when no GLB assets available (loads `public/models/demo-outfit.glb`) |
-| AvatarViewer | R3F-based 3D avatar with GLB models |
+| AvatarViewer | R3F-based 3D avatar with GLB models; optional `previewImageUrl` prop renders an instant 2D product still (drei `<Html>`) as the `<Suspense>` fallback while the 3D avatar streams in |
 | ARViewer | WebXR AR session with hit testing |
-| SmartARViewer | Auto-detects device capability, routes to appropriate viewer |
+| SmartARViewer | Auto-detects device capability, routes to appropriate viewer; passes `previewImageUrl` through to the desktop AvatarViewer |
 
 ### Home (`components/home/`, 18)
 
@@ -206,7 +207,7 @@ e2e/                             --> Playwright E2E specs
 | ProfileActionBar | Follow/message/settings action buttons |
 | ProfileContentTabs | Tab navigation for profile content (posts/saved/reposted/tagged/archives) |
 | ProfilePostGrid | Grid layout for profile post cards |
-| ProfileSettingsDialog | Profile settings modal (3 tabs: edit profile, style preferences, body measurements) |
+| ProfileSettingsDialog | Profile settings modal (3 tabs: edit profile, style preferences, body measurements); one-tap "Delete my avatar & body data" button (two-step confirm -> `avatar.delete()` -> toast -> refresh) |
 | CreateFashionPostDialog | New fashion post creation dialog |
 | StyleCircleDialog | Style circle management dialog (followers/following with humanized counts) |
 | LocalImagePicker | Client-side image picker for avatar/banner uploads |
@@ -323,7 +324,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 
 - **Auth guard**: Pages check `user` from `useAuth()` (AuthContext); redirect to `/login` if unauthenticated
 - **Page shell**: Most pages wrap content in `<PageShell>` for consistent layout
-- **API client**: `lib/api.ts` provides `api.get/post/put/delete` with typed responses; auto-injects JWT from `localStorage("iyae_token")`; supports `AbortSignal` via options parameter; 401 response -> clear token + redirect to `/login`; throws `ApiError` with `status` and `message` on non-ok responses. Also exports an `auth` helper object with `register()`, `login()`, `me()`, and `updateProfile()` methods, a `rigging` helper object with `getStatus()`, `trigger()`, and `retry()` methods, plus `RegisterRequest`, `UpdateProfileRequest`, `UserResponse` (includes `createdAt`), `ProfileVisibility`, `AvatarMode`, `RiggingStatusResponse`, `AvatarResponse`, `OutfitItem`, `OutfitDetail`, and `ManualOutfitRequest` types.
+- **API client**: `lib/api.ts` provides `api.get/post/put/delete` with typed responses; auto-injects JWT from `localStorage("iyae_token")`; supports `AbortSignal` via options parameter; 401 response -> clear token + redirect to `/login`; throws `ApiError` with `status` and `message` on non-ok responses. Also exports an `auth` helper object with `register()`, `login()`, `me()`, and `updateProfile()` methods, a `rigging` helper object with `getStatus()`, `trigger()`, and `retry()` methods, an `avatar` helper object with `getStatus()` (`GET /api/avatar/status`), `generate()` (`POST /api/avatar/generate`), `getAvatar()` (`GET /api/avatar`), and `delete()` (`DELETE /api/avatar`) methods, and a `sizing` helper object with `getRecommendedSize()` (`GET /api/products/{id}/recommended-size`), plus `RegisterRequest`, `UpdateProfileRequest`, `UserResponse` (includes `createdAt`), `ProfileVisibility`, `AvatarMode`, `RiggingStatusResponse`, `AvatarResponse`, `SizeRecommendationResponse`, `AvatarStatus` (re-exported as the single source of truth), `OutfitItem`, `OutfitDetail`, and `ManualOutfitRequest` types.
 - **Demo cart**: Cart merges server-side items with client-side "demo" items (negative IDs in `localStorage["iyae_demo_cart_items"]`); cleared on logout
 - **Toast notifications**: Via `sonner` (imported from `components/ui/sonner.tsx`)
 - **3D dynamic import**: All R3F components use `dynamic(() => import(...), { ssr: false })` to avoid SSR issues
@@ -341,6 +342,9 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Outfit slot model**: `outfit-slots.ts` centralizes slot constants (`top`, `bottom`, `shoes`, `accessory`), labels, category hints, and the `SlotMap` type used by the outfit builder
 - **Skeleton sharing**: `SkeletonContext` (React context) shares a `Map<string, Bone>` from the avatar model to garment models, enabling garment meshes to bind to the avatar's skeleton for fitted rendering
 - **Suggestion chips**: `SuggestionChips` renders clickable pill buttons for AI chat guided responses with ARIA group labeling and disabled state support
+- **Recommended size**: `app/products/[id]/page.tsx` fetches `sizing.getRecommendedSize()` on mount for authenticated users only (AbortController cleanup; guests skip to avoid a 401 bounce), pre-selects the recommended size, and renders `<RecommendedSizeHint/>` above `<SizeSelector/>`
+- **Instant 2D preview**: `AvatarViewer`'s optional `previewImageUrl` prop renders a 2D product still (drei `<Html>`) as the `<Suspense>` fallback while the 3D avatar streams in; `SmartARViewer` forwards it and the PDP / `OutfitCard` pass the product image
+- **One-tap avatar/body delete**: `ProfileSettingsDialog` and `app/profile/avatar/page.tsx` expose a two-step-confirm delete that calls `avatar.delete()` then toasts and refreshes; `useAvatarStatus` now exposes `refresh` so the avatar page resets after delete
 
 ## Test & Quality
 
@@ -350,15 +354,16 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Test directory**: `__tests__/` (not `__tests__` inside `app/` or `lib/`)
 - **Pattern**: `__tests__/**/*.test.{ts,tsx}`
 - **Lint**: ESLint via `npm run lint`
-- **Current state**: 16 test files, 222 test cases
+- **Current state**: 17 test files, 230 test cases
 
 ### Test Inventory
 
 | Test File | Tests | Covers |
 |-----------|-------|--------|
-| `__tests__/lib/api.test.ts` | 12 | API client: GET/POST/PUT/DELETE methods, JWT auto-injection from localStorage, no-token case, error handling (ApiError with status/message, fallback message), auth.register POST, auth.updateProfile PUT, auth.me GET, exported type structure validation |
+| `__tests__/lib/api.test.ts` | 15 | API client: GET/POST/PUT/DELETE methods, JWT auto-injection from localStorage, no-token case, error handling (ApiError with status/message, fallback message), auth.register POST, auth.updateProfile PUT, auth.me GET, avatar.getStatus GET, avatar.delete DELETE, sizing.getRecommendedSize GET, exported type structure validation |
 | `__tests__/lib/auth-context.test.tsx` | 12 | AuthContext: useAuth outside provider throws, initial state (no token/hydrate from token/clear expired token), login (success/invalid credentials), register (success/with full profile data including preferences and measurements), logout (clears token+demo cart), refreshUser (updates user data/no-op without token) |
 | `__tests__/components/SizeSelector.test.tsx` | 5 | SizeSelector: renders size buttons, selection state toggle, aria-pressed attribute, disabled state, empty sizes returns null |
+| `__tests__/components/RecommendedSizeHint.test.tsx` | 5 | RecommendedSizeHint: renders recommended size, renders nothing when basis is NONE, SELF_REPORTED caption, MEASUREMENT_CHART basis, available sizes handling |
 | `__tests__/lib/cart-context.test.tsx` | 10 | CartContext: useCart outside provider throws, demo items (load from localStorage/add/remove/update quantity/zero quantity removes/with size selection), totalCount (server+demo), server items (fetch on auth/404 handling) |
 | `__tests__/lib/community-feed.test.ts` | 65 | Community feed: toggleLike/Save/Repost (toggle + immutability), addComment (prepend + structure + immutability), addReply (target comment + isolation + immutability), toggleCommentLike (target + isolation), requestDelete (lifecycle state + timestamp + immutability), pruneDeletedPosts (within 30 days/past 30 days/active kept/no timestamp), getFeedByTab (for-you/following/saved/reposted filtering + excludes non-active), isPostActive (active/pending_delete/archived/undefined), buildOutfitGeneratorHref (shop/similar URLs, event/style/seedProductIds params, defaults), toggleFollow (add/remove/immutability), updatePostInState (replace matching/leave others/immutability), loadCommunityState (initial write/default follows/existing state/user post generation), saveCommunityState (write + overwrite), createPost/archivePost/restorePost |
 | `__tests__/lib/profile-surface.test.ts` | 10 | Profile surface: cross-tab sync, localStorage persistence, avatar/banner/bio state management |
@@ -428,7 +433,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `app/globals.css` | Global styles, Tailwind directives, CSS gradient/color variables (light + dark) |
 | `app/not-found.tsx` | Custom 404 page |
 | `app/error.tsx` | Global error boundary |
-| `lib/api.ts` | Typed API client with JWT injection, AbortSignal, auth/rigging helpers, outfit types |
+| `lib/api.ts` | Typed API client with JWT injection, AbortSignal, auth/rigging/avatar/sizing helpers, outfit types |
 | `lib/auth-context.tsx` | Authentication state management |
 | `lib/cart-context.tsx` | Hybrid cart (server + demo) |
 | `lib/utils.ts` | cn() class merging + humanizeNumber() number formatting |
@@ -451,6 +456,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `components/SuggestionChips.tsx` | AI chat suggestion pill buttons |
 | `components/PoseSelector.tsx` | Pose preset selector strip for AvatarViewer |
 | `components/SizeSelector.tsx` | Cloth size selection button group |
+| `components/RecommendedSizeHint.tsx` | Presentational recommended-size hint (renders nothing when basis is NONE) |
 | `components/home/motion-presets.ts` | Shared spring/easing presets for landing animations |
 | `components/home/LifestyleGrid.tsx` | Masonry photo grid with motion animations |
 | `components/home/PhotoStrip.tsx` | Infinite-scroll photo strip |
@@ -477,3 +483,5 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | 2026-06-14 | Count audit: components 98->91 total (79->72 app-specific -- previous count inflated by 7; accurate recount from glob); hooks 10->11 (useRedirectIfAuthenticated was missing from count); lib domain modules documented: +demo-looks.ts, +email-templates.ts; designer/ (2) subdirectory explicitly listed; component sections restructured for accuracy |
 | 2026-06-19 | Count fix: components 91->93 total (72->74 app-specific -- section sums 31+18+1+9+6+2+7=74 were correct; architecture header was understated by 2) |
 | 2026-09-05 | Email consolidation: added `lib/brand.ts` (single source of brand values, read by wordmarks + email subjects + email-templates.ts); removed dead `app/api/internal/mail/password-reset` route + `internal-mail.test.ts`; tests 227->222 / 17->16 files |
+| 2026-09-05 | Phase 4 Virtual Fitting web: RecommendedSizeHint component + PDP recommended-size (pre-select); AvatarViewer `previewImageUrl` instant 2D fallback; OutfitCard inline chat try-on (lazy dynamic ssr:false); one-tap avatar/body delete UI (ProfileSettingsDialog + avatar page); api.ts `avatar`/`sizing` helpers; tests 222->230 (+RecommendedSizeHint 5, +api 3) |
+| 2026-09-05 | PR #8 follow-up: two-step delete confirm now moves focus to Cancel + wraps the Cancel/Confirm pair in `aria-live="polite"` (M10, ProfileSettingsDialog + avatar page); avatar page disables the Delete trigger while generating (L5); ProfileSettingsDialog.test.tsx grown with delete-flow, failure-toast, focus, and aria-live cases (M11) |

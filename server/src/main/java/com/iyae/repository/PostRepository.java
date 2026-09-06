@@ -10,4 +10,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> findByStatusOrderByCreatedAtDesc(PostStatus status, Pageable pageable);
     Page<Post> findByUserAndStatusOrderByCreatedAtDesc(User user, PostStatus status, Pageable pageable);
+
+    java.util.List<Post> findByStatusOrderByCreatedAtDesc(PostStatus status);
 }
