@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { api, ApiError, type AvatarResponse, type OutfitItem, type OutfitDetail } from "@/lib/api";
+import { api, ApiError, type AvatarResponse, type OutfitDetail, type SlotName } from "@/lib/api";
 import { toast } from "sonner";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useARSupport } from "@/lib/hooks/useARSupport";
@@ -40,14 +40,14 @@ const DemoOutfitModel = dynamic(() => import("@/components/DemoOutfitModel"), {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SLOT_LABELS: Record<string, string> = {
+const SLOT_LABELS: Record<SlotName, string> = {
   top: "Top",
   bottom: "Bottom",
   shoes: "Shoes",
   accessory: "Accessory",
 };
 
-const SLOT_ORDER: string[] = ["top", "bottom", "shoes", "accessory"];
+const SLOT_ORDER: SlotName[] = ["top", "bottom", "shoes", "accessory"];
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 

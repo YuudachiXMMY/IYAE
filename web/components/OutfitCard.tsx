@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { api, ApiError, type OutfitResponse } from "@/lib/api";
+import { api, ApiError, type OutfitResponse, type SlotName } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
@@ -27,14 +27,14 @@ interface OutfitCardProps {
   avatarUrl?: string | null;
 }
 
-const SLOT_LABELS: Record<string, string> = {
+const SLOT_LABELS: Record<SlotName, string> = {
   top: "Top",
   bottom: "Bottom",
   shoes: "Shoes",
   accessory: "Accessory",
 };
 
-const SLOT_ORDER: string[] = ["top", "bottom", "shoes", "accessory"];
+const SLOT_ORDER: SlotName[] = ["top", "bottom", "shoes", "accessory"];
 
 export function OutfitCard({ outfit, outfitId, avatarUrl }: OutfitCardProps) {
   const [saved, setSaved] = useState(false);
@@ -108,7 +108,7 @@ export function OutfitCard({ outfit, outfitId, avatarUrl }: OutfitCardProps) {
                 )}
               </div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                {SLOT_LABELS[slot] ?? slot}
+                {SLOT_LABELS[slot]}
               </p>
               <p className="text-xs font-medium text-foreground leading-tight line-clamp-2">
                 {item.productName}

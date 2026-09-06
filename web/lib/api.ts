@@ -160,8 +160,15 @@ export const rigging = {
 
 // ── Outfit types ──────────────────────────────────────────────────────────────
 
+/**
+ * The four garment slots an outfit item can occupy. Mirrors the server contract
+ * (`OutfitService.VALID_SLOT_NAMES`); typing `slot` as this union — instead of a
+ * bare `string` — keeps slot label/order maps exhaustive on the consuming pages.
+ */
+export type SlotName = "top" | "bottom" | "shoes" | "accessory";
+
 export interface OutfitItem {
-  slot: string;
+  slot: SlotName;
   productId: number;
   productName: string;
   productPrice: number;
