@@ -105,6 +105,11 @@ export function ProfileSettingsDialog({
 
   // Re-sync local state when dialog reopens with fresh props
   useEffect(() => {
+    // Clear the two-step delete confirm on every open/close toggle so a user who
+    // enters confirm mode then dismisses (Esc/outside-click) never reopens into
+    // "Confirm delete" — one accidental tap would irreversibly purge their data.
+    setConfirmingDelete(false);
+    setDeletingData(false);
     if (!open) return;
     setName(user.name ?? "");
     setUsername(user.username ?? "");

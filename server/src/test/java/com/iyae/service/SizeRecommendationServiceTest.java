@@ -2,10 +2,13 @@ package com.iyae.service;
 
 import com.iyae.dto.SizeRecommendationResponse;
 import com.iyae.entity.BodyProfile;
+import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.Product;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.ProductStatus;
 import com.iyae.entity.enums.Role;
 import com.iyae.repository.BodyProfileRepository;
+import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.ProductRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +30,7 @@ import static org.mockito.Mockito.when;
 class SizeRecommendationServiceTest {
 
     @Mock ProductRepository productRepository;
+    @Mock DesignerProfileRepository designerProfileRepository;
     @Mock BodyProfileRepository bodyProfileRepository;
     @Mock UserRepository userRepository;
 
@@ -49,6 +53,7 @@ class SizeRecommendationServiceTest {
                 .category(category)
                 .sizes(sizes)
                 .sizeChart(sizeChart)
+                .status(ProductStatus.PUBLISHED)
                 .build();
     }
 
@@ -156,5 +161,94 @@ class SizeRecommendationServiceTest {
         assertThatThrownBy(() -> service.recommend(999L, "buyer@example.com"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Product not found");
+    }
+
+    // H1: non-PUBLISHED product must not leak to a non-owner.
+    @Test
+    void recommend_nonPublishedProductRequestedByNonOwner_throwsProductNotFound() {
+        DesignerProfile ownerProfile = DesignerProfile.builder().id(999L).build();
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", null);
+        product.setStatus(ProductStatus.DRAFT);
+        product.setDesignerProfile(ownerProfile);
+
+        DesignerProfile callerProfile = DesignerProfile.builder().id(5L).build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(callerProfile));
+
+        assertThatThrownBy(() -> service.recommend(100L, "buyer@example.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Product not found: 100");
+    }
+
+    // H1: a buyer with no designer profile gets the same "Product not found" as a missing
+    // product, so the error message cannot reveal that the DRAFT product exists.
+    @Test
+    void recommend_nonPublishedProductRequestedByBuyerWithoutProfile_throwsProductNotFound() {
+        DesignerProfile ownerProfile = DesignerProfile.builder().id(999L).build();
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", null);
+        product.setStatus(ProductStatus.DRAFT);
+        product.setDesignerProfile(ownerProfile);
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.recommend(100L, "buyer@example.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Product not found: 100");
+    }
+
+    // H1: the owning designer may still get a recommendation for their own DRAFT product.
+    @Test
+    void recommend_draftProductRequestedByOwner_returnsRecommendation() {
+        DesignerProfile ownerProfile = DesignerProfile.builder().id(5L).build();
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", null);
+        product.setStatus(ProductStatus.DRAFT);
+        product.setDesignerProfile(ownerProfile);
+
+        BodyProfile profile = BodyProfile.builder()
+                .id(7L).user(user)
+                .topSize("M")
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(designerProfileRepository.findByUserId(1L)).thenReturn(Optional.of(ownerProfile));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("SELF_REPORTED");
+    }
+
+    // M1: a chart-matched size that is not one of the available sizes must not be recommended;
+    // the logic falls through to Tier-2/NONE instead.
+    @Test
+    void recommend_chartBestSizeNotAvailable_fallsThroughInsteadOfRecommendingIt() {
+        String sizeChart = "["
+                + "{\"size\":\"S\",\"chestCm\":84,\"waistCm\":68,\"hipsCm\":88},"
+                + "{\"size\":\"M\",\"chestCm\":92,\"waistCm\":76,\"hipsCm\":96},"
+                + "{\"size\":\"L\",\"chestCm\":100,\"waistCm\":84,\"hipsCm\":104}"
+                + "]";
+        // Best chart match for these measurements is "M", but "M" is NOT offered.
+        Product product = product("tops", "[\"XS\"]", sizeChart);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user)
+                .chestCm(90.0).waistCm(75.0).hipsCm(95.0)
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isNull();
+        assertThat(result.basis()).isEqualTo("NONE");
+        assertThat(result.basis()).isNotEqualTo("MEASUREMENT_CHART");
+        assertThat(result.availableSizes()).containsExactly("XS");
     }
 }

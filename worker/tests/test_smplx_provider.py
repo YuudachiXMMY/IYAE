@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from providers.smplx_stub_provider import SmplxStubProvider, create_avatar_glb
-from providers.smplx_provider import SmplxProvider, _is_lfs_pointer, _resolve_smplx_model_path
+from providers.smplx_provider import (
+    SmplxProvider,
+    _is_lfs_pointer,
+    _resolve_smplx_model_path,
+    BETA_MIN,
+    BETA_MAX,
+)
 from validator import validate_glb, validate_metadata
 
 
@@ -334,6 +340,35 @@ class TestMeasurementsToBetas:
             SmplxProvider.measurements_to_betas(m, "alien")
             == SmplxProvider.measurements_to_betas(m, "neutral")
         )
+
+    def test_raw_betas_can_exceed_range_while_clamped_stays_in_range(self):
+        """_raw_betas returns pre-clamp values; measurements_to_betas clamps them.
+
+        Guards the fit_accuracy.betas_in_range fix: an in-range check must run on
+        the raw (unclamped) betas, otherwise it is tautologically always True.
+        """
+        extreme = {
+            "heightCm": 230.0,
+            "weightKg": 200.0,
+            "chestCm": 150.0,
+            "waistCm": 140.0,
+            "hipsCm": 160.0,
+            "shoulderWidthCm": 70.0,
+            "inseamCm": 120.0,
+        }
+        raw = SmplxProvider._raw_betas(extreme)
+        clamped = SmplxProvider.measurements_to_betas(extreme)
+        # At least one raw beta is outside the safe range...
+        assert any(b > BETA_MAX or b < BETA_MIN for b in raw)
+        # ...so the in-range check on raw is False...
+        assert not all(BETA_MIN <= b <= BETA_MAX for b in raw)
+        # ...but every clamped beta stays inside, so the check on clamped is True.
+        assert all(BETA_MIN <= b <= BETA_MAX for b in clamped)
+
+    def test_raw_and_clamped_agree_for_normal_input(self):
+        """For in-distribution measurements no clamping happens: raw == clamped."""
+        normal = {"heightCm": 172.0, "weightKg": 68.0}
+        assert SmplxProvider._raw_betas(normal) == SmplxProvider.measurements_to_betas(normal)
 
 
 # ---------------------------------------------------------------------------
@@ -715,8 +750,26 @@ class TestSmplxProviderSkinnedGlbOutput:
         assert result["fit_accuracy"]["betas_in_range"] is True
 
     def test_fit_accuracy_betas_in_range_true_for_normal_input(self, tmp_path):
-        """Clamped betas from normal measurements are always in range."""
+        """Normal measurements produce in-range raw betas, so the flag is True."""
         result, _, _ = self._run_generate(
             tmp_path, input_payload={"heightCm": 170.0, "weightKg": 70.0}
         )
         assert result["fit_accuracy"]["betas_in_range"] is True
+
+    def test_fit_accuracy_betas_in_range_false_for_extreme_input(self, tmp_path):
+        """Extreme measurements produce out-of-range RAW betas -> flag is False.
+
+        Regression guard: betas_in_range must reflect the pre-clamp estimate, not
+        the already-clamped forward-pass betas (which would make it always True).
+        """
+        extreme = {
+            "heightCm": 230.0,
+            "weightKg": 200.0,
+            "chestCm": 150.0,
+            "waistCm": 140.0,
+            "hipsCm": 160.0,
+            "shoulderWidthCm": 70.0,
+            "inseamCm": 120.0,
+        }
+        result, _, _ = self._run_generate(tmp_path, input_payload=extreme)
+        assert result["fit_accuracy"]["betas_in_range"] is False

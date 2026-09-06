@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { api, ApiError, avatar } from "@/lib/api";
@@ -67,16 +67,24 @@ export function OutfitCard({ outfit, outfitId }: OutfitCardProps) {
 
   const previewImageUrl = outfit.items[0]?.media?.[0];
 
+  // Abort the in-flight avatar fetch on unmount so we never setState afterwards.
+  const avatarFetchRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => avatarFetchRef.current?.abort();
+  }, []);
+
   const handleTryOn = useCallback(async () => {
     setTryOn(true);
     if (avatarLoaded) return;
     setAvatarLoaded(true);
+    const controller = new AbortController();
+    avatarFetchRef.current = controller;
     try {
-      const res = await avatar.getAvatar();
-      setAvatarUrl(res.avatarUrl);
+      const res = await avatar.getAvatar(controller.signal);
+      if (!controller.signal.aborted) setAvatarUrl(res.avatarUrl);
     } catch {
-      // No avatar yet / unauthenticated — viewer falls back to garments-only.
-      setAvatarUrl(null);
+      // No avatar yet / unauthenticated / aborted — viewer falls back to garments-only.
+      if (!controller.signal.aborted) setAvatarUrl(null);
     }
   }, [avatarLoaded]);
 

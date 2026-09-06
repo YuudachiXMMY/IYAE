@@ -124,6 +124,10 @@ export default function ProductDetailPage({
   useEffect(() => {
     setProductLoading(true);
     setError("");
+    // Reset size state so a stale size/rec from the previous product can't be
+    // carried over (and later added to cart) when navigating between products.
+    setSelectedSize(null);
+    setSizeRec(null);
     api
       .get<ProductWithAsset>(`/api/products/${id}`)
       .then((p) => {

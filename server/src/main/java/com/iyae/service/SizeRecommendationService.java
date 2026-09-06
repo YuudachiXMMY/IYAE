@@ -4,7 +4,9 @@ import com.iyae.dto.SizeRecommendationResponse;
 import com.iyae.entity.BodyProfile;
 import com.iyae.entity.Product;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.ProductStatus;
 import com.iyae.repository.BodyProfileRepository;
+import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.ProductRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -52,6 +54,7 @@ public class SizeRecommendationService {
     private static final double SELF_REPORTED_CONFIDENCE = 0.5;
 
     private final ProductRepository productRepository;
+    private final DesignerProfileRepository designerProfileRepository;
     private final BodyProfileRepository bodyProfileRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
@@ -60,6 +63,21 @@ public class SizeRecommendationService {
     public SizeRecommendationResponse recommend(Long productId, String email) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
+
+        // Visibility gate (mirrors ProductService.getProductById): PUBLISHED products are
+        // public; non-PUBLISHED products are visible only to the owning designer. A non-owner
+        // — including a buyer with no designer profile — gets the same "Product not found" as a
+        // truly missing product, so the error cannot distinguish an existing DRAFT/ARCHIVED one.
+        if (product.getStatus() != ProductStatus.PUBLISHED) {
+            User caller = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
+            boolean owner = designerProfileRepository.findByUserId(caller.getId())
+                    .map(dp -> dp.getId().equals(product.getDesignerProfile().getId()))
+                    .orElse(false);
+            if (!owner) {
+                throw new IllegalArgumentException("Product not found: " + productId);
+            }
+        }
 
         List<String> availableSizes = parseStringArray(product.getSizes());
 
@@ -129,6 +147,15 @@ public class SizeRecommendationService {
 
         if (best == null) {
             return null; // no comparable chart entry — fall through to self-reported
+        }
+
+        // Only recommend a chart size the product actually offers (mirrors the Tier-2
+        // case-insensitive availability check); otherwise fall through to self-reported/NONE.
+        String bestSize = best.size();
+        boolean bestIsAvailable = availableSizes.stream()
+                .anyMatch(s -> s.equalsIgnoreCase(bestSize));
+        if (!bestIsAvailable) {
+            return null;
         }
 
         double rms = bestDistance / Math.sqrt(bestDimCount);

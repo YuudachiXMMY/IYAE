@@ -154,11 +154,22 @@ def validate_glb_geometry(file_path: str) -> dict:
                 attrs = prim.attributes
                 pos = getattr(attrs, "POSITION", None) if attrs else None
                 idx = prim.indices
-                if idx is not None and idx < len(accessors):
+                # An index that is present but out of the valid [0, len) range
+                # (e.g. a negative value that would silently wrap via Python
+                # negative indexing) is a validation error, not something to skip.
+                if idx is not None and not (0 <= idx < len(accessors)):
+                    result["errors"].append(
+                        f"indices accessor index {idx} out of range [0, {len(accessors)})"
+                    )
+                if pos is not None and not (0 <= pos < len(accessors)):
+                    result["errors"].append(
+                        f"POSITION accessor index {pos} out of range [0, {len(accessors)})"
+                    )
+                if idx is not None and 0 <= idx < len(accessors):
                     triangle_count += accessors[idx].count // 3
-                elif pos is not None and pos < len(accessors):
+                elif pos is not None and 0 <= pos < len(accessors):
                     triangle_count += accessors[pos].count // 3
-                if pos is not None and pos < len(accessors):
+                if pos is not None and 0 <= pos < len(accessors):
                     acc = accessors[pos]
                     if acc.min and acc.max and len(acc.min) >= 3 and len(acc.max) >= 3:
                         bounds_found = True

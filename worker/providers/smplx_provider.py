@@ -186,14 +186,14 @@ class SmplxProvider:
             ) from e
 
     @staticmethod
-    def measurements_to_betas(measurements: dict, gender: str = "neutral") -> list[float]:
-        """Simple linear regression from 7 body measurements to 10 beta params.
+    def _raw_betas(measurements: dict, gender: str = "neutral") -> list[float]:
+        """Compute the raw (pre-clamp) 10 beta params from 7 body measurements.
 
-        Maps: heightCm, weightKg, chestCm, waistCm, hipsCm, shoulderWidthCm, inseamCm
-        to 10 SMPL-X shape parameters (betas).
-
-        This is a simplified approximation. A production system would use a trained
-        regression model (e.g., from Measurements2SMPL).
+        Returns the unclamped linear-regression output. ``measurements_to_betas``
+        wraps this and clamps to ``[BETA_MIN, BETA_MAX]``; callers that need to
+        know whether the *estimated* shape fell inside the safe range (e.g. the
+        ``fit_accuracy.betas_in_range`` flag) must inspect these raw values, since
+        clamping would otherwise make any in-range check tautologically true.
 
         Args:
             measurements: Body measurements dict.
@@ -201,9 +201,6 @@ class SmplxProvider:
                 ``male``/``female`` shift the population means used for normalization
                 so the shape is gender-conditioned. Unknown values fall back to
                 ``neutral``.
-
-        Each returned beta is clamped to ``[BETA_MIN, BETA_MAX]`` to guard against
-        degenerate SMPL-X shapes from extreme/out-of-distribution measurements.
         """
         gender = (gender or "neutral").lower()
         if gender not in ("male", "female", "neutral"):
@@ -228,7 +225,7 @@ class SmplxProvider:
         i_norm = (inseam - means["inseam"]) / 5.0
 
         # Approximate beta mapping (simplified linear regression coefficients)
-        betas = [
+        return [
             h_norm * 1.5 + w_norm * 0.5,   # beta0: overall size
             w_norm * 1.2 + wa_norm * 0.8,  # beta1: weight/width
             c_norm * 0.8 + hi_norm * 0.6,  # beta2: upper/lower proportion
@@ -240,8 +237,33 @@ class SmplxProvider:
             h_norm * 0.3 - w_norm * 0.2,   # beta8: height-weight ratio
             0.0,                            # beta9: reserved
         ]
+
+    @staticmethod
+    def measurements_to_betas(measurements: dict, gender: str = "neutral") -> list[float]:
+        """Simple linear regression from 7 body measurements to 10 beta params.
+
+        Maps: heightCm, weightKg, chestCm, waistCm, hipsCm, shoulderWidthCm, inseamCm
+        to 10 SMPL-X shape parameters (betas).
+
+        This is a simplified approximation. A production system would use a trained
+        regression model (e.g., from Measurements2SMPL).
+
+        Args:
+            measurements: Body measurements dict.
+            gender: ``neutral`` (default) reproduces the original mapping exactly;
+                ``male``/``female`` shift the population means used for normalization
+                so the shape is gender-conditioned. Unknown values fall back to
+                ``neutral``.
+
+        Each returned beta is clamped to ``[BETA_MIN, BETA_MAX]`` to guard against
+        degenerate SMPL-X shapes from extreme/out-of-distribution measurements. Use
+        ``_raw_betas`` when the pre-clamp values are needed.
+        """
         # Clamp to a safe range (near-zero neutral values are unaffected).
-        return [max(BETA_MIN, min(BETA_MAX, b)) for b in betas]
+        return [
+            max(BETA_MIN, min(BETA_MAX, b))
+            for b in SmplxProvider._raw_betas(measurements, gender)
+        ]
 
     def generate(self, task_id: int, user_id: int, input_payload: dict | None) -> dict:
         """Generate SMPL-X avatar from body measurements.
@@ -314,7 +336,11 @@ class SmplxProvider:
         input_height_cm = float(measurements.get("heightCm", 170.0))
         mesh_height_cm = (bbox_max[1] - bbox_min[1]) * 100.0
         height_error_cm = abs(mesh_height_cm - input_height_cm)
-        betas_in_range = all(BETA_MIN <= b <= BETA_MAX for b in betas)
+        # Reflect whether the *estimated* shape fell inside the safe range. The
+        # ``betas`` used for the forward pass are already clamped, so an in-range
+        # check on them would be tautologically true; inspect the raw values.
+        raw_betas = self._raw_betas(measurements, gender)
+        betas_in_range = all(BETA_MIN <= b <= BETA_MAX for b in raw_betas)
 
         return {
             "schemaVersion": 1,

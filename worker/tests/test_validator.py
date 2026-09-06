@@ -539,3 +539,40 @@ class TestValidateGlbGeometry:
             assert result["bbox"] is None
         finally:
             os.unlink(path)
+
+    def test_negative_indices_accessor_rejected(self):
+        """A negative indices accessor index must be rejected, not silently wrapped.
+
+        Python negative indexing would resolve accessors[-1] to a real accessor,
+        so the triangle count would be derived from the wrong buffer instead of
+        the GLB being flagged as malformed.
+        """
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.5]
+            )
+            gltf.meshes[0].primitives[0].indices = -1
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("out of range" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_negative_position_accessor_rejected(self):
+        """A negative POSITION accessor index must be rejected, not silently wrapped."""
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.5]
+            )
+            gltf.meshes[0].primitives[0].attributes.POSITION = -2
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("out of range" in e for e in result["errors"])
+        finally:
+            os.unlink(path)

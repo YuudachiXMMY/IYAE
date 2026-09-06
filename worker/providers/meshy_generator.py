@@ -44,11 +44,15 @@ def _compute_glb_metadata(glb_path: str) -> dict:
                 attrs = prim.attributes
                 pos = getattr(attrs, "POSITION", None) if attrs else None
                 idx = prim.indices
-                if idx is not None and idx < len(accessors):
+                # Require the full [0, len) range: a negative index would wrap via
+                # Python negative indexing and derive geometry from the wrong
+                # accessor. Silently skipping out-of-range indices is fine here --
+                # validate_glb_geometry is the authoritative gate.
+                if idx is not None and 0 <= idx < len(accessors):
                     triangle_count += accessors[idx].count // 3
-                elif pos is not None and pos < len(accessors):
+                elif pos is not None and 0 <= pos < len(accessors):
                     triangle_count += accessors[pos].count // 3
-                if pos is not None and pos < len(accessors):
+                if pos is not None and 0 <= pos < len(accessors):
                     acc = accessors[pos]
                     if acc.min and acc.max and len(acc.min) >= 3 and len(acc.max) >= 3:
                         bounds_found = True
