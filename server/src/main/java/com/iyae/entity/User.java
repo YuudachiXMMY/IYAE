@@ -97,6 +97,10 @@ public class User {
     @Column(name = "avatar_glb_url", length = 500)
     private String avatarGlbUrl;
 
+    // Phase 6: backs the city-scoped community feed (e.g. Toronto)
+    @Column(name = "city", length = 120)
+    private String city;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -253,6 +253,7 @@ function BuyerSocialProfile({
       <StyleCircleDialog
         open={styleCircleOpen}
         onOpenChange={setStyleCircleOpen}
+        currentUserId={user.id}
         followedUsernames={state.followedUsernames}
         onToggleFollow={handleToggleFollow}
         initialTab={styleCircleInitialTab}

@@ -1,7 +1,8 @@
 package com.iyae.service;
 
+import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
-import com.iyae.dto.UserResponse;
+import com.iyae.dto.PublicUserSummary;
 import com.iyae.entity.Follow;
 import com.iyae.entity.User;
 import com.iyae.repository.FollowRepository;
@@ -45,22 +46,23 @@ public class FollowService {
     }
 
     @Transactional(readOnly = true)
-    public PagedResponse<UserResponse> getFollowers(Long userId, int page, int size) {
+    public PagedResponse<PublicUserSummary> getFollowers(Long userId, int page, int size) {
         User user = findUserById(userId);
         Pageable pageable = PageRequest.of(page, size);
+        // Redacted summary — never leak email/demographics across the follows graph.
         return PagedResponse.from(
             followRepository.findByFollowingOrderByCreatedAtDesc(user, pageable)
-                .map(f -> UserResponse.from(f.getFollower()))
+                .map(f -> PublicUserSummary.from(f.getFollower()))
         );
     }
 
     @Transactional(readOnly = true)
-    public PagedResponse<UserResponse> getFollowing(Long userId, int page, int size) {
+    public PagedResponse<PublicUserSummary> getFollowing(Long userId, int page, int size) {
         User user = findUserById(userId);
         Pageable pageable = PageRequest.of(page, size);
         return PagedResponse.from(
             followRepository.findByFollowerOrderByCreatedAtDesc(user, pageable)
-                .map(f -> UserResponse.from(f.getFollowing()))
+                .map(f -> PublicUserSummary.from(f.getFollowing()))
         );
     }
 
@@ -69,6 +71,15 @@ public class FollowService {
         User follower = findUser(email);
         User following = findUserById(targetUserId);
         return followRepository.existsByFollowerAndFollowing(follower, following);
+    }
+
+    /** Real follower/following counts (derived COUNT queries — never denormalized). */
+    @Transactional(readOnly = true)
+    public FollowCountsResponse getCounts(Long userId) {
+        User user = findUserById(userId);
+        long followers = followRepository.countByFollowing(user);
+        long following = followRepository.countByFollower(user);
+        return new FollowCountsResponse(followers, following);
     }
 
     private User findUser(String email) {

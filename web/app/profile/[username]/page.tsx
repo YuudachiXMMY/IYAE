@@ -16,10 +16,11 @@ import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { useAuth } from "@/lib/auth-context";
 import { NavBar } from "@/components/NavBar";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/api";
+import { api, follows } from "@/lib/api";
 import { BRAND } from "@/lib/brand";
 
 interface PublicProfileResponse {
+  id: number;
   username: string;
   name: string | null;
   isDesigner: boolean;
@@ -27,14 +28,6 @@ interface PublicProfileResponse {
   avatarMode: string | null;
   avatarPreset: string | null;
   createdAt: string | null;
-}
-
-function profileFollowerEstimate(
-  followedCount: number,
-  postCount: number,
-  aestheticCount: number
-): number {
-  return 240 + followedCount * 12 + postCount * 18 + aestheticCount * 14;
 }
 
 function parseGradient(image: string): { from: string; to: string } | null {
@@ -60,6 +53,7 @@ export default function ProfilePage() {
   const { user } = useAuth();
 
   const [serverProfile, setServerProfile] = useState<PublicProfileResponse | null | undefined>(undefined);
+  const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -70,6 +64,20 @@ export default function ProfilePage() {
 
   const socialProfile = findSocialProfile(username);
   const isOwnProfile = user?.username === username;
+
+  // Real follower/following counts (derived server COUNTs). No id → show 0 (never fabricate).
+  const targetUserId = serverProfile?.id ?? (isOwnProfile ? user?.id : undefined);
+  useEffect(() => {
+    if (targetUserId == null) {
+      setFollowCounts(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    follows.counts(targetUserId, ctrl.signal)
+      .then(setFollowCounts)
+      .catch(() => setFollowCounts(null));
+    return () => ctrl.abort();
+  }, [targetUserId]);
 
   // serverProfile === undefined: still loading; null: API returned 404/error
   const profileNotFound = serverProfile === null && !socialProfile && !isOwnProfile;
@@ -84,9 +92,6 @@ export default function ProfilePage() {
         headline: "",
         styleAesthetics: serverProfile.styleAesthetics ?? [],
         isVerified: serverProfile.isDesigner,
-        followerCount: profileFollowerEstimate(0, 0, serverProfile.styleAesthetics?.length ?? 0),
-        followingCount: 0,
-        outfitCount: 0,
       } : socialProfile
     ? {
         displayName: socialProfile.displayName,
@@ -98,9 +103,6 @@ export default function ProfilePage() {
         headline: socialProfile.headline,
         styleAesthetics: socialProfile.styleAesthetics,
         isVerified: socialProfile.isVerified,
-        followerCount: socialProfile.followerCount,
-        followingCount: socialProfile.followingCount,
-        outfitCount: socialProfile.outfitCount,
       }
     : isOwnProfile && user
     ? {
@@ -113,9 +115,6 @@ export default function ProfilePage() {
         headline: "",
         styleAesthetics: user.styleAesthetics ?? [],
         isVerified: false,
-        followerCount: profileFollowerEstimate(0, 0, user.styleAesthetics?.length ?? 0),
-        followingCount: 0,
-        outfitCount: 0,
       }
     : {
         displayName: username.replace(/\./g, " "),
@@ -127,9 +126,6 @@ export default function ProfilePage() {
         headline: "",
         styleAesthetics: [],
         isVerified: false,
-        followerCount: 0,
-        followingCount: 0,
-        outfitCount: 0,
       };
 
   const [state, setState] = useState<{
@@ -305,12 +301,9 @@ export default function ProfilePage() {
 
               {/* Social stats (right side on desktop) */}
               <div className="flex sm:flex-col gap-6 sm:gap-4 sm:items-end sm:justify-start shrink-0">
-                <StatBox
-                  label="Posts"
-                  value={profileData.outfitCount || userPosts.length}
-                />
-                <StatBox label="Followers" value={profileData.followerCount} />
-                <StatBox label="Following" value={profileData.followingCount} />
+                <StatBox label="Posts" value={userPosts.length} />
+                <StatBox label="Followers" value={followCounts?.followers ?? 0} />
+                <StatBox label="Following" value={followCounts?.following ?? 0} />
               </div>
             </div>
           </div>

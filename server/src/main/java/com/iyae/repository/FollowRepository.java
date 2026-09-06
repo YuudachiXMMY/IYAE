@@ -13,4 +13,8 @@ public interface FollowRepository extends JpaRepository<Follow, Long> {
     boolean existsByFollowerAndFollowing(User follower, User following);
     Page<Follow> findByFollowingOrderByCreatedAtDesc(User following, Pageable pageable);
     Page<Follow> findByFollowerOrderByCreatedAtDesc(User follower, Pageable pageable);
+
+    // Phase 6 — real follower/following counts (no denormalized counter columns)
+    long countByFollowing(User following);   // number of accounts following `following`
+    long countByFollower(User follower);     // number of accounts `follower` follows
 }

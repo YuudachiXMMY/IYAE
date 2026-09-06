@@ -324,6 +324,139 @@ export const admin = {
     api.put<PromotionResponse>(`/api/admin/promotions/${id}/slot`, { slotType }),
 };
 
+// ── Community: posts + follows (Phase 6) ────────────────────────────────────────
+
+/** Paging envelope mirroring the server `PagedResponse<T>`. */
+export interface Paged<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+}
+
+/** The four server-backed named feeds (`GET /api/posts?feed=`). */
+export type CommunityFeedType = "discover" | "following" | "toronto" | "body-confidence";
+export type CommunityPostStatus = "ACTIVE" | "ARCHIVED" | "PENDING_DELETE";
+export type CommunityReportStatus = "OPEN" | "RESOLVED" | "DISMISSED";
+
+/** Server community post. Counts are REAL server aggregates — never fabricated. */
+export interface Post {
+  id: number;
+  userId: number;
+  username: string;
+  content: string | null;
+  mediaUrls: string[];
+  status: CommunityPostStatus;
+  likeCount: number;
+  commentCount: number;
+  likedByCurrentUser: boolean;
+  createdAt: string;
+  city: string | null;
+  topic: string | null;
+  savedLookId: number | null;
+  productIds: string[];
+}
+
+export interface Comment {
+  id: number;
+  postId: number;
+  userId: number;
+  username: string;
+  parentCommentId: number | null;
+  content: string;
+  createdAt: string;
+}
+
+export interface FollowCounts {
+  followers: number;
+  following: number;
+}
+
+/** Redacted user row for follower/following lists — no email/demographics (server-enforced). */
+export interface PublicUserSummary {
+  id: number;
+  username: string | null;
+  name: string | null;
+  role: "BUYER" | "DESIGNER" | "ADMIN";
+  styleAesthetics: string[];
+  avatarMode: AvatarMode | null;
+  avatarPreset: string | null;
+}
+
+export interface PostReport {
+  id: number;
+  postId: number;
+  reporterId: number;
+  reporterUsername: string;
+  reason: string;
+  status: CommunityReportStatus;
+  createdAt: string;
+}
+
+export interface CreatePostPayload {
+  content: string;
+  mediaUrls?: string[];
+  /** Binds a real saved look (Share-a-Look). */
+  savedLookId?: number;
+  /** Real product ids the look is wearing. */
+  productIds?: string[];
+  /** Named-feed topic (e.g. "body-confidence"). */
+  topic?: string;
+  /** City for the location feed (defaults server-side to the author's city). */
+  city?: string;
+}
+
+/**
+ * Typed client for the server community API. Server ids are numeric (distinct from
+ * the string ids used by the localStorage demo layer). `like`/`unlike` both hit the
+ * server toggle endpoint (POST/DELETE `/like`).
+ */
+export const posts = {
+  feed: (feed: CommunityFeedType, page = 0, size = 20, signal?: AbortSignal) =>
+    api.get<Paged<Post>>(`/api/posts?feed=${feed}&page=${page}&size=${size}`, { signal }),
+  byUser: (userId: number, page = 0, size = 20, signal?: AbortSignal) =>
+    api.get<Paged<Post>>(`/api/posts/user/${userId}?page=${page}&size=${size}`, { signal }),
+  get: (id: number, signal?: AbortSignal) => api.get<Post>(`/api/posts/${id}`, { signal }),
+  create: (payload: CreatePostPayload) => api.post<Post>("/api/posts", payload),
+  like: (id: number) => api.post<Post>(`/api/posts/${id}/like`),
+  unlike: (id: number) => api.delete<Post>(`/api/posts/${id}/like`),
+  remove: (id: number) => api.delete<void>(`/api/posts/${id}`),
+  comment: (id: number, content: string, parentCommentId?: number) =>
+    api.post<Comment>(`/api/posts/${id}/comments`, { content, parentCommentId }),
+  listComments: (id: number, page = 0, size = 20, signal?: AbortSignal) =>
+    api.get<Paged<Comment>>(`/api/posts/${id}/comments?page=${page}&size=${size}`, { signal }),
+  report: (id: number, reason: string) =>
+    api.post<PostReport>(`/api/posts/${id}/report`, { reason }),
+};
+
+/** Typed client for follow relationships + REAL follower/following counts. */
+export const follows = {
+  toggle: (userId: number) => api.post<void>(`/api/follows/${userId}`),
+  remove: (userId: number) => api.delete<void>(`/api/follows/${userId}`),
+  counts: (userId: number, signal?: AbortSignal) =>
+    api.get<FollowCounts>(`/api/follows/${userId}/counts`, { signal }),
+  status: (userId: number, signal?: AbortSignal) =>
+    api.get<{ following: boolean }>(`/api/follows/${userId}/status`, { signal }),
+  followers: (userId: number, page = 0, size = 20, signal?: AbortSignal) =>
+    api.get<Paged<PublicUserSummary>>(`/api/follows/${userId}/followers?page=${page}&size=${size}`, { signal }),
+  following: (userId: number, page = 0, size = 20, signal?: AbortSignal) =>
+    api.get<Paged<PublicUserSummary>>(`/api/follows/${userId}/following?page=${page}&size=${size}`, { signal }),
+};
+
+// ── Admin: community reports (Phase 6) ──────────────────────────────────────────
+
+export const adminReports = {
+  list: (status?: CommunityReportStatus, page = 0, size = 20) =>
+    api.get<Paged<PostReport>>(
+      `/api/admin/reports?${status ? `status=${status}&` : ""}page=${page}&size=${size}`),
+  resolve: (id: number, status: CommunityReportStatus = "RESOLVED", removePost = false) =>
+    api.put<PostReport>(`/api/admin/reports/${id}/resolve?status=${status}&removePost=${removePost}`),
+  removeComment: (commentId: number) =>
+    api.put<void>(`/api/admin/comments/${commentId}/remove`),
+};
+
 // ── Chat + Weather types & helpers ──────────────────────────────────────────────
 
 export interface ChatSession {

@@ -1,19 +1,29 @@
 package com.iyae.service;
 
 import com.iyae.dto.AdminPostResponse;
+import com.iyae.dto.PagedResponse;
+import com.iyae.dto.PostReportResponse;
 import com.iyae.dto.ProductResponse;
 import com.iyae.dto.PromotionResponse;
 import com.iyae.entity.Post;
+import com.iyae.entity.PostComment;
+import com.iyae.entity.PostReport;
 import com.iyae.entity.Product;
 import com.iyae.entity.Promotion;
+import com.iyae.entity.enums.CommentStatus;
 import com.iyae.entity.enums.PostStatus;
 import com.iyae.entity.enums.ProductStatus;
+import com.iyae.entity.enums.ReportStatus;
 import com.iyae.entity.enums.SlotType;
+import com.iyae.repository.PostCommentRepository;
+import com.iyae.repository.PostReportRepository;
 import com.iyae.repository.PostRepository;
 import com.iyae.repository.ProductRepository;
 import com.iyae.repository.PromotionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +47,8 @@ public class AdminModerationService {
     private final ProductRepository productRepository;
     private final PostRepository postRepository;
     private final PromotionRepository promotionRepository;
+    private final PostReportRepository postReportRepository;
+    private final PostCommentRepository postCommentRepository;
 
     // -------------------------------------------------------------------------
     // Catalog moderation
@@ -94,6 +106,50 @@ public class AdminModerationService {
         post.setDeletedAt(Instant.now());
         log.info("Admin removed post {}", postId);
         return AdminPostResponse.from(postRepository.save(post));
+    }
+
+    // ---- User report queue ----
+
+    @Transactional(readOnly = true)
+    public PagedResponse<PostReportResponse> listReports(ReportStatus status, int page, int size) {
+        ReportStatus filter = (status == null) ? ReportStatus.OPEN : status;
+        Pageable pageable = PageRequest.of(page, size);
+        return PagedResponse.from(
+                postReportRepository.findByStatusOrderByCreatedAtDesc(filter, pageable)
+                        .map(PostReportResponse::from));
+    }
+
+    /**
+     * Resolve a report. {@code status} moves the report to RESOLVED (default) or DISMISSED;
+     * when {@code removePost} is true the reported post is taken down (PENDING_DELETE) so it
+     * drops out of every feed.
+     */
+    @Transactional
+    public PostReportResponse resolveReport(Long reportId, ReportStatus status, boolean removePost) {
+        PostReport report = postReportRepository.findById(reportId)
+                .orElseThrow(() -> new IllegalArgumentException("Report not found: " + reportId));
+        ReportStatus target = (status == null || status == ReportStatus.OPEN)
+                ? ReportStatus.RESOLVED : status;
+        report.setStatus(target);
+        if (removePost) {
+            Post post = report.getPost();
+            post.setStatus(PostStatus.PENDING_DELETE);
+            post.setDeletedAt(Instant.now());
+            postRepository.save(post);
+        }
+        log.info("Admin resolved report {} -> {} (removePost={})", reportId, target, removePost);
+        return PostReportResponse.from(postReportRepository.save(report));
+    }
+
+    /** Hide a comment (soft) so it drops out of {@code getComments}. */
+    @Transactional
+    public void removeComment(Long commentId) {
+        PostComment comment = postCommentRepository.findById(commentId)
+                .orElseThrow(() -> new IllegalArgumentException("Comment not found: " + commentId));
+        comment.setStatus(CommentStatus.REMOVED);
+        comment.setDeletedAt(Instant.now());
+        postCommentRepository.save(comment);
+        log.info("Admin removed comment {}", commentId);
     }
 
     // -------------------------------------------------------------------------

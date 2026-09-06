@@ -1,12 +1,15 @@
 package com.iyae.controller;
 
+import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
-import com.iyae.dto.UserResponse;
+import com.iyae.dto.PublicUserSummary;
 import com.iyae.service.FollowService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/follows")
@@ -34,7 +37,7 @@ public class FollowController {
     }
 
     @GetMapping("/{userId}/followers")
-    public ResponseEntity<PagedResponse<UserResponse>> getFollowers(
+    public ResponseEntity<PagedResponse<PublicUserSummary>> getFollowers(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
@@ -43,11 +46,28 @@ public class FollowController {
     }
 
     @GetMapping("/{userId}/following")
-    public ResponseEntity<PagedResponse<UserResponse>> getFollowing(
+    public ResponseEntity<PagedResponse<PublicUserSummary>> getFollowing(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         return ResponseEntity.ok(followService.getFollowing(userId, page, size));
+    }
+
+    /** Real follower/following counts for a user's profile. */
+    @GetMapping("/{userId}/counts")
+    public ResponseEntity<FollowCountsResponse> getCounts(@PathVariable Long userId) {
+        return ResponseEntity.ok(followService.getCounts(userId));
+    }
+
+    /** Whether the current user follows {@code userId}. */
+    @GetMapping("/{userId}/status")
+    public ResponseEntity<Map<String, Boolean>> getStatus(
+            @PathVariable Long userId,
+            Authentication authentication
+    ) {
+        boolean following = authentication != null
+                && followService.isFollowing(authentication.getName(), userId);
+        return ResponseEntity.ok(Map.of("following", following));
     }
 }

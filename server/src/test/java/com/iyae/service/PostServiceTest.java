@@ -3,17 +3,24 @@ package com.iyae.service;
 import com.iyae.dto.CommentRequest;
 import com.iyae.dto.CommentResponse;
 import com.iyae.dto.PagedResponse;
+import com.iyae.dto.PostReportResponse;
 import com.iyae.dto.PostRequest;
 import com.iyae.dto.PostResponse;
 import com.iyae.entity.Post;
 import com.iyae.entity.PostComment;
 import com.iyae.entity.PostLike;
+import com.iyae.entity.PostReport;
+import com.iyae.entity.SavedLook;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.CommentStatus;
 import com.iyae.entity.enums.PostStatus;
+import com.iyae.entity.enums.ReportStatus;
 import com.iyae.entity.enums.Role;
 import com.iyae.repository.PostCommentRepository;
 import com.iyae.repository.PostLikeRepository;
+import com.iyae.repository.PostReportRepository;
 import com.iyae.repository.PostRepository;
+import com.iyae.repository.SavedLookRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +50,8 @@ class PostServiceTest {
     @Mock PostLikeRepository postLikeRepository;
     @Mock PostCommentRepository postCommentRepository;
     @Mock UserRepository userRepository;
+    @Mock SavedLookRepository savedLookRepository;
+    @Mock PostReportRepository postReportRepository;
 
     @InjectMocks PostService postService;
 
@@ -59,7 +68,7 @@ class PostServiceTest {
         // injected automatically because it isn't a @Mock. Re-create service with real mapper.
         postService = new PostService(
                 postRepository, postLikeRepository, postCommentRepository,
-                userRepository, objectMapper);
+                userRepository, objectMapper, savedLookRepository, postReportRepository);
 
         author = User.builder()
                 .id(1L).email("author@test.com").name("Author")
@@ -272,5 +281,168 @@ class PostServiceTest {
 
         assertThatThrownBy(() -> postService.archive(10L, "other@test.com"))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // ── getFeed dispatch (Phase 6 named feeds) ─────────────────────────────────
+
+    @Test
+    void getFeed_following_returnsFollowedAuthorsActivePosts() {
+        when(userRepository.findByEmail("other@test.com")).thenReturn(Optional.of(other));
+        when(postRepository.findFollowingFeed(eq(other), eq(PostStatus.ACTIVE), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(activePost)));
+        when(postLikeRepository.findByPostAndUser(activePost, other)).thenReturn(Optional.empty());
+        when(postLikeRepository.countByPost(activePost)).thenReturn(2L);
+        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+
+        PagedResponse<PostResponse> feed = postService.getFeed("following", "other@test.com", 0, 10);
+
+        assertThat(feed.content()).hasSize(1);
+        assertThat(feed.content().get(0).likeCount()).isEqualTo(2L);
+    }
+
+    @Test
+    void getFeed_following_anonymous_returnsEmptyPageNoError() {
+        PagedResponse<PostResponse> feed = postService.getFeed("following", null, 0, 10);
+
+        assertThat(feed.content()).isEmpty();
+        verify(postRepository, never()).findFollowingFeed(any(), any(), any());
+    }
+
+    @Test
+    void getFeed_toronto_filtersByCity() {
+        when(postRepository.findByStatusAndCityOrderByCreatedAtDesc(
+                eq(PostStatus.ACTIVE), eq("Toronto"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(activePost)));
+        when(postLikeRepository.countByPost(activePost)).thenReturn(0L);
+        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+
+        PagedResponse<PostResponse> feed = postService.getFeed("toronto", null, 0, 10);
+
+        assertThat(feed.content()).hasSize(1);
+    }
+
+    @Test
+    void getFeed_bodyConfidence_filtersByTopic() {
+        when(postRepository.findByStatusAndTopicOrderByCreatedAtDesc(
+                eq(PostStatus.ACTIVE), eq("body-confidence"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(activePost)));
+        when(postLikeRepository.countByPost(activePost)).thenReturn(0L);
+        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+
+        PagedResponse<PostResponse> feed = postService.getFeed("body-confidence", null, 0, 10);
+
+        assertThat(feed.content()).hasSize(1);
+    }
+
+    @Test
+    void getFeed_unknownFeed_throwsIllegalArgumentException() {
+        assertThatThrownBy(() -> postService.getFeed("bogus", null, 0, 10))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown feed");
+    }
+
+    // ── createPost — Share-a-Look ──────────────────────────────────────────────
+
+    @Test
+    void createPost_withSavedLook_bindsAssociationAndProducts() throws Exception {
+        SavedLook look = SavedLook.builder().id(5L).user(author).build();
+        PostRequest req = new PostRequest("wearing this", null,
+                5L, List.of("100", "200"), "body-confidence", "Toronto");
+        Post saved = Post.builder().id(12L).user(author).content("wearing this")
+                .savedLook(look).productIds(objectMapper.writeValueAsString(List.of("100", "200")))
+                .topic("body-confidence").city("Toronto").status(PostStatus.ACTIVE).build();
+
+        when(userRepository.findByEmail("author@test.com")).thenReturn(Optional.of(author));
+        when(savedLookRepository.findById(5L)).thenReturn(Optional.of(look));
+        when(postRepository.save(any(Post.class))).thenReturn(saved);
+        when(postLikeRepository.countByPost(saved)).thenReturn(0L);
+        when(postCommentRepository.countByPost(saved)).thenReturn(0L);
+
+        PostResponse resp = postService.createPost("author@test.com", req);
+
+        assertThat(resp.savedLookId()).isEqualTo(5L);
+        assertThat(resp.productIds()).containsExactly("100", "200");
+        assertThat(resp.topic()).isEqualTo("body-confidence");
+        assertThat(resp.city()).isEqualTo("Toronto");
+    }
+
+    @Test
+    void createPost_withOthersSavedLook_throwsAccessDeniedException() {
+        SavedLook othersLook = SavedLook.builder().id(9L).user(other).build();
+        PostRequest req = new PostRequest("stealing your look", null, 9L, null, null, null);
+
+        when(userRepository.findByEmail("author@test.com")).thenReturn(Optional.of(author));
+        when(savedLookRepository.findById(9L)).thenReturn(Optional.of(othersLook));
+
+        assertThatThrownBy(() -> postService.createPost("author@test.com", req))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(postRepository, never()).save(any());
+    }
+
+    @Test
+    void createPost_defaultsCityFromAuthor_whenNotProvided() {
+        author.setCity("Toronto");
+        PostRequest req = new PostRequest("plain photo", null, null, null, null, null);
+        ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
+        Post saved = Post.builder().id(13L).user(author).content("plain photo")
+                .city("Toronto").status(PostStatus.ACTIVE).build();
+
+        when(userRepository.findByEmail("author@test.com")).thenReturn(Optional.of(author));
+        when(postRepository.save(captor.capture())).thenReturn(saved);
+        when(postLikeRepository.countByPost(saved)).thenReturn(0L);
+        when(postCommentRepository.countByPost(saved)).thenReturn(0L);
+
+        postService.createPost("author@test.com", req);
+
+        assertThat(captor.getValue().getCity()).isEqualTo("Toronto");
+    }
+
+    // ── reportPost ─────────────────────────────────────────────────────────────
+
+    @Test
+    void reportPost_firstTime_savesOpenReport() {
+        PostReport saved = PostReport.builder().id(70L).post(activePost).reporter(other)
+                .reason("spam").status(ReportStatus.OPEN).build();
+        when(userRepository.findByEmail("other@test.com")).thenReturn(Optional.of(other));
+        when(postRepository.findById(10L)).thenReturn(Optional.of(activePost));
+        when(postReportRepository.findByPostAndReporter(activePost, other)).thenReturn(Optional.empty());
+        when(postReportRepository.save(any(PostReport.class))).thenReturn(saved);
+
+        PostReportResponse resp = postService.reportPost(10L, "other@test.com", "spam");
+
+        assertThat(resp.status()).isEqualTo(ReportStatus.OPEN);
+        assertThat(resp.reason()).isEqualTo("spam");
+        verify(postReportRepository).save(any(PostReport.class));
+    }
+
+    @Test
+    void reportPost_duplicate_isIdempotent() {
+        PostReport existing = PostReport.builder().id(71L).post(activePost).reporter(other)
+                .reason("dup").status(ReportStatus.OPEN).build();
+        when(userRepository.findByEmail("other@test.com")).thenReturn(Optional.of(other));
+        when(postRepository.findById(10L)).thenReturn(Optional.of(activePost));
+        when(postReportRepository.findByPostAndReporter(activePost, other)).thenReturn(Optional.of(existing));
+
+        PostReportResponse resp = postService.reportPost(10L, "other@test.com", "spam again");
+
+        assertThat(resp.id()).isEqualTo(71L);
+        verify(postReportRepository, never()).save(any());
+    }
+
+    // ── getComments ────────────────────────────────────────────────────────────
+
+    @Test
+    void getComments_returnsActiveTopLevelComments() {
+        PostComment comment = PostComment.builder().id(50L).post(activePost).user(other)
+                .content("Nice!").status(CommentStatus.ACTIVE).build();
+        when(postRepository.findById(10L)).thenReturn(Optional.of(activePost));
+        when(postCommentRepository.findByPostAndParentCommentIsNullAndStatusOrderByCreatedAtAsc(
+                eq(activePost), eq(CommentStatus.ACTIVE), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(comment)));
+
+        PagedResponse<CommentResponse> comments = postService.getComments(10L, 0, 10);
+
+        assertThat(comments.content()).hasSize(1);
+        assertThat(comments.content().get(0).content()).isEqualTo("Nice!");
     }
 }

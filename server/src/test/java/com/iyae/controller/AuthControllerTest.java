@@ -164,11 +164,12 @@ class AuthControllerTest {
     @Test
     void getPublicProfile_existingUsername_returns200() throws Exception {
         PublicProfileResponse profile = new PublicProfileResponse(
-                "testuser", "Test User", false, null, null, null, null);
+                1L, "testuser", "Test User", false, null, null, null, null);
         when(authService.getPublicProfile("testuser")).thenReturn(profile);
 
         mockMvc.perform(get("/api/auth/users/profile/testuser"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.username").value("testuser"));
     }
 

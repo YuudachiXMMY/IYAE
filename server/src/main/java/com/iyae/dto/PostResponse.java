@@ -19,9 +19,23 @@ public record PostResponse(
     long likeCount,
     long commentCount,
     boolean likedByCurrentUser,
-    Instant createdAt
+    Instant createdAt,
+    // Phase 6 — feed dimensions + Share-a-Look linkage
+    String city,
+    String topic,
+    Long savedLookId,
+    List<String> productIds
 ) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Back-compat constructor for tests/callers that predate the Phase-6 fields. */
+    public PostResponse(Long id, Long userId, String username, String content,
+                        List<String> mediaUrls, PostStatus status,
+                        long likeCount, long commentCount, boolean likedByCurrentUser,
+                        Instant createdAt) {
+        this(id, userId, username, content, mediaUrls, status, likeCount, commentCount,
+             likedByCurrentUser, createdAt, null, null, null, null);
+    }
 
     public static PostResponse from(Post post, long likeCount, long commentCount, boolean likedByCurrentUser) {
         List<String> urls = parseMediaUrls(post.getMediaUrls());
@@ -38,7 +52,11 @@ public record PostResponse(
             likeCount,
             commentCount,
             likedByCurrentUser,
-            post.getCreatedAt()
+            post.getCreatedAt(),
+            post.getCity(),
+            post.getTopic(),
+            post.getSavedLook() != null ? post.getSavedLook().getId() : null,
+            parseMediaUrls(post.getProductIds())
         );
     }
 

@@ -3,16 +3,23 @@ package com.iyae.service;
 import com.iyae.dto.CommentRequest;
 import com.iyae.dto.CommentResponse;
 import com.iyae.dto.PagedResponse;
+import com.iyae.dto.PostReportResponse;
 import com.iyae.dto.PostRequest;
 import com.iyae.dto.PostResponse;
 import com.iyae.entity.Post;
 import com.iyae.entity.PostComment;
 import com.iyae.entity.PostLike;
+import com.iyae.entity.PostReport;
+import com.iyae.entity.SavedLook;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.CommentStatus;
 import com.iyae.entity.enums.PostStatus;
+import com.iyae.entity.enums.ReportStatus;
 import com.iyae.repository.PostCommentRepository;
 import com.iyae.repository.PostLikeRepository;
+import com.iyae.repository.PostReportRepository;
 import com.iyae.repository.PostRepository;
+import com.iyae.repository.SavedLookRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,27 +45,102 @@ public class PostService {
     private final PostCommentRepository postCommentRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final SavedLookRepository savedLookRepository;
+    private final PostReportRepository postReportRepository;
 
     @Transactional
     public PostResponse createPost(String email, PostRequest request) {
         User user = findUser(email);
-        String mediaUrlsJson = serializeMediaUrls(request.mediaUrls());
+        String mediaUrlsJson = serializeJsonList(request.mediaUrls());
+        String productIdsJson = serializeJsonList(request.productIds());
+        SavedLook savedLook = resolveSavedLook(request.savedLookId(), user);
+        // City defaults to the author's home city when the composer doesn't override it.
+        String city = (request.city() != null && !request.city().isBlank())
+            ? request.city().trim()
+            : user.getCity();
         Post post = Post.builder()
             .user(user)
             .content(request.content())
             .mediaUrls(mediaUrlsJson)
+            .savedLook(savedLook)
+            .productIds(productIdsJson)
+            .topic(normalizeBlank(request.topic()))
+            .city(normalizeBlank(city))
             .status(PostStatus.ACTIVE)
             .build();
         Post saved = postRepository.save(post);
         return toResponse(saved, user, false);
     }
 
+    /**
+     * Named-feed dispatch. Every branch constrains {@code status = ACTIVE} so moderated posts
+     * (ARCHIVED / PENDING_DELETE) never leak into any feed.
+     */
     @Transactional(readOnly = true)
-    public PagedResponse<PostResponse> getFeed(String email, int page, int size) {
+    public PagedResponse<PostResponse> getFeed(String feed, String email, int page, int size) {
         User currentUser = email != null ? userRepository.findByEmail(email).orElse(null) : null;
         Pageable pageable = PageRequest.of(page, size);
-        Page<Post> posts = postRepository.findByStatusOrderByCreatedAtDesc(PostStatus.ACTIVE, pageable);
+        String feedType = (feed == null || feed.isBlank()) ? "discover" : feed.trim().toLowerCase();
+        Page<Post> posts;
+        switch (feedType) {
+            case "discover", "for-you" ->
+                posts = postRepository.findByStatusOrderByCreatedAtDesc(PostStatus.ACTIVE, pageable);
+            case "following" ->
+                // Anonymous or follows-nobody → empty page (never an error).
+                posts = (currentUser == null)
+                    ? Page.<Post>empty(pageable)
+                    : postRepository.findFollowingFeed(currentUser, PostStatus.ACTIVE, pageable);
+            case "toronto" ->
+                posts = postRepository.findByStatusAndCityOrderByCreatedAtDesc(
+                    PostStatus.ACTIVE, "Toronto", pageable);
+            case "body-confidence" ->
+                posts = postRepository.findByStatusAndTopicOrderByCreatedAtDesc(
+                    PostStatus.ACTIVE, "body-confidence", pageable);
+            default -> throw new IllegalArgumentException("Unknown feed: " + feed);
+        }
         return PagedResponse.from(posts.map(p -> toResponse(p, currentUser, isLikedBy(p, currentUser))));
+    }
+
+    /** Back-compat overload: the feed-less call is the Discover stream. */
+    @Transactional(readOnly = true)
+    public PagedResponse<PostResponse> getFeed(String email, int page, int size) {
+        return getFeed("discover", email, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public PostResponse getPost(Long postId, String email) {
+        Post post = findActivePost(postId);
+        User currentUser = email != null ? userRepository.findByEmail(email).orElse(null) : null;
+        return toResponse(post, currentUser, isLikedBy(post, currentUser));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<CommentResponse> getComments(Long postId, int page, int size) {
+        Post post = findActivePost(postId);
+        Pageable pageable = PageRequest.of(page, size);
+        return PagedResponse.from(
+            postCommentRepository
+                .findByPostAndParentCommentIsNullAndStatusOrderByCreatedAtAsc(post, CommentStatus.ACTIVE, pageable)
+                .map(CommentResponse::from));
+    }
+
+    /** User abuse report. Idempotent — one report per (post, reporter). */
+    @Transactional
+    public PostReportResponse reportPost(Long postId, String email, String reason) {
+        User reporter = findUser(email);
+        Post post = findActivePost(postId);
+        Optional<PostReport> existing = postReportRepository.findByPostAndReporter(post, reporter);
+        if (existing.isPresent()) {
+            return PostReportResponse.from(existing.get());
+        }
+        PostReport report = PostReport.builder()
+            .post(post)
+            .reporter(reporter)
+            .reason(reason)
+            .status(ReportStatus.OPEN)
+            .build();
+        log.info("User {} reported post {}", reporter.getId(), postId);
+        return PostReportResponse.from(postReportRepository.save(report));
     }
 
     @Transactional(readOnly = true)
@@ -153,12 +236,26 @@ public class PostService {
         return PostResponse.from(post, likeCount, commentCount, liked);
     }
 
-    private String serializeMediaUrls(List<String> mediaUrls) {
-        if (mediaUrls == null || mediaUrls.isEmpty()) return null;
+    private SavedLook resolveSavedLook(Long savedLookId, User user) {
+        if (savedLookId == null) return null;
+        SavedLook look = savedLookRepository.findById(savedLookId)
+            .orElseThrow(() -> new IllegalArgumentException("Saved look not found"));
+        if (!look.getUser().getId().equals(user.getId())) {
+            throw new AccessDeniedException("Access denied");
+        }
+        return look;
+    }
+
+    private String normalizeBlank(String value) {
+        return (value == null || value.isBlank()) ? null : value.trim();
+    }
+
+    private String serializeJsonList(List<String> values) {
+        if (values == null || values.isEmpty()) return null;
         try {
-            return objectMapper.writeValueAsString(mediaUrls);
+            return objectMapper.writeValueAsString(values);
         } catch (Exception e) {
-            log.warn("Failed to serialize mediaUrls", e);
+            log.warn("Failed to serialize JSON list", e);
             return null;
         }
     }

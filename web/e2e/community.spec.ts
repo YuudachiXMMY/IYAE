@@ -12,11 +12,13 @@ test.describe('Community feed', () => {
   test('community page renders with tabs', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     // Tab bar should be present
-    await expect(page.getByRole('button', { name: 'For you' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Following' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Discover' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Toronto' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Body confidence' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Reposted' })).toBeVisible();
   });
@@ -24,12 +26,12 @@ test.describe('Community feed', () => {
   test('for-you tab shows post feed or empty state', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     // Either posts or an empty state message should appear
     const hasPostsOrEmpty = await Promise.race([
       page.locator('article').first().waitFor({ timeout: 8000 }).then(() => true),
-      page.getByText('Nothing here yet').waitFor({ timeout: 8000 }).then(() => true),
+      page.getByText('Nothing to discover yet').waitFor({ timeout: 8000 }).then(() => true),
     ]).catch(() => false);
 
     expect(hasPostsOrEmpty).toBe(true);
@@ -38,7 +40,7 @@ test.describe('Community feed', () => {
   test('tab switching changes active tab state', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     // Click Following tab
     await page.getByRole('button', { name: 'Following' }).click();
@@ -56,7 +58,7 @@ test.describe('Community feed', () => {
   test('like button toggles on a post when feed has content', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     // Wait for posts to load (community uses localStorage demo data)
     const firstPost = page.locator('article').first();
@@ -90,7 +92,7 @@ test.describe('Community feed', () => {
   test('opening post detail dialog via comment area', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     const firstPost = page.locator('article').first();
     const postVisible = await firstPost.waitFor({ timeout: 8000, state: 'visible' }).then(() => true).catch(() => false);
@@ -117,7 +119,7 @@ test.describe('Community feed', () => {
   test('follow button in creator sidebar toggles follow state', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     // Desktop creator sidebar (xl only) — if not visible, check mobile strip
     const sidebarFollowBtns = page.locator('aside button').filter({ hasText: /^Follow$/ });
@@ -142,7 +144,7 @@ test.describe('Community feed', () => {
   test('creator search filters the sidebar list', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     // Creator search input only visible on xl screens in aside
     const searchInput = page.locator('aside input[placeholder*="Search creators"]');
@@ -163,7 +165,7 @@ test.describe('Community feed', () => {
   test('shop this look link navigates to chat with params', async ({ page }) => {
     await page.goto('/community');
 
-    await expect(page.getByRole('heading', { name: 'Communette' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
 
     const firstPost = page.locator('article').first();
     const postVisible = await firstPost.waitFor({ timeout: 8000, state: 'visible' }).then(() => true).catch(() => false);

@@ -1,12 +1,15 @@
 package com.iyae.controller;
 
 import com.iyae.dto.AdminPostResponse;
+import com.iyae.dto.PagedResponse;
+import com.iyae.dto.PostReportResponse;
 import com.iyae.dto.ProductResponse;
 import com.iyae.dto.ProductStatusUpdateRequest;
 import com.iyae.dto.PromotionResponse;
 import com.iyae.dto.PromotionSlotUpdateRequest;
 import com.iyae.entity.enums.PostStatus;
 import com.iyae.entity.enums.ProductStatus;
+import com.iyae.entity.enums.ReportStatus;
 import com.iyae.entity.enums.SlotType;
 import com.iyae.service.AdminModerationService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
@@ -62,6 +65,10 @@ class AdminControllerTest {
 
     private PromotionResponse samplePromotion() {
         return new PromotionResponse(3L, 5L, SlotType.FEATURED, 10, null, null);
+    }
+
+    private PostReportResponse sampleReport() {
+        return new PostReportResponse(1L, 7L, 9L, "reporter", "spam", ReportStatus.OPEN, Instant.now());
     }
 
     // ---- Role gating: list ----
@@ -173,6 +180,52 @@ class AdminControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new PromotionSlotUpdateRequest(SlotType.FEATURED))))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---- Phase 6: report queue + comment moderation ----
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void listReports_admin_returns200() throws Exception {
+        when(adminModerationService.listReports(any(), eq(0), eq(20)))
+                .thenReturn(new PagedResponse<>(List.of(sampleReport()), 0, 20, 1L, 1, true));
+
+        mockMvc.perform(get("/api/admin/reports"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "buyer@iyae.ca", roles = "BUYER")
+    void listReports_buyer_returns403() throws Exception {
+        mockMvc.perform(get("/api/admin/reports"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void resolveReport_admin_returns200() throws Exception {
+        when(adminModerationService.resolveReport(eq(1L), eq(ReportStatus.RESOLVED), eq(true)))
+                .thenReturn(sampleReport());
+
+        mockMvc.perform(put("/api/admin/reports/1/resolve")
+                        .with(csrf())
+                        .param("status", "RESOLVED")
+                        .param("removePost", "true"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@iyae.ca", roles = "ADMIN")
+    void removeComment_admin_returns204() throws Exception {
+        mockMvc.perform(put("/api/admin/comments/9/remove").with(csrf()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser(username = "designer@iyae.ca", roles = "DESIGNER")
+    void removeComment_designer_returns403() throws Exception {
+        mockMvc.perform(put("/api/admin/comments/9/remove").with(csrf()))
                 .andExpect(status().isForbidden());
     }
 }

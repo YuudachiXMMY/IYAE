@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LocalImagePicker } from "@/components/profile/LocalImagePicker";
 import type { CreatePostInput, PostType, ProductLink } from "@/lib/community-feed";
-import { api } from "@/lib/api";
+import { api, posts as postsApi, ApiError, type CreatePostPayload } from "@/lib/api";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -71,6 +72,12 @@ export function CreateFashionPostDialog({
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<ProductLink[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  // Phase 6 — Share-a-Look bindings + named-feed dimensions
+  const [topic, setTopic] = useState("");
+  const [city, setCity] = useState("");
+  const [savedLooks, setSavedLooks] = useState<{ id: number; note: string | null }[]>([]);
+  const [selectedLookId, setSelectedLookId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -91,11 +98,21 @@ export function CreateFashionPostDialog({
     }
   }, []);
 
+  const fetchLooks = useCallback(async () => {
+    try {
+      const looks = await api.get<{ id: number; note: string | null }[]>("/api/looks");
+      setSavedLooks(looks ?? []);
+    } catch {
+      // Silently ignore — Share-a-Look binding is optional
+    }
+  }, []);
+
   useEffect(() => {
     if (open) {
       fetchProducts();
+      fetchLooks();
     }
-  }, [open, fetchProducts]);
+  }, [open, fetchProducts, fetchLooks]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -165,11 +182,15 @@ export function CreateFashionPostDialog({
     setProductSearch("");
     setSelectedProducts([]);
     setFilteredProducts(allProducts);
+    setTopic("");
+    setCity("");
+    setSelectedLookId(null);
   };
 
-  const handleSubmit = () => {
-    if (!selectedImage || !caption.trim()) return;
+  const handleSubmit = async () => {
+    if (!selectedImage || !caption.trim() || submitting) return;
 
+    // Keep the optimistic local feed update (dashboard/community show it instantly)
     const input: CreatePostInput = {
       creatorUsername: currentUsername,
       creatorName: currentDisplayName,
@@ -180,10 +201,28 @@ export function CreateFashionPostDialog({
       productLinks: selectedProducts,
     };
 
-    onSubmit(input);
-    toast.success("Post shared!");
-    resetForm();
-    onOpenChange(false);
+    // Persist through the server (Share-a-Look binds a saved look + real products + feed dimensions)
+    const payload: CreatePostPayload = {
+      content: caption.trim(),
+      mediaUrls: selectedImage ? [selectedImage] : [],
+      savedLookId: selectedLookId ?? undefined,
+      productIds: selectedProducts.map((p) => String(p.productId ?? p.id)),
+      topic: topic.trim() || undefined,
+      city: city.trim() || undefined,
+    };
+
+    setSubmitting(true);
+    try {
+      await postsApi.create(payload);
+      onSubmit(input);
+      toast.success("Post shared!");
+      resetForm();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not share post");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const canSubmit = Boolean(selectedImage) && caption.trim().length > 0;
@@ -316,10 +355,60 @@ export function CreateFashionPostDialog({
               )}
             </div>
 
-            {/* Tag Closette Products */}
+            {/* Share a saved look (optional) */}
+            {savedLooks.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-foreground">
+                  Share a saved look
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {savedLooks.map((look) => (
+                    <button
+                      key={look.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedLookId((prev) => (prev === look.id ? null : look.id))
+                      }
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        selectedLookId === look.id
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {look.note?.trim() || `Look #${look.id}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Named-feed dimensions (optional) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-foreground">Topic</label>
+                <Input
+                  placeholder="body-confidence"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-foreground">City</label>
+                <Input
+                  placeholder="Toronto"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
+            {/* Tag {BRAND} Products */}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-foreground">
-                Tag Closette Products
+                Tag {BRAND.name} Products
               </label>
               <div className="relative">
                 <Search
@@ -424,10 +513,10 @@ export function CreateFashionPostDialog({
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={!canSubmit}
+              disabled={!canSubmit || submitting}
               className="rounded-full bg-foreground text-background w-full py-3 mt-auto hover:opacity-90 transition-opacity disabled:opacity-40"
             >
-              Share Post
+              {submitting ? "Sharing…" : "Share Post"}
             </Button>
           </div>
         </div>

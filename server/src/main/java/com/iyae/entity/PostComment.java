@@ -1,5 +1,6 @@
 package com.iyae.entity;
 
+import com.iyae.entity.enums.CommentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -33,6 +34,15 @@ public class PostComment {
 
     @Column(name = "content", columnDefinition = "TEXT", nullable = false)
     private String content;
+
+    // Phase 6: comment moderation (admin hide/remove) without hard delete
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    @Builder.Default
+    private CommentStatus status = CommentStatus.ACTIVE;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

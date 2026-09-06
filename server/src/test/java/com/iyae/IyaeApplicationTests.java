@@ -95,6 +95,9 @@ class IyaeApplicationTests {
     FollowRepository followRepository;
 
     @MockBean
+    PostReportRepository postReportRepository;
+
+    @MockBean
     AnalyticsEventRepository analyticsEventRepository;
 
     @MockBean
