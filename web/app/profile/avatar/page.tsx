@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { NavBar } from "@/components/NavBar";
@@ -182,6 +182,13 @@ export default function AvatarPage() {
   const [bodyType, setBodyType] = useState<string>("neutral");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  // Move focus to Cancel when entering the two-step confirm so keyboard/SR users are
+  // not left on <body>, one blind activation away from an irreversible delete (M10).
+  useEffect(() => {
+    if (confirmingDelete) cancelDeleteRef.current?.focus();
+  }, [confirmingDelete]);
 
   // Derive initial body type from user.genderIdentity
   useEffect(() => {
@@ -456,8 +463,9 @@ export default function AvatarPage() {
                     </p>
                   </div>
                   {confirmingDelete ? (
-                    <div className="flex shrink-0 gap-2">
+                    <div className="flex shrink-0 gap-2" aria-live="polite">
                       <Button
+                        ref={cancelDeleteRef}
                         variant="outline"
                         size="sm"
                         className="rounded-full text-xs"
@@ -481,6 +489,7 @@ export default function AvatarPage() {
                       variant="destructive"
                       size="sm"
                       className="shrink-0 rounded-full text-xs"
+                      disabled={isGenerating}
                       onClick={() => setConfirmingDelete(true)}
                     >
                       Delete

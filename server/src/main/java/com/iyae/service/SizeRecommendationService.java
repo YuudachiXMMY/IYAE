@@ -5,6 +5,7 @@ import com.iyae.entity.BodyProfile;
 import com.iyae.entity.Product;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
+import com.iyae.entity.enums.SizeRecommendationBasis;
 import com.iyae.repository.BodyProfileRepository;
 import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.ProductRepository;
@@ -39,13 +40,12 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SizeRecommendationService {
 
-    private static final String BASIS_MEASUREMENT_CHART = "MEASUREMENT_CHART";
-    private static final String BASIS_SELF_REPORTED = "SELF_REPORTED";
-    private static final String BASIS_NONE = "NONE";
-
-    /** Measurement dimensions considered for chart matching. */
+    /** Measurement dimensions considered for chart matching (all values in centimetres). */
     private static final List<String> CHART_DIMS =
             List.of("chestCm", "waistCm", "hipsCm", "inseamCm");
+
+    /** Defensive cap on parsed size-chart entries (no designer authoring UI exists yet). */
+    private static final int MAX_CHART_ENTRIES = 50;
 
     /** Reference per-dimension deviation (cm) used to normalize chart confidence. */
     private static final double CONFIDENCE_REFERENCE_CM = 15.0;
@@ -86,7 +86,8 @@ public class SizeRecommendationService {
 
         BodyProfile profile = bodyProfileRepository.findByUserId(user.getId()).orElse(null);
         if (profile == null) {
-            return new SizeRecommendationResponse(null, BASIS_NONE, 0.0, availableSizes);
+            return new SizeRecommendationResponse(
+                    null, SizeRecommendationBasis.NONE.name(), 0.0, availableSizes);
         }
 
         // Tier 1: measurement chart
@@ -106,11 +107,13 @@ public class SizeRecommendationService {
                     .findFirst();
             if (match.isPresent()) {
                 return new SizeRecommendationResponse(
-                        match.get(), BASIS_SELF_REPORTED, SELF_REPORTED_CONFIDENCE, availableSizes);
+                        match.get(), SizeRecommendationBasis.SELF_REPORTED.name(),
+                        SELF_REPORTED_CONFIDENCE, availableSizes);
             }
         }
 
-        return new SizeRecommendationResponse(null, BASIS_NONE, 0.0, availableSizes);
+        return new SizeRecommendationResponse(
+                null, SizeRecommendationBasis.NONE.name(), 0.0, availableSizes);
     }
 
     private SizeRecommendationResponse recommendFromChart(
@@ -121,8 +124,7 @@ public class SizeRecommendationService {
         }
 
         SizeChartEntry best = null;
-        double bestDistance = Double.MAX_VALUE;
-        int bestDimCount = 0;
+        double bestRms = Double.MAX_VALUE;
         for (SizeChartEntry entry : chart) {
             double sumSq = 0.0;
             int n = 0;
@@ -137,11 +139,14 @@ public class SizeRecommendationService {
             if (n == 0) {
                 continue; // entry shares no comparable dimension
             }
-            double distance = Math.sqrt(sumSq);
-            if (distance < bestDistance) {
-                bestDistance = distance;
+            // Select on RMS (root-mean-square deviation per comparable dimension) so the
+            // chosen entry and the reported confidence use the SAME metric — an entry that
+            // matches on fewer dimensions no longer beats a better all-dimension match.
+            // Strict '<' keeps the FIRST entry on ties (chart order wins).
+            double rms = Math.sqrt(sumSq / n);
+            if (rms < bestRms) {
+                bestRms = rms;
                 best = entry;
-                bestDimCount = n;
             }
         }
 
@@ -158,11 +163,10 @@ public class SizeRecommendationService {
             return null;
         }
 
-        double rms = bestDistance / Math.sqrt(bestDimCount);
-        double confidence = Math.max(0.0, Math.min(1.0, 1.0 - rms / CONFIDENCE_REFERENCE_CM));
+        double confidence = Math.max(0.0, Math.min(1.0, 1.0 - bestRms / CONFIDENCE_REFERENCE_CM));
         confidence = Math.round(confidence * 100.0) / 100.0;
         return new SizeRecommendationResponse(
-                best.size(), BASIS_MEASUREMENT_CHART, confidence, availableSizes);
+                best.size(), SizeRecommendationBasis.MEASUREMENT_CHART.name(), confidence, availableSizes);
     }
 
     private Map<String, Double> userMeasurements(BodyProfile profile) {
@@ -230,6 +234,11 @@ public class SizeRecommendationService {
             }
             List<SizeChartEntry> entries = new ArrayList<>();
             for (JsonNode node : root) {
+                if (entries.size() >= MAX_CHART_ENTRIES) {
+                    log.warn("size_chart has more than {} entries; ignoring the remainder",
+                            MAX_CHART_ENTRIES);
+                    break;
+                }
                 JsonNode sizeNode = node.get("size");
                 if (sizeNode == null || sizeNode.isNull()) {
                     continue;

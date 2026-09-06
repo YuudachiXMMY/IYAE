@@ -10,6 +10,34 @@ logger = logging.getLogger(__name__)
 
 MESHY_API_BASE = "https://api.meshy.ai/openapi/v1"
 
+# Cap on a single downloaded asset (GLB/USDZ) to bound the worker's memory / DoS
+# surface. The URL comes from the Meshy API response (not direct user input), but a
+# lying/MITM'd provider could otherwise stream an unbounded body.
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
+def _enforce_download_cap(resp, url: str, max_bytes: int = MAX_DOWNLOAD_BYTES) -> None:
+    """Raise RuntimeError if a downloaded response exceeds the byte cap.
+
+    Checks the declared ``Content-Length`` header first (short-circuits an honestly
+    oversized download) and then the actual body length. Non-numeric headers and
+    non-bytes bodies (e.g. test mocks) are ignored rather than raising spuriously.
+    """
+    headers = getattr(resp, "headers", None)
+    declared = headers.get("Content-Length") if headers is not None else None
+    if declared is not None:
+        try:
+            if int(declared) > max_bytes:
+                raise RuntimeError(
+                    f"Download exceeds {max_bytes}-byte cap "
+                    f"(Content-Length {declared}): {url}"
+                )
+        except (ValueError, TypeError):
+            pass
+    body = getattr(resp, "content", None)
+    if isinstance(body, (bytes, bytearray)) and len(body) > max_bytes:
+        raise RuntimeError(f"Download exceeds {max_bytes}-byte cap: {url}")
+
 
 def _compute_glb_metadata(glb_path: str) -> dict:
     """Compute real geometry metadata (triangle_count, bbox, has_nan) from a GLB.
@@ -29,43 +57,20 @@ def _compute_glb_metadata(glb_path: str) -> dict:
     import math
 
     # --- Tier 1: pygltflib accessor min/max + index counts (no buffer decode) ---
+    # Uses the shared compute_glb_geometry_stats helper (mode-aware counts, bbox
+    # union, out-of-range guard) -- same traversal validate_glb_geometry applies.
     try:
         from pygltflib import GLTF2
 
+        from glb_geometry import compute_glb_geometry_stats
+
         gltf = GLTF2.load(glb_path)
-        accessors = gltf.accessors or []
-        triangle_count = 0
-        mins = [math.inf, math.inf, math.inf]
-        maxs = [-math.inf, -math.inf, -math.inf]
-        bounds_found = False
-
-        for mesh in (gltf.meshes or []):
-            for prim in (mesh.primitives or []):
-                attrs = prim.attributes
-                pos = getattr(attrs, "POSITION", None) if attrs else None
-                idx = prim.indices
-                # Require the full [0, len) range: a negative index would wrap via
-                # Python negative indexing and derive geometry from the wrong
-                # accessor. Silently skipping out-of-range indices is fine here --
-                # validate_glb_geometry is the authoritative gate.
-                if idx is not None and 0 <= idx < len(accessors):
-                    triangle_count += accessors[idx].count // 3
-                elif pos is not None and 0 <= pos < len(accessors):
-                    triangle_count += accessors[pos].count // 3
-                if pos is not None and 0 <= pos < len(accessors):
-                    acc = accessors[pos]
-                    if acc.min and acc.max and len(acc.min) >= 3 and len(acc.max) >= 3:
-                        bounds_found = True
-                        for i in range(3):
-                            mins[i] = min(mins[i], float(acc.min[i]))
-                            maxs[i] = max(maxs[i], float(acc.max[i]))
-
-        if bounds_found:
-            has_nan = any(
-                math.isnan(v) or math.isinf(v) for v in (*mins, *maxs)
-            )
+        stats = compute_glb_geometry_stats(gltf)
+        if stats["bounds_found"]:
+            mins, maxs = stats["mins"], stats["maxs"]
+            has_nan = any(math.isnan(v) or math.isinf(v) for v in (*mins, *maxs))
             return {
-                "triangle_count": triangle_count,
+                "triangle_count": stats["triangle_count"],
                 "bbox": {"min": mins, "max": maxs},
                 "has_nan": has_nan,
             }
@@ -201,6 +206,7 @@ class MeshyGenerator:
         glb_path = os.path.join(output_dir, "preview.glb")
         glb_resp = requests.get(glb_url, timeout=60)
         glb_resp.raise_for_status()
+        _enforce_download_cap(glb_resp, glb_url)
         with open(glb_path, "wb") as f:
             f.write(glb_resp.content)
 
@@ -212,6 +218,7 @@ class MeshyGenerator:
             usdz_local_path = os.path.join(output_dir, "preview.usdz")
             usdz_resp = requests.get(usdz_url, timeout=60)
             usdz_resp.raise_for_status()
+            _enforce_download_cap(usdz_resp, usdz_url)
             with open(usdz_local_path, "wb") as f:
                 f.write(usdz_resp.content)
             usdz_path_str = f"products/{product_id}/tasks/{task_id}/preview.usdz"

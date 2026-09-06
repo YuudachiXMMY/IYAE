@@ -118,21 +118,27 @@ def validate_metadata(metadata: dict) -> dict:
 def validate_glb_geometry(file_path: str) -> dict:
     """Independently parse a GLB's geometry and validate triangle_count + bbox.
 
-    Defense-in-depth: this recomputes geometry directly from the file (not from
-    the provider-supplied metadata), so a provider that reports fabricated
-    ``triangle_count``/``bbox`` cannot slip a malformed GLB past validation.
-    Reuses the module thresholds ``MAX_TRIANGLE_COUNT``, ``BBOX_MIN_DIM`` and
-    ``BBOX_MAX_DIM``.
+    Defense-in-depth: recomputes geometry from the file's own glTF JSON instead of
+    trusting the provider-supplied output metadata. NOTE: it reads the
+    ACCESSOR-DECLARED ``count``/``min``/``max`` (themselves part of the
+    provider-controlled JSON chunk) and does NOT decode ``bufferView``/``buffer``
+    bytes -- so it catches metadata that is inconsistent with the file's own
+    declared accessors, but it does not prove the declared accessors match the
+    underlying buffer data. Reuses the module thresholds ``MAX_TRIANGLE_COUNT``,
+    ``BBOX_MIN_DIM`` and ``BBOX_MAX_DIM``.
 
-    Geometry is read via ``pygltflib`` (lazy import) from the POSITION accessor
-    ``min``/``max`` (unioned across meshes) and index accessor counts. A GLB with
-    no geometry (e.g. the stub empty-scene GLB) passes -- there is nothing to
-    reject. A parse failure is reported as a validation error (task FAILED); it
-    never raises, so the poll loop cannot crash on a bad file.
+    Geometry is read via ``pygltflib`` (lazy import) through the shared
+    ``compute_glb_geometry_stats`` helper (POSITION accessor ``min``/``max``
+    unioned across meshes; mode-aware index counts). A GLB with no geometry (e.g.
+    the stub empty-scene GLB) passes -- there is nothing to reject. A parse failure
+    is reported as a validation error (task FAILED); it never raises, so the poll
+    loop cannot crash on a bad file.
 
     Returns ``{"valid": bool, "errors": [...], "triangle_count": int|None, "bbox": dict|None}``.
     """
     from pygltflib import GLTF2
+
+    from glb_geometry import compute_glb_geometry_stats
 
     result: dict = {"valid": False, "errors": [], "triangle_count": None, "bbox": None}
 
@@ -143,43 +149,13 @@ def validate_glb_geometry(file_path: str) -> dict:
         return result
 
     try:
-        accessors = gltf.accessors or []
-        triangle_count = 0
-        mins = [math.inf, math.inf, math.inf]
-        maxs = [-math.inf, -math.inf, -math.inf]
-        bounds_found = False
-
-        for mesh in (gltf.meshes or []):
-            for prim in (mesh.primitives or []):
-                attrs = prim.attributes
-                pos = getattr(attrs, "POSITION", None) if attrs else None
-                idx = prim.indices
-                # An index that is present but out of the valid [0, len) range
-                # (e.g. a negative value that would silently wrap via Python
-                # negative indexing) is a validation error, not something to skip.
-                if idx is not None and not (0 <= idx < len(accessors)):
-                    result["errors"].append(
-                        f"indices accessor index {idx} out of range [0, {len(accessors)})"
-                    )
-                if pos is not None and not (0 <= pos < len(accessors)):
-                    result["errors"].append(
-                        f"POSITION accessor index {pos} out of range [0, {len(accessors)})"
-                    )
-                if idx is not None and 0 <= idx < len(accessors):
-                    triangle_count += accessors[idx].count // 3
-                elif pos is not None and 0 <= pos < len(accessors):
-                    triangle_count += accessors[pos].count // 3
-                if pos is not None and 0 <= pos < len(accessors):
-                    acc = accessors[pos]
-                    if acc.min and acc.max and len(acc.min) >= 3 and len(acc.max) >= 3:
-                        bounds_found = True
-                        for i in range(3):
-                            mins[i] = min(mins[i], float(acc.min[i]))
-                            maxs[i] = max(maxs[i], float(acc.max[i]))
+        stats = compute_glb_geometry_stats(gltf)
     except Exception as e:
         result["errors"].append(f"Failed to read GLB geometry: {e}")
         return result
 
+    result["errors"].extend(stats["errors"])
+    triangle_count = stats["triangle_count"]
     result["triangle_count"] = triangle_count
 
     if triangle_count > MAX_TRIANGLE_COUNT:
@@ -187,7 +163,8 @@ def validate_glb_geometry(file_path: str) -> dict:
             f"triangle_count {triangle_count} exceeds limit of {MAX_TRIANGLE_COUNT}"
         )
 
-    if bounds_found:
+    if stats["bounds_found"]:
+        mins, maxs = stats["mins"], stats["maxs"]
         result["bbox"] = {"min": mins, "max": maxs}
         for axis in range(3):
             lo, hi = mins[axis], maxs[axis]

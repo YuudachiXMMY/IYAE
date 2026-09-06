@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -102,6 +102,13 @@ export function ProfileSettingsDialog({
   // Privacy: one-tap delete of avatar + body data (two-step confirm — irreversible)
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  // Move focus to Cancel when entering the two-step confirm so keyboard/SR users are
+  // not left on <body>, one blind activation away from an irreversible delete (M10).
+  useEffect(() => {
+    if (confirmingDelete) cancelDeleteRef.current?.focus();
+  }, [confirmingDelete]);
 
   // Re-sync local state when dialog reopens with fresh props
   useEffect(() => {
@@ -415,8 +422,9 @@ export function ProfileSettingsDialog({
                   </p>
                 </div>
                 {confirmingDelete ? (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2" aria-live="polite">
                     <Button
+                      ref={cancelDeleteRef}
                       type="button"
                       variant="outline"
                       size="sm"

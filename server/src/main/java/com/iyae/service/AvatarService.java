@@ -122,6 +122,11 @@ public class AvatarService {
      * One-tap privacy delete: purge the user's avatar URL, body profile, and avatar
      * generation task rows. The {@link User} itself is NOT deleted. Idempotent — a
      * missing body profile or empty task list is a no-op.
+     *
+     * <p>PENDING/RUNNING task rows are deleted too (not skipped): the worker's later
+     * UPDATE on a now-missing row affects 0 rows, so a completed in-flight task cannot
+     * resurrect {@code user.avatarGlbUrl} after the delete. The in-flight result is
+     * intentionally discarded — logged for observability.
      */
     @Transactional
     public void deleteAvatarData(String email) {
@@ -137,6 +142,14 @@ public class AvatarService {
         List<AvatarGenerationTask> tasks =
                 avatarTaskRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
         if (!tasks.isEmpty()) {
+            long activeCount = tasks.stream()
+                    .filter(t -> t.getStatus() == TaskStatus.PENDING
+                            || t.getStatus() == TaskStatus.RUNNING)
+                    .count();
+            if (activeCount > 0) {
+                log.info("Purging {} active avatar task(s) for user {} during data deletion",
+                        activeCount, user.getId());
+            }
             avatarTaskRepository.deleteAll(tasks);
         }
 

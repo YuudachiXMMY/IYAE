@@ -2,7 +2,12 @@
 import base64
 import pytest
 from unittest.mock import MagicMock, patch
-from providers.meshy_generator import MeshyGenerator, MESHY_API_BASE
+from providers.meshy_generator import (
+    MeshyGenerator,
+    MESHY_API_BASE,
+    _enforce_download_cap,
+    MAX_DOWNLOAD_BYTES,
+)
 
 
 def _real_box_glb_bytes(extents=(0.4, 1.0, 0.3)):
@@ -395,3 +400,31 @@ class TestMeshyGeneratorPayload:
         payload = self._run_generate(tmp_path)
         assert isinstance(payload["elapsed_ms"], int)
         assert payload["elapsed_ms"] >= 0
+
+
+class TestDownloadCap:
+    """L2: downloads are size-capped to bound the worker's memory / DoS surface."""
+
+    def test_oversized_content_length_raises(self):
+        resp = MagicMock()
+        resp.headers = {"Content-Length": "999"}
+        resp.content = b""
+        with pytest.raises(RuntimeError, match="exceeds"):
+            _enforce_download_cap(resp, "https://example.com/huge.glb", max_bytes=100)
+
+    def test_oversized_body_raises(self):
+        resp = MagicMock()
+        resp.headers = {}
+        resp.content = b"x" * 200
+        with pytest.raises(RuntimeError, match="exceeds"):
+            _enforce_download_cap(resp, "https://example.com/huge.glb", max_bytes=100)
+
+    def test_within_cap_passes(self):
+        resp = MagicMock()
+        resp.headers = {"Content-Length": "50"}
+        resp.content = b"x" * 50
+        # Should not raise.
+        _enforce_download_cap(resp, "https://example.com/ok.glb", max_bytes=100)
+
+    def test_default_cap_is_100mb(self):
+        assert MAX_DOWNLOAD_BYTES == 100 * 1024 * 1024

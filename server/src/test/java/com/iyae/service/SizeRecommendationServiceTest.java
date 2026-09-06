@@ -251,4 +251,109 @@ class SizeRecommendationServiceTest {
         assertThat(result.basis()).isNotEqualTo("MEASUREMENT_CHART");
         assertThat(result.availableSizes()).containsExactly("XS");
     }
+
+    // M2: selection uses RMS (per-dimension), not raw Euclidean distance. Entry "S" matches on
+    // ONE dim (raw 10, rms 10); entry "M" matches on THREE dims (raw ~13.86, rms 8) — RMS picks
+    // "M" whereas the old raw-distance metric would have picked "S".
+    @Test
+    void recommend_rmsSelectionBeatsRawDistanceAcrossDifferingDimCounts() {
+        String sizeChart = "["
+                + "{\"size\":\"S\",\"chestCm\":100},"
+                + "{\"size\":\"M\",\"chestCm\":98,\"waistCm\":83,\"hipsCm\":103}"
+                + "]";
+        Product product = product("tops", "[\"S\",\"M\"]", sizeChart);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user)
+                .chestCm(90.0).waistCm(75.0).hipsCm(95.0)
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+    }
+
+    // M2 tie-break: two entries with equal RMS — the FIRST in chart order wins (strict '<').
+    @Test
+    void recommend_equalRmsTie_firstEntryWins() {
+        String sizeChart = "["
+                + "{\"size\":\"S\",\"chestCm\":100},"   // |90-100| = 10
+                + "{\"size\":\"M\",\"chestCm\":80}"      // |90-80|  = 10 (same rms)
+                + "]";
+        Product product = product("tops", "[\"S\",\"M\"]", sizeChart);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).chestCm(90.0).build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("S");
+        assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+    }
+
+    // M11: malformed size_chart JSON falls through to Tier-2 (self-reported), not an error.
+    @Test
+    void recommend_malformedSizeChart_fallsThroughToSelfReported() {
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", "{not valid json");
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).topSize("M").build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("SELF_REPORTED");
+    }
+
+    // M11: empty size_chart array falls through to Tier-2 (self-reported).
+    @Test
+    void recommend_emptySizeChartArray_fallsThroughToSelfReported() {
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", "[]");
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).topSize("L").build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("L");
+        assertThat(result.basis()).isEqualTo("SELF_REPORTED");
+    }
+
+    // L7: an oversized size_chart (>50 entries) is capped at parse time; a valid early match
+    // is still returned (the capped loop does not crash or drop the leading entries).
+    @Test
+    void recommend_oversizedSizeChart_isCappedButStillMatches() {
+        StringBuilder sb = new StringBuilder("[");
+        sb.append("{\"size\":\"M\",\"chestCm\":90,\"waistCm\":75,\"hipsCm\":95}");
+        for (int i = 0; i < 100; i++) {
+            sb.append(",{\"size\":\"X").append(i)
+              .append("\",\"chestCm\":10,\"waistCm\":10,\"hipsCm\":10}");
+        }
+        sb.append("]");
+        Product product = product("tops", "[\"M\"]", sb.toString());
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).chestCm(90.0).waistCm(75.0).hipsCm(95.0).build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+    }
 }

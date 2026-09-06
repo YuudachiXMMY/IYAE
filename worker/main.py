@@ -228,6 +228,21 @@ def run():
                         )
                         continue
 
+                    # L4: independent geometry re-check (defense-in-depth), keeping the
+                    # rigging path consistent with the model + avatar paths. Rigged garment
+                    # meshes are garment-sized, so triangle_count/bbox stay within thresholds.
+                    geometry = validate_glb_geometry(absolute_path)
+                    if not geometry["valid"]:
+                        logger.warning(
+                            f"Rigging task {task_id}: geometry validation failed: {geometry['errors']}"
+                        )
+                        rigging_queue.fail_task(
+                            task_id,
+                            f"Rigged GLB geometry validation failed: {'; '.join(geometry['errors'])}",
+                            "VALIDATION_FAILED",
+                        )
+                        continue
+
                     rigging_queue.complete_task(task_id, output)
                     logger.info(f"Rigging task {task_id} completed successfully")
                 except MemoryError:

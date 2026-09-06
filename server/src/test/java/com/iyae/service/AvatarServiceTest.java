@@ -162,6 +162,26 @@ class AvatarServiceTest {
         verify(avatarTaskRepository).deleteAll(List.of(task));
     }
 
+    // L3: active (PENDING/RUNNING) task rows are deleted too, not skipped — prevents a
+    // completed in-flight task from resurrecting avatarGlbUrl after a privacy delete.
+    @Test
+    void deleteAvatarData_deletesActivePendingRunningTasksToo() {
+        testUser.setAvatarGlbUrl("https://example.com/avatar.glb");
+        AvatarGenerationTask pending = AvatarGenerationTask.builder()
+                .id(201L).user(testUser).status(TaskStatus.PENDING).attemptCount(0).build();
+        AvatarGenerationTask running = AvatarGenerationTask.builder()
+                .id(202L).user(testUser).status(TaskStatus.RUNNING).attemptCount(1).build();
+        List<AvatarGenerationTask> tasks = List.of(pending, running);
+
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(testUser));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(testProfile));
+        when(avatarTaskRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(tasks);
+
+        avatarService.deleteAvatarData("buyer@example.com");
+
+        verify(avatarTaskRepository).deleteAll(tasks);
+    }
+
     @Test
     void deleteAvatarData_idempotentWhenNoProfileOrTasks() {
         testUser.setAvatarGlbUrl("https://example.com/avatar.glb");
