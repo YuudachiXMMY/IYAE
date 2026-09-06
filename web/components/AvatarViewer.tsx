@@ -21,6 +21,20 @@ import { POSE_PRESETS } from "@/lib/pose-config";
 
 const DEFAULT_POSE_ID = POSE_PRESETS.find((p) => p.isDefault)?.id ?? "a-pose";
 
+/**
+ * Screen-reader-only live region announcing 3D load progress. Lives in normal DOM
+ * (a sibling of the Canvas, not inside drei's <Html>) so assistive tech reliably
+ * announces it. Reads drei's global progress store.
+ */
+function LoadStatus() {
+  const { active, progress } = useProgress();
+  return (
+    <span className="sr-only" role="status" aria-live="polite">
+      {active ? `Loading 3D preview, ${Math.round(progress)} percent` : "3D preview ready"}
+    </span>
+  );
+}
+
 function Loader() {
   const { progress } = useProgress();
   return (
@@ -215,7 +229,13 @@ export default function AvatarViewer({
   };
 
   return (
-    <div className="relative w-full h-full">
+    <div
+      className="relative w-full h-full"
+      role="img"
+      aria-label="Interactive 3D preview of your outfit on the avatar. Drag to rotate, scroll to zoom."
+      tabIndex={0}
+    >
+      <LoadStatus />
       <Canvas camera={{ position: [0, 1, 3], fov: 50 }}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[4, 6, 4]} intensity={1.2} />

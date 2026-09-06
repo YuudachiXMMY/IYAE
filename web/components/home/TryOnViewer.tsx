@@ -4,6 +4,7 @@ import { useRef, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Group, Vector3 } from "three";
+import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 
 /* ─── body-type-aware mannequin ───────────────── */
 
@@ -136,6 +137,8 @@ export default function TryOnViewer({
   autoRotate = true,
   autoRotateSpeed = 1.5,
 }: TryOnViewerProps) {
+  // WCAG 2.2.2 — JS-driven auto-rotation must stop when the user prefers reduced motion.
+  const prefersReducedMotion = usePrefersReducedMotion();
   return (
     <Canvas
       camera={{ position: [0, 0.9, 3], fov: 45 }}
@@ -166,7 +169,7 @@ export default function TryOnViewer({
         enablePan={enableOrbit}
         enableZoom={enableOrbit}
         enableRotate
-        autoRotate={autoRotate}
+        autoRotate={autoRotate && !prefersReducedMotion}
         autoRotateSpeed={autoRotateSpeed}
         minPolarAngle={Math.PI / 4}
         maxPolarAngle={Math.PI / 1.7}
