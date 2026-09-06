@@ -37,6 +37,9 @@ services:
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET}
+      # Trust the Nginx reverse proxy's Docker network so per-IP rate limiting keys on the
+      # real client via X-Forwarded-For. Default = Docker bridge range; pin to your subnet.
+      RATE_LIMIT_TRUSTED_PROXIES: ${RATE_LIMIT_TRUSTED_PROXIES:-172.16.0.0/12}
     volumes:
       - assets_data:/var/iyae/assets
     depends_on:

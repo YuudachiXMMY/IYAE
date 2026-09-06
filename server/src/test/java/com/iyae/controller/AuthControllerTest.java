@@ -118,6 +118,21 @@ class AuthControllerTest {
     }
 
     @Test
+    void resendVerification_validEmail_returns200() throws Exception {
+        when(authService.resendVerification(anyString()))
+                .thenReturn(new MessageResponse("If an account exists and is unverified, we've sent a new verification link"));
+
+        String body = objectMapper.writeValueAsString(new ResendVerificationRequest("test@example.com"));
+
+        mockMvc.perform(post("/api/auth/resend-verification")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("If an account exists and is unverified, we've sent a new verification link"));
+    }
+
+    @Test
     void forgotPassword_validEmail_returns200() throws Exception {
         when(authService.forgotPassword(anyString()))
                 .thenReturn(new MessageResponse("If that email exists, a reset link has been sent"));

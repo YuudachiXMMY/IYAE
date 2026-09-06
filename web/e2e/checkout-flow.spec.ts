@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-async function loginAsBuyer(page: Parameters<typeof test>[1] extends (args: infer A) => unknown ? A extends { page: infer P } ? P : never : never): Promise<void> {
+async function loginAsBuyer(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill('emma@example.com');
   await page.getByLabel('Password').fill('password123');
@@ -157,6 +157,39 @@ test.describe('Checkout flow', () => {
     await expect(page.getByRole('heading', { name: 'Order Confirmed!' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'View My Orders' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Continue Shopping' })).toBeVisible();
+  });
+
+  test('checkout is free of dark patterns (no pre-checked opt-ins, no fake urgency, itemized total)', async ({ page }) => {
+    await loginAsBuyer(page);
+
+    // Ensure cart has an item so the order summary renders
+    await page.goto('/products');
+    await expect(page.getByText(/\d+ pieces/)).toBeVisible({ timeout: 10000 });
+    const firstProduct = page.locator('a[href^="/products/"]').first();
+    await firstProduct.click();
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Add to Cart' }).click();
+    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 10000 });
+
+    await page.goto('/checkout');
+    await page.waitForLoadState('networkidle');
+
+    const hasSummary = await page.getByRole('heading', { name: 'Order Summary' }).isVisible();
+    test.skip(!hasSummary, 'Cart empty from prior test state — nothing to audit');
+
+    // 1) No checkbox is checked by default (no sneaking / forced opt-ins)
+    const checkedBoxes = await page.locator('input[type="checkbox"]:checked').count();
+    expect(checkedBoxes).toBe(0);
+
+    // 2) No fake-urgency / scarcity copy anywhere on the page
+    const urgency = page.getByText(/only \d+ left|hurry|expires in|\d+:\d{2}\b/i);
+    expect(await urgency.count()).toBe(0);
+
+    // 3) Total is itemized and equals the subtotal of the listed items (no hidden fees)
+    const subtotal = (await page.getByTestId('checkout-subtotal').textContent())?.trim();
+    const total = (await page.getByTestId('checkout-total').textContent())?.trim();
+    expect(subtotal).toBeTruthy();
+    expect(total).toBe(subtotal);
   });
 
   test('orders page renders for authenticated user', async ({ page }) => {

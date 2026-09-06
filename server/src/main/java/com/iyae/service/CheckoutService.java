@@ -4,6 +4,7 @@ import com.iyae.entity.Cart;
 import com.iyae.entity.CartItem;
 import com.iyae.entity.Order;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.EventType;
 import com.iyae.entity.enums.OrderStatus;
 import com.iyae.repository.CartItemRepository;
 import com.iyae.repository.CartRepository;
@@ -43,6 +44,7 @@ public class CheckoutService {
     private final TransactionTemplate txTemplate;
     private final StripeCheckoutGateway stripeGateway;
     private final ObjectMapper objectMapper;
+    private final AnalyticsService analyticsService;
 
     @Value("${STRIPE_SECRET_KEY:}")
     private String stripeSecretKey;
@@ -121,6 +123,9 @@ public class CheckoutService {
                     .build();
             txTemplate.executeWithoutResult(status -> orderRepository.save(order));
 
+            analyticsService.record(user.getId(), EventType.CHECKOUT_INITIATED, null,
+                    order.getId(), firstSizeBracket(items), null);
+
             return Map.of("sessionId", session.getId(), "url", session.getUrl());
 
         } catch (StripeException ex) {
@@ -163,6 +168,9 @@ public class CheckoutService {
                 orderRepository.save(order);
                 log.info("Order {} marked PAID via Stripe session {}", order.getId(), session.getId());
 
+                analyticsService.record(order.getUser().getId(), EventType.ORDER_PAID, null,
+                        order.getId(), null, null);
+
                 cartRepository.findByUserId(order.getUser().getId()).ifPresent(cart -> {
                     cartItemRepository.deleteByCartId(cart.getId());
                     log.info("Cart cleared for user {} after successful payment", order.getUser().getId());
@@ -193,7 +201,16 @@ public class CheckoutService {
                 .build();
         txTemplate.executeWithoutResult(status -> orderRepository.save(order));
         log.info("STRIPE_SECRET_KEY not configured — created stub order {} for user {}", order.getId(), user.getEmail());
+        // Stub orders are immediately PAID — emit both funnel events for dev/analytics parity.
+        String sizeBracket = firstSizeBracket(items);
+        analyticsService.record(user.getId(), EventType.CHECKOUT_INITIATED, null, order.getId(), sizeBracket, null);
+        analyticsService.record(user.getId(), EventType.ORDER_PAID, null, order.getId(), sizeBracket, null);
         return Map.of("sessionId", sessionId, "url", "/checkout/success?session_id=" + sessionId);
+    }
+
+    /** Representative size bracket for size-bracketing KPIs: the first item's selected size. */
+    private String firstSizeBracket(List<CartItem> items) {
+        return items.isEmpty() ? null : items.get(0).getSelectedSize();
     }
 
     private String buildItemsSnapshot(List<CartItem> items) {

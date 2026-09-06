@@ -5,16 +5,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class RateLimitFilterTest {
 
     private RateLimitFilter createFilter(String trustedProxies) {
-        RateLimitFilter filter = new RateLimitFilter();
-        ReflectionTestUtils.setField(filter, "trustedProxies", trustedProxies);
-        return filter;
+        List<String> proxies = (trustedProxies == null || trustedProxies.isBlank())
+                ? List.of()
+                : Arrays.stream(trustedProxies.split(",")).map(String::trim)
+                        .filter(s -> !s.isEmpty()).toList();
+        return new RateLimitFilter(new RateLimitProperties(proxies, true));
     }
 
     private MockHttpServletRequest makeRequest(String method, String uri, String remoteAddr) {
@@ -268,5 +272,73 @@ class RateLimitFilterTest {
         invokeFilter(filter2, reqNew, resNew, chainNew);
         assertThat(resNew.getStatus()).isNotEqualTo(429);
         assertThat(chainNew.getRequest()).isNotNull();
+    }
+
+    @Test
+    void xForwardedFor_trustedCidr_parsesClientIp() throws Exception {
+        // Proxy 172.20.0.5 falls within the trusted CIDR 172.16.0.0/12
+        RateLimitFilter filter = createFilter("172.16.0.0/12");
+
+        for (int i = 0; i < 5; i++) {
+            MockHttpServletRequest req = makeRequest("POST", "/api/auth/login", "172.20.0.5");
+            req.addHeader("X-Forwarded-For", "203.0.113.50");
+            invokeFilter(filter, req, new MockHttpServletResponse(), new MockFilterChain());
+        }
+
+        // 6th from the same real client (via the CIDR-trusted proxy) is blocked
+        MockHttpServletRequest req = makeRequest("POST", "/api/auth/login", "172.20.0.5");
+        req.addHeader("X-Forwarded-For", "203.0.113.50");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        invokeFilter(filter, req, res, new MockFilterChain());
+        assertThat(res.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    void xForwardedFor_proxyOutsideCidr_usesRemoteAddr() throws Exception {
+        // remoteAddr 10.9.9.9 is NOT within 172.16.0.0/12, so XFF is ignored
+        RateLimitFilter filter = createFilter("172.16.0.0/12");
+
+        for (int i = 0; i < 5; i++) {
+            MockHttpServletRequest req = makeRequest("POST", "/api/auth/login", "10.9.9.9");
+            req.addHeader("X-Forwarded-For", "203.0.113.77");
+            invokeFilter(filter, req, new MockHttpServletResponse(), new MockFilterChain());
+        }
+
+        // 6th from same remoteAddr blocked (bucket keyed on remoteAddr, XFF ignored)
+        MockHttpServletRequest req = makeRequest("POST", "/api/auth/login", "10.9.9.9");
+        req.addHeader("X-Forwarded-For", "203.0.113.77");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        invokeFilter(filter, req, res, new MockFilterChain());
+        assertThat(res.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    void malformedCidrEntry_doesNotCrash_fallsBackToRemoteAddr() throws Exception {
+        // A malformed CIDR must not throw; the proxy is simply not trusted, so XFF is ignored
+        RateLimitFilter filter = createFilter("not-a-cidr/99");
+        MockHttpServletRequest req = makeRequest("POST", "/api/auth/login", "10.0.0.1");
+        req.addHeader("X-Forwarded-For", "203.0.113.1");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        invokeFilter(filter, req, res, chain);
+
+        assertThat(res.getStatus()).isNotEqualTo(429);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void disabled_passesAllThrough() throws Exception {
+        RateLimitFilter filter = new RateLimitFilter(new RateLimitProperties(List.of(), false));
+
+        // Well beyond the login limit of 5 — none should be blocked when disabled
+        for (int i = 0; i < 10; i++) {
+            MockHttpServletRequest req = makeRequest("POST", "/api/auth/login", "10.0.0.99");
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            MockFilterChain chain = new MockFilterChain();
+            invokeFilter(filter, req, res, chain);
+            assertThat(res.getStatus()).isNotEqualTo(429);
+            assertThat(chain.getRequest()).isNotNull();
+        }
     }
 }

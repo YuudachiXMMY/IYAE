@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { FloatingAIStylist } from "@/components/floating-ai-stylist";
+import { SkipLink } from "@/components/a11y/SkipLink";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
@@ -37,6 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${cormorant.variable} ${dmSans.variable}`} suppressHydrationWarning>
       <body>
+        <SkipLink />
         <ThemeProvider>
           <AuthProvider>
             <CartProvider>

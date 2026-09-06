@@ -33,7 +33,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
-                    "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                    "/api/auth/verify-email", "/api/auth/resend-verification",
+                    "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
                 // Must precede the public /api/products/** rule (Spring Security matches first-match)
                 .requestMatchers(HttpMethod.GET, "/api/products/*/recommended-size").authenticated()

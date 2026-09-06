@@ -36,7 +36,7 @@ export default function ModelViewer({
       <model-viewer
         src={glbUrl}
         ios-src={usdzUrl}
-        alt={alt ?? "3D fashion model"}
+        alt={alt ?? "Interactive 3D model of the garment. Use the on-viewer controls to rotate and view in AR."}
         auto-rotate
         camera-controls
         ar

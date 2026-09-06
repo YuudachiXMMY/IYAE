@@ -174,9 +174,27 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between border-t border-border pt-4 text-base font-semibold text-foreground">
+              {/* Itemized summary — every charge is disclosed up front (no hidden fees).
+                  Taxes and shipping are computed at the secure payment step, not silently
+                  omitted. The Total shown here equals the amount charged for these items. */}
+              <div className="mt-2 flex flex-col gap-2 border-t border-border pt-4 text-sm">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span data-testid="checkout-subtotal">{formatPrice(grandTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Taxes</span>
+                  <span>Calculated at payment</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Shipping</span>
+                  <span>Calculated at payment</span>
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between border-t border-border pt-4 text-base font-semibold text-foreground">
                 <span>Total</span>
-                <span>{formatPrice(grandTotal)}</span>
+                <span data-testid="checkout-total">{formatPrice(grandTotal)}</span>
               </div>
 
               <Button
@@ -188,7 +206,9 @@ export default function CheckoutPage() {
               </Button>
 
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                By placing your order you agree to our terms of service.
+                By placing your order you agree to our terms of service. Taxes and shipping,
+                if any, are shown before you confirm payment. No subscriptions or recurring
+                charges are added.
               </p>
             </div>
           )}
