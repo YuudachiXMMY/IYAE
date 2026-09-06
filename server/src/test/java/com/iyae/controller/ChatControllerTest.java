@@ -7,6 +7,7 @@ import com.iyae.entity.enums.MessageRole;
 import com.iyae.entity.enums.SessionStatus;
 import com.iyae.repository.UserRepository;
 import com.iyae.service.ChatService;
+import com.iyae.service.WeatherService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -40,6 +42,9 @@ class ChatControllerTest {
 
     @MockBean
     ChatService chatService;
+
+    @MockBean
+    WeatherService weatherService;
 
     @MockBean
     UserRepository userRepository;
@@ -110,5 +115,28 @@ class ChatControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].content").value("Welcome!"))
                 .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "user@example.com")
+    void getWeather_available_returnsSnapshot() throws Exception {
+        when(weatherService.getCurrentToronto()).thenReturn(Optional.of(
+                new WeatherService.WeatherSnapshot(4.0, -1.0, "snow", Instant.now())));
+
+        mockMvc.perform(get("/api/chat/weather"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.condition").value("snow"))
+                .andExpect(jsonPath("$.temperatureC").value(4.0));
+    }
+
+    @Test
+    @WithMockUser(username = "user@example.com")
+    void getWeather_unavailable_returnsAvailableFalse() throws Exception {
+        when(weatherService.getCurrentToronto()).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/chat/weather"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false));
     }
 }

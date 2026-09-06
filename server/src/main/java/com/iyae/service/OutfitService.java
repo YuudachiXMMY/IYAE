@@ -378,7 +378,14 @@ public class OutfitService {
         StringBuilder sb = new StringBuilder();
         sb.append("Occasion: ").append(request.event()).append("\n");
         sb.append("Style: ").append(request.style()).append("\n");
-        sb.append("Color palette: ").append(request.colorPalette()).append("\n\n");
+        sb.append("Color palette: ").append(request.colorPalette()).append("\n");
+        if (request.weather() != null && !request.weather().isBlank()) {
+            sb.append("Weather: ").append(request.weather()).append("\n");
+        }
+        if (request.mood() != null && !request.mood().isBlank()) {
+            sb.append("Mood: ").append(request.mood()).append("\n");
+        }
+        sb.append("\n");
         sb.append("Selected products:\n");
         for (OutfitSlotResponse slot : slots) {
             sb.append("- [").append(slot.slot()).append("] ")
@@ -391,10 +398,17 @@ public class OutfitService {
     private String buildFallbackExplanation(GenerateOutfitRequest request) {
         String event = request.event() != null ? request.event() : "the occasion";
         String style = request.style() != null ? request.style() : "curated";
-        return String.format(
+        StringBuilder sb = new StringBuilder(String.format(
             "A curated outfit selected for your %s. The %s pieces complement each other beautifully.",
             event, style
-        );
+        ));
+        if (request.mood() != null && !request.mood().isBlank()) {
+            sb.append(String.format(" It leans into a %s mood.", request.mood()));
+        }
+        if (request.weather() != null && !request.weather().isBlank()) {
+            sb.append(String.format(" Chosen with today's weather (%s) in mind.", request.weather()));
+        }
+        return sb.toString();
     }
 
     // -------------------------------------------------------------------------

@@ -188,8 +188,15 @@ export const rigging = {
 
 // ── Outfit types ──────────────────────────────────────────────────────────────
 
+/**
+ * The four garment slots an outfit item can occupy. Mirrors the server contract
+ * (`OutfitService.VALID_SLOT_NAMES`); typing `slot` as this union — instead of a
+ * bare `string` — keeps slot label/order maps exhaustive on the consuming pages.
+ */
+export type SlotName = "top" | "bottom" | "shoes" | "accessory";
+
 export interface OutfitItem {
-  slot: string;
+  slot: SlotName;
   productId: number;
   productName: string;
   productPrice: number;
@@ -242,4 +249,53 @@ export const promotions = {
   create: (data: CreatePromotionRequest) => api.post<PromotionResponse>("/api/promotions", data),
   update: (id: number, data: UpdatePromotionRequest) => api.put<PromotionResponse>(`/api/promotions/${id}`, data),
   delete: (id: number) => api.delete(`/api/promotions/${id}`),
+};
+
+// ── Chat + Weather types & helpers ──────────────────────────────────────────────
+
+export interface ChatSession {
+  id: number;
+  status: "ACTIVE" | "COMPLETED";
+  createdAt: string;
+}
+
+/** Outfit payload returned inline in a chat message (id is null until persisted). */
+export interface OutfitResponse {
+  id: number | null;
+  items: OutfitItem[];
+  explanation: string;
+  createdAt?: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  outfit?: OutfitResponse | null;
+  outfitRecommendationId?: number | null;
+  suggestions?: string[];
+  createdAt: string;
+}
+
+export interface Weather {
+  temperatureC: number | null;
+  feelsLikeC: number | null;
+  condition: string | null;
+  available: boolean;
+}
+
+export const chat = {
+  listSessions: (signal?: AbortSignal) => api.get<ChatSession[]>("/api/chat/sessions", { signal }),
+  createSession: () => api.post<ChatSession>("/api/chat/sessions"),
+  getMessages: (sessionId: number, signal?: AbortSignal) =>
+    api.get<ChatMessage[]>(`/api/chat/sessions/${sessionId}/messages`, { signal }),
+  sendMessage: (sessionId: number, content: string) =>
+    api.post<ChatMessage>(`/api/chat/sessions/${sessionId}/messages`, { content }),
+  getWeather: (signal?: AbortSignal) => api.get<Weather>("/api/chat/weather", { signal }),
+};
+
+// Canonical helper lives on `chat` (the endpoint is /api/chat/weather); this
+// namespaced alias delegates so there is only one implementation to maintain.
+export const weather = {
+  get: (signal?: AbortSignal) => chat.getWeather(signal),
 };

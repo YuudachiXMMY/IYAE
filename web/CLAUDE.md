@@ -57,7 +57,7 @@ lib/pose-config.ts               --> Pose preset definitions (5 poses, 3 categor
 lib/demo-looks.ts                --> Demo saved looks data for development
 lib/brand.ts                     --> Single source of brand values (BRAND: name, tagline, url, mailFrom); consumed by wordmark sites, document title/metadataBase, email subjects, and email-templates.ts
 lib/email-templates.ts           --> Email template utilities for Resend integration (reads copy/sender from BRAND)
-lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation (11 hooks)
+lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatar, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation, useWeather (13 hooks)
 middleware.ts                    --> CSP headers + Permissions-Policy (camera on AR routes only)
 public/assets/                   --> Static assets (product placeholder SVG)
 public/models/                   --> 3D model files (demo-outfit.glb for DemoOutfitModel, default-avatar.glb for guest avatar, poses/ directory for pose animation GLBs)

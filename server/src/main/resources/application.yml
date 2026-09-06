@@ -28,6 +28,13 @@ app:
       api-key: ${DEEPSEEK_API_KEY:}
     minimax:
       api-key: ${MINIMAX_API_KEY:}
+  weather:
+    enabled: ${WEATHER_ENABLED:true}
+    api-url: ${WEATHER_API_URL:https://api.open-meteo.com/v1/forecast}
+    latitude: ${WEATHER_LATITUDE:43.6532}
+    longitude: ${WEATHER_LONGITUDE:-79.3832}
+    timezone: ${WEATHER_TIMEZONE:America/Toronto}
+    cache-ttl-seconds: ${WEATHER_CACHE_TTL:1800}
   brand:
     domain: ${BRAND_DOMAIN:iyae.ca}
     service-id: ${BRAND_SERVICE_ID:iyae-server}

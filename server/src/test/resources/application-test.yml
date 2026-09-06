@@ -19,5 +19,7 @@ app:
     expiration-ms: 3600000
   ai:
     provider: mock
+  weather:
+    enabled: false
   cors:
     origins: http://localhost:3000

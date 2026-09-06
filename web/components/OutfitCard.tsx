@@ -1,92 +1,67 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { api, ApiError, avatar } from "@/lib/api";
+import { api, ApiError, type OutfitResponse, type SlotName } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 
-// R3F must be dynamically imported with ssr:false. Lazy-mounted only when the
-// user taps "Try on" so a chat stream never mounts a viewer per message.
+// AvatarViewer is a heavy client-only 3D component — dynamic import with ssr:false,
+// mounted only when the user expands "Try on my avatar", to keep chat TTI low.
 const AvatarViewer = dynamic(() => import("@/components/AvatarViewer"), {
   ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse bg-muted" />,
+  loading: () => (
+    <div className="flex h-full items-center justify-center bg-muted">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+    </div>
+  ),
 });
-
-interface OutfitItem {
-  slot: "top" | "bottom" | "shoes" | "accessory";
-  productId: number;
-  productName: string;
-  productPrice: number;
-  category: string;
-  media: string[];
-  glbUrl?: string;
-}
-
-interface OutfitResponse {
-  id: number | null;
-  items: OutfitItem[];
-  explanation: string;
-}
 
 interface OutfitCardProps {
   outfit: OutfitResponse;
   /** Override the outfit ID used for navigation links (e.g. outfitRecommendationId from chat) */
   outfitId?: number | null;
+  /** The user's avatar GLB URL, if any — enables the inline "Try on my avatar" preview */
+  avatarUrl?: string | null;
 }
 
-const SLOT_LABELS: Record<OutfitItem["slot"], string> = {
+const SLOT_LABELS: Record<SlotName, string> = {
   top: "Top",
   bottom: "Bottom",
   shoes: "Shoes",
   accessory: "Accessory",
 };
 
-const SLOT_ORDER: OutfitItem["slot"][] = ["top", "bottom", "shoes", "accessory"];
+const SLOT_ORDER: SlotName[] = ["top", "bottom", "shoes", "accessory"];
 
-export function OutfitCard({ outfit, outfitId }: OutfitCardProps) {
+export function OutfitCard({ outfit, outfitId, avatarUrl }: OutfitCardProps) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [tryOn, setTryOn] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [showAvatar, setShowAvatar] = useState(false);
   const linkId = outfitId ?? outfit.id;
   const itemsBySlot = new Map(outfit.items.map((item) => [item.slot, item]));
 
-  // Assemble garment GLBs the same way outfits/[id]/view does (chat outfits only
-  // carry static glbUrl per item — no rigged variants).
-  const glbUrls = useMemo(
-    () =>
-      outfit.items
-        .map((item) => item.glbUrl)
-        .filter((url): url is string => Boolean(url)),
-    [outfit.items]
-  );
+  // Derive garment GLB URLs for the inline avatar preview (mirrors the outfit 3D view page).
+  const staticGlbUrls = outfit.items
+    .filter((item) => !item.riggedGlbUrl)
+    .map((item) => item.glbAssetUrl ?? item.glbUrl)
+    .filter((url): url is string => Boolean(url));
+  const riggedGlbUrls = outfit.items
+    .filter((item) => Boolean(item.riggedGlbUrl))
+    .map((item) => item.riggedGlbUrl as string);
+  const riggedGlbSlots = outfit.items
+    .filter((item) => Boolean(item.riggedGlbUrl))
+    .map((item) => item.slot);
+  const allGlbUrls = outfit.items
+    .map((item) => item.glbAssetUrl ?? item.glbUrl)
+    .filter((url): url is string => Boolean(url));
 
-  const previewImageUrl = outfit.items[0]?.media?.[0];
-
-  // Abort the in-flight avatar fetch on unmount so we never setState afterwards.
-  const avatarFetchRef = useRef<AbortController | null>(null);
-  useEffect(() => {
-    return () => avatarFetchRef.current?.abort();
-  }, []);
-
-  const handleTryOn = useCallback(async () => {
-    setTryOn(true);
-    if (avatarLoaded) return;
-    setAvatarLoaded(true);
-    const controller = new AbortController();
-    avatarFetchRef.current = controller;
-    try {
-      const res = await avatar.getAvatar(controller.signal);
-      if (!controller.signal.aborted) setAvatarUrl(res.avatarUrl);
-    } catch {
-      // No avatar yet / unauthenticated / aborted — viewer falls back to garments-only.
-      if (!controller.signal.aborted) setAvatarUrl(null);
-    }
-  }, [avatarLoaded]);
+  // "Try on my avatar" needs both an avatar and at least one garment GLB; otherwise
+  // fall back to the "View in 3D" link (today's behavior).
+  const canTryOn = Boolean(avatarUrl) && (allGlbUrls.length > 0 || riggedGlbUrls.length > 0);
 
   return (
     <div className="bg-card rounded-card shadow-soft p-4 mt-2 max-w-sm" aria-label={`Outfit suggestion with ${outfit.items.length} item${outfit.items.length !== 1 ? "s" : ""}`}>
@@ -151,33 +126,62 @@ export function OutfitCard({ outfit, outfitId }: OutfitCardProps) {
         </p>
       )}
 
-      {/* Inline try-on — lazy-mounted only after the user taps "Try on" */}
-      {tryOn && (
-        <div className="mt-3 h-80 w-full overflow-hidden rounded-xl bg-muted">
-          <ViewerErrorBoundary
-            fallback={
-              <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground italic">
-                3D preview unavailable
-              </div>
-            }
+      {/* Inline "Try on my avatar" — expands the AvatarViewer with the user's body */}
+      {canTryOn && (
+        <div className="mt-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full rounded-full text-xs border-border"
+            aria-expanded={showAvatar}
+            onClick={() => setShowAvatar((v) => !v)}
           >
-            <AvatarViewer
-              avatarUrl={avatarUrl ?? undefined}
-              glbUrls={glbUrls}
-              previewImageUrl={previewImageUrl}
-            />
-          </ViewerErrorBoundary>
+            {showAvatar ? "Hide avatar preview" : "Try on my avatar"}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`ml-1 transition-transform ${showAvatar ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </Button>
+          {showAvatar && (
+            <div className="mt-2 h-72 w-full overflow-hidden rounded-xl bg-muted">
+              <ViewerErrorBoundary
+                fallback={
+                  <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground italic">
+                    3D preview unavailable
+                  </div>
+                }
+              >
+                <AvatarViewer
+                  avatarUrl={avatarUrl ?? undefined}
+                  garmentUrls={staticGlbUrls}
+                  glbUrls={allGlbUrls}
+                  riggedGarmentUrls={riggedGlbUrls.length > 0 ? riggedGlbUrls : undefined}
+                  riggedGarmentSlots={riggedGlbSlots.length > 0 ? riggedGlbSlots : undefined}
+                />
+              </ViewerErrorBoundary>
+            </div>
+          )}
         </div>
       )}
 
       <div className="mt-3 flex gap-2">
         <Button
+          asChild
           size="sm"
           className="flex-1 rounded-full bg-brand hover:bg-brand-hover text-primary-foreground text-xs"
-          aria-pressed={tryOn}
-          onClick={() => (tryOn ? setTryOn(false) : handleTryOn())}
         >
-          {tryOn ? "Hide try-on" : "Try on"}
+          <Link href={linkId != null ? `/outfits/${linkId}/view` : "/outfits"}>View in 3D</Link>
         </Button>
         <Button
           size="sm"
