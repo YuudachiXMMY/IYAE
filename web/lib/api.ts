@@ -259,6 +259,8 @@ export const chat = {
   getWeather: (signal?: AbortSignal) => api.get<Weather>("/api/chat/weather", { signal }),
 };
 
+// Canonical helper lives on `chat` (the endpoint is /api/chat/weather); this
+// namespaced alias delegates so there is only one implementation to maintain.
 export const weather = {
-  get: (signal?: AbortSignal) => api.get<Weather>("/api/chat/weather", { signal }),
+  get: (signal?: AbortSignal) => chat.getWeather(signal),
 };

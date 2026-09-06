@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { chat, type Weather } from "@/lib/api";
+import { type Weather } from "@/lib/api";
 
 function weatherEmoji(condition: string | null): string {
   if (!condition) return "🌡️";
@@ -16,22 +15,13 @@ function weatherEmoji(condition: string | null): string {
 }
 
 /**
- * Compact header chip showing live Toronto weather. Fetched once on mount
- * (not polled — stays within the /api/chat rate-limit bucket). Renders nothing
- * when weather is unavailable so the header degrades gracefully.
+ * Compact, presentational header chip showing live Toronto weather. The weather
+ * value is fetched once by the parent (see {@link useWeather}) and passed in, so
+ * the chip can appear in more than one header slot without duplicating the network
+ * request. Renders nothing when weather is unavailable so the header degrades
+ * gracefully.
  */
-export function ChatWeatherChip() {
-  const [weather, setWeather] = useState<Weather | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    chat
-      .getWeather(controller.signal)
-      .then(setWeather)
-      .catch(() => setWeather(null));
-    return () => controller.abort();
-  }, []);
-
+export function ChatWeatherChip({ weather }: { weather: Weather | null }) {
   if (!weather || !weather.available) return null;
 
   const temp = weather.temperatureC != null ? `${Math.round(weather.temperatureC)}°C` : "";

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { ApiError, chat, type ChatMessage, type ChatSession } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useAvatar } from "@/lib/hooks/useAvatar";
+import { useWeather } from "@/lib/hooks/useWeather";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
 import { ChatWeatherChip } from "@/components/ChatWeatherChip";
@@ -135,6 +136,10 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentSuggestions, setCurrentSuggestions] = useState<string[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Fetched once here and shared by both header chips (mobile + desktop) so the
+  // page issues a single /api/chat/weather request regardless of how many chips mount.
+  const weather = useWeather();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -378,13 +383,13 @@ export default function ChatPage() {
             </span>
           </div>
           <div className="ml-auto">
-            <ChatWeatherChip />
+            <ChatWeatherChip weather={weather} />
           </div>
         </div>
 
         {/* Desktop header — weather chip */}
         <div className="hidden md:flex items-center justify-end border-b border-border/60 bg-card/40 px-4 py-2">
-          <ChatWeatherChip />
+          <ChatWeatherChip weather={weather} />
         </div>
 
         {/* Messages area */}

@@ -177,6 +177,12 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `WORKER_POLL_INTERVAL` | No | `5` | Seconds between task queue polls |
 | `WORKER_OUTPUT_DIR` | No | `/var/iyae/assets` | Directory for generated 3D model output |
 | `FRONTEND_BASE_URL` | No | `http://localhost:3000` | Base URL for email links (verification, password reset) |
+| `WEATHER_ENABLED` | No | `true` | Enable live weather context for the AI stylist |
+| `WEATHER_API_URL` | No | `https://api.open-meteo.com/v1/forecast` | Open-Meteo forecast endpoint (keyless) |
+| `WEATHER_LATITUDE` | No | `43.6532` | Latitude for weather lookup (default Toronto) |
+| `WEATHER_LONGITUDE` | No | `-79.3832` | Longitude for weather lookup (default Toronto) |
+| `WEATHER_TIMEZONE` | No | `America/Toronto` | Timezone for weather lookup |
+| `WEATHER_CACHE_TTL` | No | `1800` | Weather cache TTL in seconds; also the off-path cache pre-warm cadence |
 | `AVATAR_GENERATION_PROVIDER` | No | `mock` | `mock` / `smplx` (avatar body model provider) |
 | `SMPLX_MODELS_PATH` | For smplx | `./smplx_models` | Host path to SMPL-X model files (mounted read-only into worker container) |
 | `RIGGING_PROVIDER` | No | `mock` | `mock` / `python` / `blender` (garment rigging provider) |
