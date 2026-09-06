@@ -24,6 +24,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -109,8 +110,18 @@ public class ProductService {
         List<Product> products = productRepository.findByDesignerProfileId(profile.getId());
         Map<Long, String> taskStatusMap = buildTaskStatusFallbackMap(products);
         Map<Long, GarmentAsset> assetMap = buildAssetMap(products);
+        // Enrich with per-size measurements so the designer edit form can round-trip them.
+        // Without this the form loads a blank grid and saving PUTs an empty list, which the
+        // server would treat as "clear", silently deleting the product's measurements.
+        Map<Long, List<SizeMeasurementDto>> measurementMap = buildMeasurementMap(products);
         return products.stream()
-                .map(p -> buildProductResponse(p, assetMap.get(p.getId()), taskStatusMap.get(p.getId())))
+                .map(p -> {
+                    ProductResponse base = buildProductResponse(p, assetMap.get(p.getId()), taskStatusMap.get(p.getId()));
+                    List<SizeMeasurementDto> measurements = measurementMap.get(p.getId());
+                    return (measurements == null || measurements.isEmpty())
+                            ? base
+                            : base.withRecommendation(base.recommendedSize(), measurements);
+                })
                 .toList();
     }
 
@@ -173,7 +184,14 @@ public class ProductService {
         if (request.glbUrl() != null) {
             product.setGlbUrl(request.glbUrl());
         }
-        if (request.status() != null) {
+        if (request.status() != null && request.status() != product.getStatus()) {
+            // PR#10 M2: once an admin ARCHIVE has locked the listing, the owning designer cannot
+            // transition it out of ARCHIVED (a silent republish). Only an admin un-hide releases
+            // the lock. Non-status edits below are unaffected; a no-op same-status request passes.
+            if (product.isModerationLocked()) {
+                throw new AccessDeniedException(
+                        "This product has been archived by moderation and cannot be changed by the designer.");
+            }
             product.setStatus(request.status());
         }
 
@@ -195,11 +213,14 @@ public class ProductService {
 
     /**
      * Delete-then-insert the product's per-size measurements. A null list means "no change"
-     * (create with no measurements, or an update that omits them). Rows with an unknown size
-     * label are rejected; rows with all-null dims are skipped (no empty rows persisted).
+     * (create with no measurements, or an update that omits them) — but we still prune rows
+     * whose size label is no longer offered, so shrinking a product's sizes cannot leave orphan
+     * measurements that would surface a recommendedSize for an unavailable size. Rows with an
+     * unknown size label are rejected; rows with all-null dims are skipped (no empty rows persisted).
      */
     private void replaceMeasurements(Product product, List<SizeMeasurementDto> measurements) {
         if (measurements == null) {
+            pruneOrphanMeasurements(product);
             return;
         }
         productSizeMeasurementRepository.deleteByProductId(product.getId());
@@ -268,6 +289,43 @@ public class ProductService {
                 a -> a,
                 (existing, newer) -> "ACTIVE".equals(existing.getStatus()) ? existing : newer
         ));
+    }
+
+    /**
+     * Batch-load per-size measurements for a list of products, grouped by product id.
+     * Uses a single query; {@code m.getProduct().getId()} only reads the lazy proxy's
+     * identifier (no extra SELECT per row), matching the pattern in {@link #buildAssetMap}.
+     */
+    private Map<Long, List<SizeMeasurementDto>> buildMeasurementMap(List<Product> products) {
+        if (products.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = products.stream().map(Product::getId).toList();
+        List<ProductSizeMeasurement> rows = productSizeMeasurementRepository.findByProductIdIn(ids);
+        return rows.stream().collect(Collectors.groupingBy(
+                m -> m.getProduct().getId(),
+                Collectors.mapping(SizeMeasurementDto::from, Collectors.toList())
+        ));
+    }
+
+    /**
+     * Delete measurement rows whose size label is no longer one of the product's declared sizes.
+     * Called on the "no measurement change" update path so shrinking sizes cannot leave orphans.
+     * Conservative: if the product has no parseable declared sizes we skip pruning rather than
+     * mass-delete (a sizes JSON parse failure must not wipe measurements).
+     */
+    private void pruneOrphanMeasurements(Product product) {
+        List<String> declaredSizes = parseProductSizes(product);
+        if (declaredSizes.isEmpty()) {
+            return;
+        }
+        List<ProductSizeMeasurement> existing = productSizeMeasurementRepository.findByProductId(product.getId());
+        List<ProductSizeMeasurement> orphans = existing.stream()
+                .filter(m -> !declaredSizes.contains(m.getSizeLabel()))
+                .toList();
+        if (!orphans.isEmpty()) {
+            productSizeMeasurementRepository.deleteAll(orphans);
+        }
     }
 
     /**

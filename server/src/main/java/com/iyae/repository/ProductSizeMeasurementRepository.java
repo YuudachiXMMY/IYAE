@@ -9,5 +9,7 @@ public interface ProductSizeMeasurementRepository extends JpaRepository<ProductS
 
     List<ProductSizeMeasurement> findByProductId(Long productId);
 
+    List<ProductSizeMeasurement> findByProductIdIn(List<Long> productIds);
+
     void deleteByProductId(Long productId);
 }
