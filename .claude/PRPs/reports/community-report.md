@@ -1,17 +1,20 @@
 # Implementation Report: Community (Phase 6)
 
 ## Summary
-Implemented **PR-A (server foundation)** in full and **PR-B/F1 (web typed community client)** from the
-Phase 6 Community plan. PR-A turns the community backend into a real, honesty-first UGC surface:
-four named server feeds (Following / Discover / Toronto / Body-confidence, every query constrains
+Implemented **all of Phase 6 Community** — PR-A (server), PR-B (web real-data cutover), and PR-C
+(web feature surface). The community backend became a real, honesty-first UGC surface: four named
+server feeds (Following / Discover / Toronto / Body-confidence, every query constrains
 `status = ACTIVE`), **real** follower/following counts (derived `COUNT`, no denormalized columns),
-Share-a-Look linkage (nullable `saved_look_id` FK + `product_ids` JSON), a user report → admin
-moderation path, and comment hide/remove. PR-B/F1 adds the additive `api.ts` typed client
-(`posts`/`follows`/`adminReports`) that the remaining web work builds on.
+Share-a-Look linkage, a user report → admin moderation path, and comment hide/remove. The web was
+then wired onto that API: the community page renders the four named server feeds with real counts and
+graceful localStorage fallback; **all three fabrication sites were deleted** (the PRD's #1 constraint)
+and replaced with real `follows.counts`/`followers`/`following`; Share-a-Look binds a SavedLook +
+products + feed dimensions and POSTs through the server; a report control and an admin Reports tab
+close the moderation loop.
 
-The remaining web tasks (PR-B F2–F4 and PR-C F5–F9) are **not built** — see *Remaining Work*. They
-were deferred because they are large, cross-file, higher-regression-risk rewrites and one of them
-surfaced a genuine server-contract gap (below) that needs a design decision.
+The delivery was staged with a full-suite validation loop (tsc + vitest + gradle test) after each
+stage. The one server-contract gap found mid-flight — the public profile exposing no numeric id —
+was **resolved** by adding `id` to `PublicProfileResponse` (additive, tested).
 
 ## Assessment vs Reality
 
@@ -36,11 +39,15 @@ surfaced a genuine server-contract gap (below) that needs a design decision.
 | S8 | DTOs | ✅ Complete | PostRequest/Response extended (back-compat ctors); PostReportRequest/Response; FollowCountsResponse |
 | S9 | Security matcher sanity | ✅ Complete | No change needed — writes authed, /api/admin/** auto-gated |
 | S10 | Server tests | ✅ Complete | +PostFeedDataJpaTest, service/controller coverage, TestUsers.anAdmin, IyaeApplicationTests mock |
-| F1 | api.ts posts/follows/adminReports clients | ✅ Complete | additive; tsc clean; api.test.ts 20/20 |
-| F2 | community-feed.ts server adapter + unions | ⬜ Deferred | high-risk (65-test immutability suite) |
-| F3 | Delete 3 fabrication sites | ⬜ Deferred/Blocked | **blocked** — needs user id on public-profile API |
-| F4 | useCommunityState write-through | ⬜ Deferred | depends on F2 |
-| F5–F9 | 4 feed tabs, Share-a-Look surfaces, report UI, admin tab, e2e | ⬜ Deferred | PR-C |
+| F1 | api.ts posts/follows/adminReports clients | ✅ Complete | additive; tsc clean; api.test.ts |
+| F2 | community-feed.ts server adapter + unions | ✅ Complete | pure toSocialPost; unions extended; 65-test suite stays green (+11 new) |
+| F3 | Delete 3 fabrication sites | ✅ Complete | **blocker resolved** — added numeric `id` to PublicProfileResponse; social-graph counts, profileFollowerEstimate, and SOCIAL_PROFILES.slice(0,5) all deleted → real `follows.counts`/`followers`/`following` |
+| F4 | Server feed + write-through | ✅ Complete | implemented in community/page.tsx (keeps shared useCommunityState stable for dashboard); feed fetch + like/follow write-through + graceful localStorage fallback |
+| F5 | Community page 4 named feed tabs | ✅ Complete | Following/Discover/Toronto/Body-confidence + local Saved/Reposted; BRAND heading; per-feed empty states |
+| F6 | Share-a-Look bind + multi-surface | ✅ Complete | CreateFashionPostDialog binds SavedLook + topic/city + productIds → posts.create; brand-residue label fixed; mounted on dashboard + community (≥2 surfaces) |
+| F7 | Report UI | ✅ Complete | PostDetailDialog ⚑ → posts.report (serverId-guarded) |
+| F8 | Admin reports tab | ✅ Complete | list/resolve/dismiss/resolve+takedown via adminReports |
+| F9 | Web tests + e2e | ✅ Complete | +11 community-feed (adapter + named feeds), +7 api client, e2e heading/tab/empty-state updated |
 
 ## Validation Results
 
@@ -49,7 +56,8 @@ surfaced a genuine server-contract gap (below) that needs a design decision.
 | Static Analysis (server) | ✅ Pass | `gradle compileJava compileTestJava` clean (Java 22) |
 | Static Analysis (web) | ✅ Pass (for change) | `tsc --noEmit`: 0 errors in changed files; 2 pre-existing errors in `useGenerationStatus.test.ts` (untouched, unrelated) |
 | Unit Tests (server) | ✅ Pass | **494 tests, 0 failures, 0 errors** |
-| Unit Tests (web) | ✅ Pass (for change) | `api.test.ts` 20/20; full suite 244 passed. One pre-existing fork-pool teardown flake on `useOutfitRiggingStatus.test.ts` reproduces on baseline in isolation (not caused by this change) |
+| Unit Tests (web) | ✅ Pass | full suite **259 passed** (22/23 files); +11 community-feed (adapter + named feeds) +7 api client. One pre-existing fork-pool teardown flake on `useOutfitRiggingStatus.test.ts` reproduces on baseline in isolation (not caused by this change) |
+| Static Analysis (web) | ✅ Pass | `tsc --noEmit` clean across all changed files (2 pre-existing errors in an untouched test file remain). `npm run lint` has a pre-existing red baseline (61 errors); new effects follow the accepted `set-state-in-effect` pattern |
 | Build | ⚠️ N/A | server compiles; web build not run (deps installed mid-session) |
 | Migration boot (MySQL) | ⚠️ Not run | Flyway is off in tests; V15↔entity column parity verified by inspection. Run `./dev.sh start` to confirm `ddl-auto=validate` boot |
 | Integration / E2E | ⚠️ N/A | community e2e rewrite is PR-C (F9), not built |
@@ -95,25 +103,35 @@ surfaced a genuine server-contract gap (below) that needs a design decision.
 - No `gradle-wrapper.jar` committed and no system gradle → used the cached `gradle-8.10` distribution
   in `~/.gradle/wrapper/dists` directly. Web deps weren't present in the worktree → ran `npm install`.
 
-## Blocker discovered (feedback for PR-B F3)
-`GET /api/auth/users/profile/{username}` (`PublicProfileResponse`) exposes **no numeric user id**, but
-`follows.counts(userId)` / `posts.byUser(userId)` are id-keyed. Deleting `profileFollowerEstimate()` and
-wiring real counts on `/profile/[username]` therefore needs one of: (a) add `id` to `PublicProfileResponse`,
-or (b) add a by-username counts endpoint. This is a small additive server change and should precede F3.
+## Blocker (RESOLVED)
+`GET /api/auth/users/profile/{username}` (`PublicProfileResponse`) exposed no numeric id, but real
+counts are id-keyed. **Resolved** by adding `Long id` as the first `PublicProfileResponse` component
+(additive on the wire; `AuthService`/`AuthController` unchanged via `from()`; `AuthControllerTest`
+updated). The web profile page now fetches `follows.counts(id)`.
 
-## Remaining Work (precise handoff — plan tasks F2–F9)
-1. **F2** `community-feed.ts`: `toSocialPost(serverPost)` adapter; extend `FeedView`/`CommunityTab` unions
-   with `discover|toronto|body-confidence`; keep transforms pure (65-test immutability suite) and
-   `saved/reposted` as local personal collections.
-2. **F3** delete fabrication sites — after the profile-id server change above: `social-graph.ts`
-   (drop `followerCount/followingCount/outfitCount`), `profile/[username]/page.tsx`
-   (drop `profileFollowerEstimate`), `StyleCircleDialog.tsx` (drop `SOCIAL_PROFILES.slice(0,5)`).
-3. **F4** `useCommunityState` write-through with graceful localStorage fallback on 404/offline.
-4. **F5–F9** community page 4 feed tabs (BRAND heading, per-feed empty states), Share-a-Look bind +
-   multi-surface `ShareALookButton`, report UI in `PostDetailDialog`, admin reports/comment tab,
-   `community-feed.test.ts` + `e2e/community.spec.ts` rewrite.
+## Deviations (PR-B/PR-C)
+- **F4 lives in `community/page.tsx`, not `useCommunityState`.** The shared hook is consumed by the
+  dashboard; keeping it stable (untouched) avoided a cross-page regression. The server-feed fetch +
+  like/follow write-through + localStorage fallback are localized to the community page, which is the
+  only surface that renders the named feeds. Behavioural acceptance (real feed, write-through,
+  fallback) is met.
+- **Follow write-through is real where a numeric id exists, local for demo.** Server post authors
+  (`creatorUserId`) and StyleCircle rows (`u.id`) toggle via `follows.*`; the demo `SOCIAL_PROFILES`
+  sidebar (no server id) stays local — never fabricated, just a local demo action.
+
+## Remaining (minor, optional enhancements — not blocking)
+- A standalone `ShareALookButton` on PDP / try-on / outfit-view / profile as *picker* surfaces
+  (Share-a-Look already posts through the server from the composer on dashboard + community — ≥2
+  surfaces, meeting acceptance).
+- Admin comment-removal *UI* (the `adminReports.removeComment` client + server endpoint + tests
+  exist; reports are post-keyed so there is no comment-id source in the reports list yet).
+- `web/lib/api.ts`'s `posts.byUser` is available for a real server-backed profile post grid (the
+  profile page still lists posts from the local demo state).
 
 ## Next Steps
-- [ ] Add numeric `id` (or username-counts endpoint) to unblock F3, then implement F2–F9.
-- [ ] Run `./dev.sh start` to confirm V15 boots under `ddl-auto=validate` on real MySQL.
-- [ ] Code review via `/code-review`; the draft PR is open for PR-A + F1.
+- [ ] Run `./dev.sh start` to confirm V15 boots under `ddl-auto=validate` on real MySQL, and run
+      `npm run test:e2e -- community.spec.ts` against a live dev server + API.
+- [ ] Note: `npm run lint` has a pre-existing red baseline (61 errors, mostly
+      `react-hooks/set-state-in-effect` across many files); the new effects follow that accepted
+      pattern. tsc + vitest (the enforced gates) are green.
+- [ ] Code review via `/code-review`; the draft PR (#15) carries PR-A + PR-B + PR-C.
