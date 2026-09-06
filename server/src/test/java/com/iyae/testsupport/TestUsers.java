@@ -33,4 +33,16 @@ public final class TestUsers {
                 .emailVerified(true)
                 .build();
     }
+
+    public static User anAdmin() {
+        return User.builder()
+                .id(3L)
+                .email("admin@test.com")
+                .passwordHash("$2a$10$hashedpassword")
+                .name("Test Admin")
+                .username("testadmin")
+                .role(Role.ADMIN)
+                .emailVerified(true)
+                .build();
+    }
 }

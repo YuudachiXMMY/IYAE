@@ -3,6 +3,8 @@ package com.iyae.controller;
 import com.iyae.dto.CommentRequest;
 import com.iyae.dto.CommentResponse;
 import com.iyae.dto.PagedResponse;
+import com.iyae.dto.PostReportRequest;
+import com.iyae.dto.PostReportResponse;
 import com.iyae.dto.PostRequest;
 import com.iyae.dto.PostResponse;
 import com.iyae.service.PostService;
@@ -31,12 +33,41 @@ public class PostController {
 
     @GetMapping
     public ResponseEntity<PagedResponse<PostResponse>> getFeed(
+            @RequestParam(defaultValue = "discover") String feed,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             Authentication authentication
     ) {
         String email = authentication != null ? authentication.getName() : null;
-        return ResponseEntity.ok(postService.getFeed(email, page, size));
+        return ResponseEntity.ok(postService.getFeed(feed, email, page, size));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<PostResponse> getPost(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        String email = authentication != null ? authentication.getName() : null;
+        return ResponseEntity.ok(postService.getPost(id, email));
+    }
+
+    @GetMapping("/{id}/comments")
+    public ResponseEntity<PagedResponse<CommentResponse>> getComments(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(postService.getComments(id, page, size));
+    }
+
+    @PostMapping("/{id}/report")
+    public ResponseEntity<PostReportResponse> report(
+            @PathVariable Long id,
+            @Valid @RequestBody PostReportRequest request,
+            Authentication authentication
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(postService.reportPost(id, authentication.getName(), request.reason()));
     }
 
     @GetMapping("/user/{userId}")

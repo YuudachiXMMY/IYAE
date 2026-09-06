@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.UserResponse;
 import com.iyae.entity.Follow;
@@ -69,6 +70,15 @@ public class FollowService {
         User follower = findUser(email);
         User following = findUserById(targetUserId);
         return followRepository.existsByFollowerAndFollowing(follower, following);
+    }
+
+    /** Real follower/following counts (derived COUNT queries — never denormalized). */
+    @Transactional(readOnly = true)
+    public FollowCountsResponse getCounts(Long userId) {
+        User user = findUserById(userId);
+        long followers = followRepository.countByFollowing(user);
+        long following = followRepository.countByFollower(user);
+        return new FollowCountsResponse(followers, following);
     }
 
     private User findUser(String email) {

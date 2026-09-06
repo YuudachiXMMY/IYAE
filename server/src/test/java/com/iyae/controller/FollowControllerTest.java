@@ -1,5 +1,6 @@
 package com.iyae.controller;
 
+import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.UserResponse;
 import com.iyae.entity.enums.Role;
@@ -84,5 +85,26 @@ class FollowControllerTest {
     void getFollowers_unauthenticated_returns403() throws Exception {
         mockMvc.perform(get("/api/follows/2/followers"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com")
+    void getCounts_authenticated_returns200() throws Exception {
+        when(followService.getCounts(eq(2L))).thenReturn(new FollowCountsResponse(3L, 5L));
+
+        mockMvc.perform(get("/api/follows/2/counts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.followers").value(3))
+                .andExpect(jsonPath("$.following").value(5));
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com")
+    void getStatus_authenticated_returnsFollowingFlag() throws Exception {
+        when(followService.isFollowing(eq("test@example.com"), eq(2L))).thenReturn(true);
+
+        mockMvc.perform(get("/api/follows/2/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.following").value(true));
     }
 }

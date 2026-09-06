@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
 import com.iyae.dto.UserResponse;
 import com.iyae.entity.Follow;
@@ -134,5 +135,19 @@ class FollowServiceTest {
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).id()).isEqualTo(2L);
+    }
+
+    // ── getCounts (Phase 6 real counts) ─────────────────────────────────────────
+
+    @Test
+    void getCounts_returnsRealFollowerAndFollowingCounts() {
+        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(followRepository.countByFollowing(userB)).thenReturn(3L);
+        when(followRepository.countByFollower(userB)).thenReturn(5L);
+
+        FollowCountsResponse counts = followService.getCounts(2L);
+
+        assertThat(counts.followers()).isEqualTo(3L);
+        assertThat(counts.following()).isEqualTo(5L);
     }
 }

@@ -31,6 +31,20 @@ public class Post {
     @Column(name = "media_urls", columnDefinition = "json")
     private String mediaUrls;
 
+    // Phase 6: feed dimensions + Share-a-Look linkage (all nullable — plain photo posts have none)
+    @Column(name = "city", length = 120)
+    private String city;
+
+    @Column(name = "topic", length = 60)
+    private String topic;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "saved_look_id")
+    private SavedLook savedLook;
+
+    @Column(name = "product_ids", columnDefinition = "json")
+    private String productIds;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private PostStatus status;
