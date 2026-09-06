@@ -75,12 +75,23 @@ public class SchedulerConfig {
      * driven by {@code app.weather.cache-ttl-seconds} (converted to milliseconds) so the
      * cache is re-warmed exactly as often as it is allowed to go stale.
      */
-    @Scheduled(initialDelay = 5000, fixedDelayString = "${app.weather.cache-ttl-seconds:1800}000")
+    @Scheduled(initialDelay = 5000,
+               fixedDelayString = "#{T(com.iyae.config.SchedulerConfig).weatherRefreshMs(${app.weather.cache-ttl-seconds:1800})}")
     public void refreshWeatherCache() {
         try {
             weatherService.refresh();
         } catch (Exception e) {
             log.error("Error during scheduled weather cache refresh: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Weather refresh cadence in milliseconds. Floors at 1s so a {@code WEATHER_CACHE_TTL}
+     * of 0 or a negative value cannot produce a non-positive {@code fixedDelay} (which would
+     * make {@code @Scheduled} throw and crash context startup). {@code WEATHER_CACHE_TTL}
+     * must be a positive integer; a non-numeric value is invalid config and fails fast.
+     */
+    public static long weatherRefreshMs(long ttlSeconds) {
+        return Math.max(1L, ttlSeconds) * 1000L;
     }
 }

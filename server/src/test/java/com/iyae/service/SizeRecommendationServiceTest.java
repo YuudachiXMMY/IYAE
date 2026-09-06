@@ -388,6 +388,69 @@ class SizeRecommendationServiceTest {
         assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
     }
 
+    // H2: "dress shoes" contains both "dress" and "shoe"; the shoe check must win (order).
+    @Test
+    void recommend_dressShoesCategory_usesShoeSizeNotDressSize() {
+        Product product = product("Dress Shoes", "[\"8\",\"9\",\"10\"]", null);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).shoeSize("9").dressSize("M").build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("9");
+        assertThat(result.basis()).isEqualTo("SELF_REPORTED");
+    }
+
+    // H2: synonyms beyond the seed vocabulary map to the right self-reported size.
+    @Test
+    void recommend_coatCategory_usesJacketSize() {
+        Product product = product("Coat", "[\"S\",\"M\",\"L\"]", null);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).jacketSize("L").build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        assertThat(service.recommend(100L, "buyer@example.com").recommendedSize()).isEqualTo("L");
+    }
+
+    @Test
+    void recommend_jeansCategory_usesBottomSize() {
+        Product product = product("Jeans", "[\"30\",\"32\",\"34\"]", null);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).bottomSize("32").build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        assertThat(service.recommend(100L, "buyer@example.com").recommendedSize()).isEqualTo("32");
+    }
+
+    // M4: chart says "m" (lowercase) but the product offers "M"; the recommendation must
+    // return the AVAILABLE casing "M" so the case-sensitive frontend preselect matches.
+    @Test
+    void recommend_chartTier_returnsAvailableCasedLabelNotChartCasing() {
+        String sizeChart = "[{\"size\":\"m\",\"chestCm\":92,\"waistCm\":76,\"hipsCm\":96}]";
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", sizeChart);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user).chestCm(92.0).waistCm(76.0).hipsCm(96.0).build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+    }
+
     // ---- pure pickBestFit (cm-measurement normalization, Marketplace) ----
 
     @Test

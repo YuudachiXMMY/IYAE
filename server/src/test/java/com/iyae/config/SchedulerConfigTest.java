@@ -40,6 +40,16 @@ class SchedulerConfigTest {
         assertThatCode(schedulerConfig::refreshWeatherCache).doesNotThrowAnyException();
     }
 
+    // H4: WEATHER_CACHE_TTL=0 (or negative) must not produce a non-positive fixedDelay,
+    // which would make @Scheduled throw and crash context startup. The interval floors at 1s.
+    @Test
+    void weatherRefreshMs_floorsZeroAndNegativeToOneSecond() {
+        assertThat(SchedulerConfig.weatherRefreshMs(1800)).isEqualTo(1_800_000L);
+        assertThat(SchedulerConfig.weatherRefreshMs(1)).isEqualTo(1_000L);
+        assertThat(SchedulerConfig.weatherRefreshMs(0)).isEqualTo(1_000L);
+        assertThat(SchedulerConfig.weatherRefreshMs(-5)).isEqualTo(1_000L);
+    }
+
     @Test
     void taskScheduler_isMultiThreadedSoSlowTasksDoNotStarveTheFastPollers() {
         ThreadPoolTaskScheduler scheduler = (ThreadPoolTaskScheduler) schedulerConfig.taskScheduler();

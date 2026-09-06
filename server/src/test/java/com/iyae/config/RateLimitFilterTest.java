@@ -202,26 +202,36 @@ class RateLimitFilterTest {
         assertThat(res.getContentType()).isEqualTo("application/json");
     }
 
+    // M1: only POSTs to /api/chat/ (the expensive AI endpoints) count against the bucket.
     @Test
-    void chatEndpoint_anyMethod_appliesLimit() throws Exception {
+    void chatPost_blocksAfterLimit() throws Exception {
         RateLimitFilter filter = createFilter("");
 
-        // Mix GET and POST requests — rule has null method so both should count toward the same bucket
-        // Exhaust limit (10 requests total)
-        for (int i = 0; i < 5; i++) {
-            MockHttpServletRequest get = makeRequest("GET", "/api/chat/sessions", "10.0.0.6");
-            invokeFilter(filter, get, new MockHttpServletResponse(), new MockFilterChain());
-
-            MockHttpServletRequest post = makeRequest("POST", "/api/chat/sessions", "10.0.0.6");
+        // Exhaust limit (10 POSTs)
+        for (int i = 0; i < 10; i++) {
+            MockHttpServletRequest post = makeRequest("POST", "/api/chat/sessions/1/messages", "10.0.0.6");
             invokeFilter(filter, post, new MockHttpServletResponse(), new MockFilterChain());
         }
 
-        // 11th request should be blocked regardless of method
-        MockHttpServletRequest req = makeRequest("GET", "/api/chat/sessions", "10.0.0.6");
+        // 11th POST is blocked
+        MockHttpServletRequest req = makeRequest("POST", "/api/chat/sessions/1/messages", "10.0.0.6");
         MockHttpServletResponse res = new MockHttpServletResponse();
         invokeFilter(filter, req, res, new MockFilterChain());
 
         assertThat(res.getStatus()).isEqualTo(429);
+    }
+
+    // M1: GET /api/chat/weather (polled by the useWeather hook) must NOT share the AI-message
+    // bucket — otherwise a few weather polls would 429 a user's legitimate chat messages.
+    @Test
+    void chatWeatherGet_notThrottledByChatPostRule() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 20; i++) {
+            MockHttpServletRequest req = makeRequest("GET", "/api/chat/weather", "10.0.0.7");
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            invokeFilter(filter, req, res, new MockFilterChain());
+            assertThat(res.getStatus()).as("weather GET %d must not be limited", i).isNotEqualTo(429);
+        }
     }
 
     @Test

@@ -29,7 +29,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new RateRule("POST", "/api/auth/forgot-password", null, 3, 60_000),
             new RateRule("POST", "/api/auth/resend-verification", null, 3, 60_000),
             new RateRule("PUT",  "/api/auth/me", null, 10, 60_000),
-            new RateRule(null,   "/api/chat/", null, 10, 60_000),
+            // POST-scoped: only the expensive AI endpoints (POST /sessions,
+            // POST /sessions/{id}/messages) count against this bucket. GET /api/chat/weather
+            // (polled by the useWeather hook) and other chat GETs must not share it, or a
+            // few weather polls would 429 a user's legitimate messages.
+            new RateRule("POST", "/api/chat/", null, 10, 60_000),
             new RateRule(null,   "/api/checkout", null, 5, 60_000),
             new RateRule("POST", "/api/public/avatar/generate", null, 3, 60_000),
             new RateRule("DELETE", "/api/avatar", null, 10, 60_000),

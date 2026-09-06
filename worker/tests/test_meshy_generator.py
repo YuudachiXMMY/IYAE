@@ -401,6 +401,87 @@ class TestMeshyGeneratorPayload:
         assert isinstance(payload["elapsed_ms"], int)
         assert payload["elapsed_ms"] >= 0
 
+    def test_glb_size_bytes_read_from_file_not_consumed_stream(self, tmp_path):
+        # H1: the GLB is streamed to disk (stream=True + iter_content via
+        # stream_to_file_capped), so glb_resp.content is already consumed and raises
+        # StreamConsumedError. glb_size_bytes must come from os.path.getsize(file).
+        glb_bytes, _ = _real_box_glb_bytes()
+
+        class _ConsumedStreamResponse:
+            """Mimics a real requests streaming Response: .content raises after
+            iter_content has drained the body."""
+
+            def __init__(self, content):
+                self._content = content
+                self.headers = {}
+
+            def iter_content(self, chunk_size=1 << 20):
+                yield self._content
+
+            @property
+            def content(self):
+                raise RuntimeError("StreamConsumedError: content after iter_content")
+
+            def raise_for_status(self):
+                pass
+
+        with patch("providers.meshy_generator.time.sleep"), \
+             patch("providers.meshy_generator.requests.post") as mock_post, \
+             patch("providers.meshy_generator.requests.get") as mock_get:
+            mock_post.return_value.json.return_value = {"result": "meshy-h1"}
+            status_mock = MagicMock()
+            status_mock.json.return_value = {
+                "status": "SUCCEEDED",
+                "consumed_credits": 3,
+                "model_urls": {
+                    "glb": "https://cdn.meshy.ai/models/preview.glb",
+                    "usdz": "https://cdn.meshy.ai/models/preview.usdz",
+                },
+            }
+
+            def get_side_effect(url, **kwargs):
+                if "image-to-3d" in url:
+                    return status_mock
+                if url.endswith(".glb"):
+                    return _ConsumedStreamResponse(glb_bytes)
+                return _streaming_download_mock(b"usdz-stub")
+
+            mock_get.side_effect = get_side_effect
+
+            gen = MeshyGenerator(api_key="test-key", output_base_dir=str(tmp_path))
+            payload = gen.generate(
+                task_id=1, product_id=42,
+                input_payload={"image_url": "https://example.com/img.jpg"},
+            )
+
+        # No crash, and size matches the file that was written (== the downloaded bytes).
+        assert payload["sanity"]["glb_size_bytes"] == len(glb_bytes)
+
+    def test_tier2_has_nan_true_for_inf_vertices(self, monkeypatch, tmp_path):
+        # M3: the trimesh fallback (Tier-2) must flag Inf, not just NaN. Force Tier-1
+        # (pygltflib accessor bounds) to fail so Tier-2 runs, then hand it an Inf vertex.
+        import numpy as np
+        import pygltflib
+        import trimesh
+        from types import SimpleNamespace
+        from providers import meshy_generator as mg
+
+        glb = tmp_path / "x.glb"
+        glb.write_bytes(b"glTF" + b"\x00" * 8)
+
+        def _raise(*a, **k):
+            raise RuntimeError("forced Tier-1 failure")
+
+        monkeypatch.setattr(pygltflib.GLTF2, "load", _raise)
+        fake_mesh = SimpleNamespace(
+            vertices=np.array([[0.0, 0.0, 0.0], [float("inf"), 1.0, 1.0]], dtype=float),
+            faces=np.array([[0, 1, 0]]),
+        )
+        monkeypatch.setattr(trimesh, "load", lambda p, process=False: fake_mesh)
+
+        result = mg._compute_glb_metadata(str(glb))
+        assert result["has_nan"] is True
+
 
 class TestDownloadCap:
     """L2: downloads are size-capped to bound the worker's memory / DoS surface."""

@@ -305,6 +305,21 @@ class ProductServiceTest {
                 .hasMessage("Product not found: 999");
     }
 
+    // Info-leak fix: a buyer with no designer profile hitting a DRAFT product must get the
+    // SAME "Product not found" as a missing product — not the leaky "Designer profile not
+    // found for user", which would reveal that the DRAFT exists.
+    @Test
+    void getProductById_draftProduct_buyerWithoutProfile_throwsProductNotFound() {
+        User buyer = User.builder().id(42L).email("buyer@example.com").build();
+        when(productRepository.findById(101L)).thenReturn(Optional.of(draftProduct));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(buyer));
+        when(designerProfileRepository.findByUserId(42L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> productService.getProductById(101L, "buyer@example.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Product not found: 101");
+    }
+
     // -------------------------------------------------------------------------
     // getDesignerProducts
     // -------------------------------------------------------------------------
