@@ -211,8 +211,18 @@ def write_skinned_glb(
     # --- 6. Build accessors ---
     num_verts = len(vertices)
     num_faces = len(indices)
+    # glTF requires POSITION accessors to carry min/max bounds. Omitting them makes
+    # validate_glb_geometry fail closed ("POSITION min/max bounds absent"), which would
+    # reject every rigged garment and every real SMPL-X avatar. Compute from the verts.
+    if num_verts > 0:
+        _pos = vertices.astype(np.float32)
+        pos_min = _pos.min(axis=0).tolist()
+        pos_max = _pos.max(axis=0).tolist()
+    else:
+        pos_min = pos_max = None
     accessors = [
-        pygltflib.Accessor(bufferView=0, componentType=_FLOAT,        count=num_verts, type="VEC3"),   # POSITION
+        pygltflib.Accessor(bufferView=0, componentType=_FLOAT,        count=num_verts, type="VEC3",
+                           min=pos_min, max=pos_max),                                                  # POSITION
         pygltflib.Accessor(bufferView=1, componentType=_FLOAT,        count=num_verts, type="VEC3"),   # NORMAL
         pygltflib.Accessor(bufferView=2, componentType=_UNSIGNED_BYTE, count=num_verts, type="VEC4"),  # JOINTS_0
         pygltflib.Accessor(bufferView=3, componentType=_FLOAT,        count=num_verts, type="VEC4"),   # WEIGHTS_0

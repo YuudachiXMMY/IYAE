@@ -90,8 +90,23 @@ def compute_glb_geometry_stats(gltf) -> dict:
                 if acc.min and acc.max and len(acc.min) >= 3 and len(acc.max) >= 3:
                     bounds_found = True
                     for i in range(3):
-                        mins[i] = min(mins[i], float(acc.min[i]))
-                        maxs[i] = max(maxs[i], float(acc.max[i]))
+                        mn = float(acc.min[i])
+                        mx = float(acc.max[i])
+                        # Python min/max silently drop NaN (min(inf, nan) -> inf), which
+                        # would hide a NaN-bounded mesh from the downstream NaN check.
+                        # Propagate NaN explicitly and keep it sticky once set.
+                        if math.isnan(mins[i]):
+                            pass  # already NaN — stays NaN
+                        elif math.isnan(mn):
+                            mins[i] = mn
+                        else:
+                            mins[i] = min(mins[i], mn)
+                        if math.isnan(maxs[i]):
+                            pass  # already NaN — stays NaN
+                        elif math.isnan(mx):
+                            maxs[i] = mx
+                        else:
+                            maxs[i] = max(maxs[i], mx)
 
     return {
         "triangle_count": triangle_count,

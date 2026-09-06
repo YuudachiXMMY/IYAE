@@ -14,12 +14,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -40,11 +44,17 @@ class AvatarServiceTest {
 
     @InjectMocks AvatarService avatarService;
 
+    @TempDir Path tempAssetRoot;
+
     private User testUser;
     private BodyProfile testProfile;
 
     @BeforeEach
     void setUp() {
+        // @Value fields are not populated by MockitoExtension; point the avatar asset root
+        // at a temp dir so deleteAvatarData's on-disk purge has a valid (empty) root.
+        ReflectionTestUtils.setField(avatarService, "assetRoot", tempAssetRoot.toString());
+
         testUser = User.builder()
                 .id(1L).email("buyer@example.com").name("Buyer").role(Role.BUYER).build();
 
@@ -180,6 +190,27 @@ class AvatarServiceTest {
         avatarService.deleteAvatarData("buyer@example.com");
 
         verify(avatarTaskRepository).deleteAll(tasks);
+    }
+
+    // H3: a privacy delete must remove the generated avatar GLB from disk, not just the
+    // DB pointer — otherwise the body scan stays publicly downloadable at /assets/avatars/{id}/.
+    @Test
+    void deleteAvatarData_purgesAvatarGlbFileFromDisk() throws Exception {
+        testUser.setAvatarGlbUrl("/assets/avatars/1/avatar.glb");
+        Path avatarDir = tempAssetRoot.resolve("avatars").resolve("1");
+        Files.createDirectories(avatarDir);
+        Path glb = avatarDir.resolve("avatar.glb");
+        Files.writeString(glb, "fake-glb-bytes");
+
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(testUser));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.empty());
+        when(avatarTaskRepository.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(Collections.emptyList());
+
+        avatarService.deleteAvatarData("buyer@example.com");
+
+        assertThat(Files.exists(glb)).isFalse();
+        assertThat(Files.exists(avatarDir)).isFalse();
     }
 
     @Test

@@ -249,17 +249,20 @@ public class SizeRecommendationService {
 
         // Only recommend a chart size the product actually offers (mirrors the Tier-2
         // case-insensitive availability check); otherwise fall through to self-reported/NONE.
+        // Return the AVAILABLE-cased label (not the chart's casing) so the case-sensitive
+        // frontend preselect (page.tsx: product.sizes.includes(size)) can match it.
         String bestSize = best.size();
-        boolean bestIsAvailable = availableSizes.stream()
-                .anyMatch(s -> s.equalsIgnoreCase(bestSize));
-        if (!bestIsAvailable) {
+        Optional<String> availMatch = availableSizes.stream()
+                .filter(s -> s.equalsIgnoreCase(bestSize))
+                .findFirst();
+        if (availMatch.isEmpty()) {
             return null;
         }
 
         double confidence = Math.max(0.0, Math.min(1.0, 1.0 - bestRms / CONFIDENCE_REFERENCE_CM));
         confidence = Math.round(confidence * 100.0) / 100.0;
         return new SizeRecommendationResponse(
-                best.size(), SizeRecommendationBasis.MEASUREMENT_CHART.name(), confidence, availableSizes);
+                availMatch.get(), SizeRecommendationBasis.MEASUREMENT_CHART.name(), confidence, availableSizes);
     }
 
     private Map<String, Double> userMeasurements(BodyProfile profile) {
@@ -273,19 +276,30 @@ public class SizeRecommendationService {
 
     private String selfReportedSizeForCategory(String category, BodyProfile profile) {
         String cat = category == null ? "" : category.toLowerCase();
-        if (cat.contains("dress")) {
-            return profile.getDressSize();
-        }
-        if (cat.contains("shoe")) {
+        // Order matters: check the most specific tokens first so a compound label like
+        // "dress shoes" resolves to footwear, not dresses.
+        if (cat.contains("shoe") || cat.contains("footwear") || cat.contains("boot")
+                || cat.contains("sneaker")) {
             return profile.getShoeSize();
         }
-        if (cat.contains("bottom") || cat.contains("pant")) {
+        if (cat.contains("dress") || cat.contains("gown")) {
+            return profile.getDressSize();
+        }
+        if (cat.contains("bottom") || cat.contains("pant") || cat.contains("trouser")
+                || cat.contains("jean") || cat.contains("short") || cat.contains("skirt")
+                || cat.contains("legging")) {
             return profile.getBottomSize();
         }
-        if (cat.contains("outerwear") || cat.contains("jacket")) {
+        if (cat.contains("outerwear") || cat.contains("jacket") || cat.contains("coat")
+                || cat.contains("blazer") || cat.contains("hoodie")) {
             return profile.getJacketSize();
         }
-        if (cat.contains("top")) {
+        // "top" stays LAST among garment checks: it is a common substring, and labels
+        // like "tank top"/"crop top" should only reach here after the more specific
+        // categories above have been ruled out.
+        if (cat.contains("top") || cat.contains("tee") || cat.contains("shirt")
+                || cat.contains("blouse") || cat.contains("sweater") || cat.contains("knit")
+                || cat.contains("activewear")) {
             return profile.getTopSize();
         }
         // Unrecognized categories (accessory/bag/jewelry, etc.) have no meaningful

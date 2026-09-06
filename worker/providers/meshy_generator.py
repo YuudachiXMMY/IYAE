@@ -146,7 +146,7 @@ def _compute_glb_metadata(glb_path: str) -> dict:
                     "min": verts.min(axis=0).tolist(),
                     "max": verts.max(axis=0).tolist(),
                 },
-                "has_nan": bool(np.isnan(verts).any()),
+                "has_nan": bool(np.isnan(verts).any() or np.isinf(verts).any()),
             }
     except Exception as e:
         logger.warning("trimesh metadata fallback failed for %s: %s", glb_path, e)
@@ -279,7 +279,10 @@ class MeshyGenerator:
             "triangle_count": glb_metadata["triangle_count"],
             "bbox": glb_metadata["bbox"],
             "sanity": {
-                "glb_size_bytes": len(glb_resp.content),
+                # os.path.getsize, not len(glb_resp.content): the GLB was streamed to
+                # disk via stream_to_file_capped (iter_content), so glb_resp.content is
+                # already consumed and would raise StreamConsumedError here.
+                "glb_size_bytes": os.path.getsize(glb_path),
                 "has_nan_vertices": glb_metadata["has_nan"],
             },
             "elapsed_ms": elapsed_ms,

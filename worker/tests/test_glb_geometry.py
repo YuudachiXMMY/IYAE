@@ -82,6 +82,29 @@ class TestComputeGlbGeometryStats:
         assert stats["maxs"] == [1.0, 1.0, 1.0]
         assert stats["triangle_count"] == 16  # 24//3 + 24//3
 
+    def test_nan_bound_propagates_through_union(self):
+        # M2: Python min/max silently drop NaN, so a NaN in one mesh's POSITION min
+        # would vanish from the union and escape the validator's NaN check. It must
+        # survive so validate_glb_geometry can reject the file.
+        accessors = [
+            _acc(24, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]),
+            _acc(24, [float("nan"), -1.0, -1.0], [0.5, 0.5, 0.5]),
+        ]
+        gltf = _gltf(accessors, [[_prim(pos=0)], [_prim(pos=1)]])
+        stats = compute_glb_geometry_stats(gltf)
+        assert stats["bounds_found"] is True
+        assert math.isnan(stats["mins"][0])
+
+    def test_nan_bound_is_sticky_regardless_of_order(self):
+        # NaN in the FIRST mesh must not be overwritten by a later real value.
+        accessors = [
+            _acc(24, [float("nan"), 0.0, 0.0], [1.0, 1.0, 1.0]),
+            _acc(24, [-1.0, -1.0, -1.0], [0.5, 0.5, 0.5]),
+        ]
+        gltf = _gltf(accessors, [[_prim(pos=0)], [_prim(pos=1)]])
+        stats = compute_glb_geometry_stats(gltf)
+        assert math.isnan(stats["mins"][0])
+
     def test_negative_index_reported_as_error(self):
         gltf = _gltf([_acc(9)], [[_prim(pos=None, indices=-1, mode=4)]])
         stats = compute_glb_geometry_stats(gltf)

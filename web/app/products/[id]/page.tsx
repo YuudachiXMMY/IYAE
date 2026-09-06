@@ -139,7 +139,10 @@ export default function ProductDetailPage({
           colorTags: p.colorTags ?? [],
         });
         setSelectedImage(0);
-        if (p.recommendedSize) setSelectedSize(p.recommendedSize);
+        // Size preselect comes solely from the guarded /recommended-size effect below
+        // (sizeRec), which validates the size is stocked and drives the same hint. Using
+        // product.recommendedSize here too was a second, unguarded source that could
+        // preselect an unstocked/mis-cased size and disagree with the shown hint.
       })
       .catch(() => setError("Product not found."))
       .finally(() => setProductLoading(false));

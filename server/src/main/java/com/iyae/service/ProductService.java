@@ -76,12 +76,18 @@ public class ProductService {
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + id));
 
         if (product.getStatus() != ProductStatus.PUBLISHED) {
-            // Non-published: only the owner may access
-            if (email == null) {
-                throw new IllegalArgumentException("Product not found: " + id);
-            }
-            DesignerProfile profile = resolveDesignerProfile(email);
-            if (!product.getDesignerProfile().getId().equals(profile.getId())) {
+            // Non-published products are visible only to the owning designer. Every other
+            // caller — anonymous, a buyer with no designer profile, or a different designer —
+            // gets the SAME "Product not found" as a truly missing product, so the error
+            // cannot reveal that a DRAFT/ARCHIVED product exists. (Do NOT use
+            // resolveDesignerProfile here: it throws "Designer profile not found for user"
+            // for a buyer, leaking both existence and internal logic.) This gate mirrors the
+            // one in SizeRecommendationService.recommend — keep the two in sync.
+            boolean owner = email != null && userRepository.findByEmail(email)
+                    .flatMap(u -> designerProfileRepository.findByUserId(u.getId()))
+                    .map(dp -> dp.getId().equals(product.getDesignerProfile().getId()))
+                    .orElse(false);
+            if (!owner) {
                 throw new IllegalArgumentException("Product not found: " + id);
             }
         }

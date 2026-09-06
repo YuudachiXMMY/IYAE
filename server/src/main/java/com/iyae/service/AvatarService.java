@@ -18,6 +18,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +41,11 @@ public class AvatarService {
 
     @Value("${AVATAR_GENERATION_PROVIDER:mock}")
     private String avatarProvider;
+
+    // Mirrors WebMvcConfig: the shared asset root the worker writes avatar GLBs under
+    // ({assetRoot}/avatars/{userId}/avatar.glb), served publicly at /assets/**.
+    @Value("${worker.output-dir:/var/iyae/assets}")
+    private String assetRoot;
 
     @Transactional
     public AvatarStatusResponse generateAvatar(String email) {
@@ -153,7 +163,38 @@ public class AvatarService {
             avatarTaskRepository.deleteAll(tasks);
         }
 
+        // Purge the generated avatar GLB from disk. Without this a privacy delete only
+        // nulls the DB pointer while the body scan stays publicly downloadable at
+        // /assets/avatars/{userId}/avatar.glb.
+        deleteAvatarFiles(user.getId());
+
         log.info("Deleted avatar data for user {}", user.getId());
+    }
+
+    /**
+     * Best-effort recursive delete of {@code {assetRoot}/avatars/{userId}}. Failures are
+     * logged at ERROR (a lingering body scan is a privacy issue that must be visible for
+     * manual cleanup) but never thrown — the DB purge is already committed and must not be
+     * rolled back by a filesystem error.
+     */
+    private void deleteAvatarFiles(Long userId) {
+        Path dir = Paths.get(assetRoot, "avatars", String.valueOf(userId));
+        if (!Files.exists(dir)) {
+            return; // idempotent — nothing generated yet
+        }
+        try (var paths = Files.walk(dir)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    log.error("Failed to delete avatar file {} for user {}: {}",
+                            p, userId, e.getMessage());
+                }
+            });
+        } catch (IOException e) {
+            log.error("Failed to walk avatar dir {} for user {}: {}",
+                    dir, userId, e.getMessage());
+        }
     }
 
     @Transactional

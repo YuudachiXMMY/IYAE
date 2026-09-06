@@ -16,7 +16,12 @@ from providers.canonical_skeleton import (
     SMPLX_JOINT_NAMES,
     SMPLX_PARENT_INDICES,
 )
-from validator import validate_glb, validate_skin_metadata, validate_required_bones
+from validator import (
+    validate_glb,
+    validate_glb_geometry,
+    validate_skin_metadata,
+    validate_required_bones,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +140,28 @@ class TestComputeInverseBindMatrices:
 # ---------------------------------------------------------------------------
 # Round-trip integration tests
 # ---------------------------------------------------------------------------
+
+class TestPositionBounds:
+    """C1: POSITION accessor must carry min/max, else validate_glb_geometry fails closed."""
+
+    def test_position_accessor_has_min_max(self, tmp_path):
+        out = write_for_slot(tmp_path, "TOP")
+        gltf = pygltflib.GLTF2.load(str(out))
+        pos = gltf.accessors[0]  # accessor 0 is POSITION
+        assert pos.min is not None and pos.max is not None
+        # make_test_mesh vertices span [0,0,0] -> [1,1,1]
+        assert pos.min == pytest.approx([0.0, 0.0, 0.0])
+        assert pos.max == pytest.approx([1.0, 1.0, 1.0])
+
+    def test_skinned_glb_passes_geometry_validation(self, tmp_path):
+        # Exact production repro: before the fix, write_skinned_glb output failed
+        # validate_glb_geometry with "POSITION min/max bounds absent", rejecting every
+        # rigged garment and every real SMPL-X avatar.
+        out = write_for_slot(tmp_path, "TOP")
+        result = validate_glb_geometry(str(out))
+        assert result["valid"], result["errors"]
+        assert not any("bounds absent" in e for e in result["errors"])
+
 
 class TestRoundTripGlbHeader:
     def test_valid_glb_header(self, tmp_path):
