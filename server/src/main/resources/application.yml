@@ -48,3 +48,7 @@ app:
     # Comma-separated IPs and/or CIDR ranges whose X-Forwarded-For is trusted.
     # Empty by default (uses remoteAddr); set to the Nginx/proxy subnet in prod.
     trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
+  analytics:
+    enabled: ${ANALYTICS_ENABLED:true}
+    # Experiment cohorts users are deterministically bucketed into (defaults to control,variant).
+    cohorts: ${ANALYTICS_COHORTS:control,variant}

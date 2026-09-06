@@ -59,6 +59,9 @@ class CheckoutServiceTest {
     @Spy
     ObjectMapper objectMapper = new ObjectMapper();
 
+    @Mock
+    AnalyticsService analyticsService;
+
     @InjectMocks
     CheckoutService checkoutService;
 

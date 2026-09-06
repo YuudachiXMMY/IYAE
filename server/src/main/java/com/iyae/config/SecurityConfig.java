@@ -44,6 +44,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/api/designer/**").hasRole("DESIGNER")
                 .requestMatchers("/api/promotions/**").hasRole("DESIGNER")
+                // KPI dashboard: interim elevated-role gate until the Phase-5 ADMIN role lands.
+                .requestMatchers("/api/admin/**").hasRole("DESIGNER")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

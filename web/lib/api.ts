@@ -64,6 +64,25 @@ export const api = {
 export { ApiError };
 export type { RequestOptions };
 
+export interface TrackEventPayload {
+  type: string;
+  productId?: number;
+  sizeBracket?: string;
+  metadata?: string;
+}
+
+/**
+ * Best-effort, fire-and-forget analytics emitter. Never throws or blocks the UI —
+ * the server treats client events as advisory; server-side emission is authoritative.
+ */
+export const analytics = {
+  track: (payload: TrackEventPayload): void => {
+    void api.post("/api/events", payload).catch(() => {
+      /* swallow — analytics must never surface an error to the user */
+    });
+  },
+};
+
 export type ProfileVisibility = "PUBLIC" | "PRIVATE";
 export type AvatarMode = "AI_AVATAR" | "PROFILE_PHOTO";
 
