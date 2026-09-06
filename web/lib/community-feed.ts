@@ -54,6 +54,8 @@ export interface SocialPost {
   productLinks: ProductLink[];
   feedViews: FeedView[];
   likeCount: number;
+  /** Real server comment aggregate when server-backed; UI prefers it over comments.length. */
+  commentCount?: number;
   comments: PostComment[];
   likedByCurrentUser?: boolean;
   savedByCurrentUser?: boolean;
@@ -360,6 +362,7 @@ export function toSocialPost(serverPost: Post): SocialPost {
     })),
     feedViews,
     likeCount: serverPost.likeCount,
+    commentCount: serverPost.commentCount, // REAL server aggregate (comments lazy-load on open)
     comments: [],
     likedByCurrentUser: serverPost.likedByCurrentUser,
     savedByCurrentUser: false,

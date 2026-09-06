@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Heart, MessageCircleMore, Bookmark, Flag, X } from "lucide-react";
 import { PostMedia } from "@/components/community/PostMedia";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { posts as postsApi, ApiError } from "@/lib/api";
+import { posts as postsApi, ApiError, type Comment } from "@/lib/api";
 import { toast } from "sonner";
 import type { SocialPost, PostComment, PostReply } from "@/lib/community-feed";
 import {
@@ -23,8 +23,22 @@ interface PostDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdate: (post: SocialPost) => void;
+  /** Server-aware like write-through (community page passes it); falls back to local toggle. */
+  onToggleLike?: (post: SocialPost) => void;
   currentUserName?: string;
   currentUserHandle?: string;
+}
+
+/** Maps a server comment to the local display shape (read-only; replies are lazy/absent). */
+function toPostComment(c: Comment): PostComment {
+  return {
+    id: `srv-c-${c.id}`,
+    authorName: c.username,
+    authorHandle: c.username,
+    copy: c.content,
+    createdLabel: c.createdAt,
+    replies: [],
+  };
 }
 
 
@@ -150,6 +164,7 @@ export function PostDetailDialog({
   open,
   onOpenChange,
   onUpdate,
+  onToggleLike,
   currentUserName,
   currentUserHandle,
 }: PostDetailDialogProps) {
@@ -161,6 +176,26 @@ export function PostDetailDialog({
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [serverComments, setServerComments] = useState<PostComment[]>([]);
+
+  // Lazy-load real comments for server-backed posts (SocialPost.comments is empty for them).
+  useEffect(() => {
+    if (!open || post.serverId == null) {
+      setServerComments([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    postsApi
+      .listComments(post.serverId, 0, 50, ctrl.signal)
+      .then((res) => setServerComments(res.content.map(toPostComment)))
+      .catch(() => setServerComments([]));
+    return () => ctrl.abort();
+  }, [open, post.serverId]);
+
+  // Prefer locally-authored comments; otherwise show the lazy-loaded server thread.
+  const displayComments = post.comments.length > 0 ? post.comments : serverComments;
+  const displayCommentCount =
+    post.commentCount ?? Math.max(post.comments.length, serverComments.length);
 
   // Report abuse → POST /api/posts/{id}/report (idempotent server-side). Only server-backed
   // posts (numeric serverId) are reportable; demo posts have no serverId.
@@ -288,7 +323,9 @@ export function PostDetailDialog({
             {/* Like / Save row */}
             <div className="flex items-center gap-4 px-6 py-3 border-b border-border/60 shrink-0">
               <button
-                onClick={() => onUpdate(toggleLike(post))}
+                onClick={() =>
+                  onToggleLike ? onToggleLike(post) : onUpdate(toggleLike(post))
+                }
                 className="flex items-center gap-1.5 transition-colors duration-150"
               >
                 <Heart
@@ -318,7 +355,7 @@ export function PostDetailDialog({
 
               <button className="flex items-center gap-1.5 text-muted-foreground ml-auto">
                 <MessageCircleMore size={18} />
-                <span className="text-sm">{post.comments.length}</span>
+                <span className="text-sm">{displayCommentCount}</span>
               </button>
 
               <button
@@ -362,13 +399,13 @@ export function PostDetailDialog({
 
             {/* Comment thread */}
             <ScrollArea className="flex-1 px-6 py-4">
-              {post.comments.length === 0 ? (
+              {displayComments.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No comments yet. Be the first to comment!
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {post.comments.map((comment) => (
+                  {displayComments.map((comment) => (
                     <CommentItem
                       key={comment.id}
                       comment={comment}

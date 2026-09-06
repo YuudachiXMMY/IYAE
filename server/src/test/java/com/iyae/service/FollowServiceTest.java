@@ -2,7 +2,7 @@ package com.iyae.service;
 
 import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
-import com.iyae.dto.UserResponse;
+import com.iyae.dto.PublicUserSummary;
 import com.iyae.entity.Follow;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.Role;
@@ -116,7 +116,7 @@ class FollowServiceTest {
         when(followRepository.findByFollowingOrderByCreatedAtDesc(eq(userB), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(follow)));
 
-        PagedResponse<UserResponse> result = followService.getFollowers(2L, 0, 10);
+        PagedResponse<PublicUserSummary> result = followService.getFollowers(2L, 0, 10);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).id()).isEqualTo(1L);
@@ -131,7 +131,7 @@ class FollowServiceTest {
         when(followRepository.findByFollowerOrderByCreatedAtDesc(eq(userA), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(follow)));
 
-        PagedResponse<UserResponse> result = followService.getFollowing(1L, 0, 10);
+        PagedResponse<PublicUserSummary> result = followService.getFollowing(1L, 0, 10);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).id()).isEqualTo(2L);

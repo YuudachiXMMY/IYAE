@@ -9,7 +9,8 @@ ALTER TABLE posts
     ADD COLUMN topic VARCHAR(60) NULL,
     ADD COLUMN saved_look_id BIGINT NULL,
     ADD COLUMN product_ids JSON NULL,
-    ADD CONSTRAINT fk_posts_saved_look FOREIGN KEY (saved_look_id) REFERENCES saved_looks(id);
+    -- ON DELETE SET NULL: a shared saved look stays deletable; the post keeps existing, its link nulls out.
+    ADD CONSTRAINT fk_posts_saved_look FOREIGN KEY (saved_look_id) REFERENCES saved_looks(id) ON DELETE SET NULL;
 
 -- Feed queries always constrain status; index the (status, city) and (status, topic) pairs
 CREATE INDEX idx_posts_status_city ON posts(status, city);

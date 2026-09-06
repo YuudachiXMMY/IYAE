@@ -283,6 +283,13 @@ function PostCard({
               </button>
             )}
           </>
+        ) : (post.commentCount ?? 0) > 0 ? (
+          <button
+            onClick={() => onOpenDetail(post)}
+            className="text-xs text-muted-foreground mt-2 hover:text-foreground transition-colors"
+          >
+            View all {post.commentCount} comments
+          </button>
         ) : (
           <button
             onClick={() => onOpenDetail(post)}
@@ -377,10 +384,19 @@ export default function CommunityPage() {
       return;
     }
     const ctrl = new AbortController();
+    setFeedPosts(null); // clear the previous feed so switching tabs shows Loading, not stale posts
     setFeedLoading(true);
     postsApi
       .feed(activeTab, 0, 20, ctrl.signal)
-      .then((res) => setFeedPosts(res.content.map(toSocialPost)))
+      .then((res) =>
+        setFeedPosts(
+          res.content.map((sp) => {
+            const p = toSocialPost(sp);
+            // Stamp ownership so a user's own posts never render a self-Follow button / self-follow call.
+            return { ...p, ownedByCurrentUser: p.creatorUserId === user.id };
+          })
+        )
+      )
       .catch((err) => {
         if (err?.name === "AbortError") return;
         setFeedPosts(null); // fall back to the local demo layer (unauth / offline / 404)
@@ -398,13 +414,22 @@ export default function CommunityPage() {
 
   // Like write-through: real server posts hit POST/DELETE /like; demo posts stay local.
   function handleToggleLike(post: SocialPost) {
-    handlePostUpdate(toggleLike(post)); // optimistic
+    handlePostUpdate(toggleLike(post)); // optimistic (toggleLike spreads — preserves save/repost/comments)
     if (post.serverId == null) return;
     const req = post.likedByCurrentUser
       ? postsApi.unlike(post.serverId)
       : postsApi.like(post.serverId);
     req
-      .then((server) => handlePostUpdate(toSocialPost(server))) // reconcile with REAL count
+      .then((server) => {
+        // Merge ONLY the like fields; a wholesale toSocialPost replace would clobber the user's
+        // local save/repost highlights and the commentCount.
+        const patch = (p: SocialPost): SocialPost =>
+          p.id === post.id
+            ? { ...p, likeCount: server.likeCount, likedByCurrentUser: server.likedByCurrentUser }
+            : p;
+        setFeedPosts((prev) => (prev ? prev.map(patch) : prev));
+        setState((prev) => (prev ? { ...prev, posts: prev.posts.map(patch) } : prev));
+      })
       .catch(() => handlePostUpdate(post)); // revert to the pre-toggle state
   }
 
@@ -431,8 +456,10 @@ export default function CommunityPage() {
     setSelectedPost(post);
   }
 
+  // Demo seeds are tagged "for-you"; map the Discover server feed to it so the offline fallback isn't empty.
+  const fallbackTab: CommunityTab = activeTab === "discover" ? "for-you" : activeTab;
   const localPosts = state
-    ? getFeedByTab(activeTab, state.posts, state.followedUsernames)
+    ? getFeedByTab(fallbackTab, state.posts, state.followedUsernames)
     : [];
   // Server feeds render REAL posts; on error/unauth they fall back to the local demo layer.
   const filteredPosts = isServerFeed(activeTab) ? feedPosts ?? localPosts : localPosts;
@@ -651,9 +678,11 @@ export default function CommunityPage() {
           }}
           onUpdate={(updated) => {
             setSelectedPost(updated);
-            setState((prev) =>
-              prev ? updatePostInState(prev, updated) : prev
-            );
+            handlePostUpdate(updated); // updates BOTH feedPosts and local state (not just state)
+          }}
+          onToggleLike={(p) => {
+            setSelectedPost(toggleLike(p)); // reflect immediately in the open dialog
+            handleToggleLike(p); // server write-through + feed/state update
           }}
           currentUserName={user?.name ?? undefined}
           currentUserHandle={user?.username ?? undefined}

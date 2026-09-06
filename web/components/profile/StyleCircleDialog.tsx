@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { follows, type UserResponse } from "@/lib/api";
+import { follows, type PublicUserSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { BadgeCheck, ExternalLink, MapPin } from "lucide-react";
@@ -34,7 +34,7 @@ interface CircleUser {
   styleAesthetics: string[];
 }
 
-function fromUserResponse(u: UserResponse): CircleUser {
+function fromUserResponse(u: PublicUserSummary): CircleUser {
   return {
     id: u.id,
     username: u.username ?? String(u.id),

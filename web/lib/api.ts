@@ -374,6 +374,17 @@ export interface FollowCounts {
   following: number;
 }
 
+/** Redacted user row for follower/following lists — no email/demographics (server-enforced). */
+export interface PublicUserSummary {
+  id: number;
+  username: string | null;
+  name: string | null;
+  role: "BUYER" | "DESIGNER" | "ADMIN";
+  styleAesthetics: string[];
+  avatarMode: AvatarMode | null;
+  avatarPreset: string | null;
+}
+
 export interface PostReport {
   id: number;
   postId: number;
@@ -429,9 +440,9 @@ export const follows = {
   status: (userId: number, signal?: AbortSignal) =>
     api.get<{ following: boolean }>(`/api/follows/${userId}/status`, { signal }),
   followers: (userId: number, page = 0, size = 20, signal?: AbortSignal) =>
-    api.get<Paged<UserResponse>>(`/api/follows/${userId}/followers?page=${page}&size=${size}`, { signal }),
+    api.get<Paged<PublicUserSummary>>(`/api/follows/${userId}/followers?page=${page}&size=${size}`, { signal }),
   following: (userId: number, page = 0, size = 20, signal?: AbortSignal) =>
-    api.get<Paged<UserResponse>>(`/api/follows/${userId}/following?page=${page}&size=${size}`, { signal }),
+    api.get<Paged<PublicUserSummary>>(`/api/follows/${userId}/following?page=${page}&size=${size}`, { signal }),
 };
 
 // ── Admin: community reports (Phase 6) ──────────────────────────────────────────

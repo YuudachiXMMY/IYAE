@@ -2,7 +2,7 @@ package com.iyae.controller;
 
 import com.iyae.dto.FollowCountsResponse;
 import com.iyae.dto.PagedResponse;
-import com.iyae.dto.UserResponse;
+import com.iyae.dto.PublicUserSummary;
 import com.iyae.entity.enums.Role;
 import com.iyae.service.FollowService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
@@ -33,13 +33,11 @@ class FollowControllerTest {
     @MockBean
     FollowService followService;
 
-    private UserResponse sampleUser() {
-        return new UserResponse(2L, "other@example.com", "Other User", Role.BUYER,
-                true, "otheruser", null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null);
+    private PublicUserSummary sampleUser() {
+        return new PublicUserSummary(2L, "otheruser", "Other User", Role.BUYER, null, null, null);
     }
 
-    private PagedResponse<UserResponse> pagedUsers() {
+    private PagedResponse<PublicUserSummary> pagedUsers() {
         return new PagedResponse<>(List.of(sampleUser()), 0, 20, 1L, 1, true);
     }
 
