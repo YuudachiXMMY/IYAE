@@ -5,24 +5,54 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { SOCIAL_PROFILES, findSocialProfile, type SocialProfile } from "@/lib/social-graph";
-import { cn, humanizeNumber } from "@/lib/utils";
+import { follows, type UserResponse } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { BadgeCheck, ExternalLink, MapPin } from "lucide-react";
 
 interface StyleCircleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Current user's numeric id — used to load the REAL follower/following graph. */
+  currentUserId: number;
+  /** Local demo follow graph (kept in sync on toggle; not the source of truth for counts). */
   followedUsernames: string[];
   onToggleFollow: (username: string) => void;
   initialTab?: "followers" | "following";
+}
+
+/** View-model for a real server user rendered in the circle. */
+interface CircleUser {
+  id: number;
+  username: string;
+  displayName: string;
+  bio: string;
+  isVerified: boolean;
+  avatarTone: [string, string];
+  location: string;
+  headline: string;
+  styleAesthetics: string[];
+}
+
+function fromUserResponse(u: UserResponse): CircleUser {
+  return {
+    id: u.id,
+    username: u.username ?? String(u.id),
+    displayName: u.name ?? u.username ?? String(u.id),
+    bio: "",
+    isVerified: u.role === "DESIGNER",
+    avatarTone: ["var(--color-muted)", "var(--color-card)"],
+    location: "",
+    headline: "",
+    styleAesthetics: u.styleAesthetics ?? [],
+  };
 }
 
 function GradientAvatar({
   profile,
   size = "sm",
 }: {
-  profile: SocialProfile;
+  profile: CircleUser;
   size?: "sm" | "lg";
 }) {
   const initial = profile.displayName.charAt(0).toUpperCase();
@@ -50,7 +80,7 @@ function UserListItem({
   onSelect,
   onToggleFollow,
 }: {
-  profile: SocialProfile;
+  profile: CircleUser;
   isFollowing: boolean;
   isSelected: boolean;
   onSelect: () => void;
@@ -75,7 +105,9 @@ function UserListItem({
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate">@{profile.username}</p>
-        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{profile.bio}</p>
+        {profile.bio && (
+          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{profile.bio}</p>
+        )}
       </div>
       <button
         onClick={(e) => {
@@ -100,7 +132,7 @@ function DetailCard({
   isFollowing,
   onToggleFollow,
 }: {
-  profile: SocialProfile;
+  profile: CircleUser;
   isFollowing: boolean;
   onToggleFollow: () => void;
 }) {
@@ -133,7 +165,9 @@ function DetailCard({
         </p>
       )}
 
-      <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>
+      {profile.bio && (
+        <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio}</p>
+      )}
 
       {profile.styleAesthetics.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -144,27 +178,6 @@ function DetailCard({
           ))}
         </div>
       )}
-
-      <div className="grid grid-cols-3 gap-2 py-3 border-y border-border">
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-sm font-bold text-foreground">
-            {humanizeNumber(profile.followerCount)}
-          </span>
-          <span className="text-xs text-muted-foreground">Followers</span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-sm font-bold text-foreground">
-            {humanizeNumber(profile.followingCount)}
-          </span>
-          <span className="text-xs text-muted-foreground">Following</span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-sm font-bold text-foreground">
-            {humanizeNumber(profile.outfitCount)}
-          </span>
-          <span className="text-xs text-muted-foreground">Outfits</span>
-        </div>
-      </div>
 
       <div className="flex gap-2 mt-auto">
         <button
@@ -193,32 +206,69 @@ function DetailCard({
 export function StyleCircleDialog({
   open,
   onOpenChange,
-  followedUsernames,
+  currentUserId,
   onToggleFollow,
   initialTab = "followers",
 }: StyleCircleDialogProps) {
   const [activeTab, setActiveTab] = useState<"followers" | "following">(initialTab);
-  const [selectedUsername, setSelectedUsername] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [followers, setFollowers] = useState<CircleUser[]>([]);
+  const [following, setFollowing] = useState<CircleUser[]>([]);
+  const [followedIds, setFollowedIds] = useState<Set<number>>(new Set());
 
   // Re-sync tab when dialog reopens with a different initialTab
   useEffect(() => {
     if (open) {
       setActiveTab(initialTab);
-      setSelectedUsername(null);
+      setSelectedUserId(null);
     }
   }, [open, initialTab]);
 
-  const followers = SOCIAL_PROFILES.slice(0, 5);
-
-  const following = followedUsernames
-    .map((username) => findSocialProfile(username))
-    .filter((profile): profile is SocialProfile => profile !== undefined);
+  // Load the REAL follower/following graph (replaces the old SOCIAL_PROFILES.slice(0,5) fabrication).
+  useEffect(() => {
+    if (!open) return;
+    const ctrl = new AbortController();
+    follows
+      .followers(currentUserId, 0, 50, ctrl.signal)
+      .then((p) => setFollowers(p.content.map(fromUserResponse)))
+      .catch(() => setFollowers([]));
+    follows
+      .following(currentUserId, 0, 50, ctrl.signal)
+      .then((p) => {
+        const mapped = p.content.map(fromUserResponse);
+        setFollowing(mapped);
+        setFollowedIds(new Set(mapped.map((u) => u.id)));
+      })
+      .catch(() => setFollowing([]));
+    return () => ctrl.abort();
+  }, [open, currentUserId]);
 
   const activeList = activeTab === "followers" ? followers : following;
 
-  const selectedProfile = selectedUsername
-    ? (findSocialProfile(selectedUsername) ?? null)
-    : null;
+  const selectedUser =
+    selectedUserId != null
+      ? [...followers, ...following].find((u) => u.id === selectedUserId) ?? null
+      : null;
+
+  function handleToggle(u: CircleUser) {
+    const willFollow = !followedIds.has(u.id);
+    setFollowedIds((prev) => {
+      const next = new Set(prev);
+      if (willFollow) next.add(u.id);
+      else next.delete(u.id);
+      return next;
+    });
+    onToggleFollow(u.username); // keep the local demo graph in sync
+    const req = willFollow ? follows.toggle(u.id) : follows.remove(u.id);
+    req.catch(() =>
+      setFollowedIds((prev) => {
+        const next = new Set(prev);
+        if (willFollow) next.delete(u.id);
+        else next.add(u.id);
+        return next;
+      })
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -234,7 +284,7 @@ export function StyleCircleDialog({
                     key={tab}
                     onClick={() => {
                       setActiveTab(tab);
-                      setSelectedUsername(null);
+                      setSelectedUserId(null);
                     }}
                     className={cn(
                       "px-4 py-1.5 text-xs font-semibold rounded-full capitalize transition-colors",
@@ -263,12 +313,12 @@ export function StyleCircleDialog({
                 <div className="flex flex-col gap-0.5">
                   {activeList.map((profile) => (
                     <UserListItem
-                      key={profile.username}
+                      key={profile.id}
                       profile={profile}
-                      isFollowing={followedUsernames.includes(profile.username)}
-                      isSelected={selectedUsername === profile.username}
-                      onSelect={() => setSelectedUsername(profile.username)}
-                      onToggleFollow={() => onToggleFollow(profile.username)}
+                      isFollowing={followedIds.has(profile.id)}
+                      isSelected={selectedUserId === profile.id}
+                      onSelect={() => setSelectedUserId(profile.id)}
+                      onToggleFollow={() => handleToggle(profile)}
                     />
                   ))}
                 </div>
@@ -280,11 +330,11 @@ export function StyleCircleDialog({
 
           {/* Right panel — detail card */}
           <div className="hidden md:flex flex-col">
-            {selectedProfile ? (
+            {selectedUser ? (
               <DetailCard
-                profile={selectedProfile}
-                isFollowing={followedUsernames.includes(selectedProfile.username)}
-                onToggleFollow={() => onToggleFollow(selectedProfile.username)}
+                profile={selectedUser}
+                isFollowing={followedIds.has(selectedUser.id)}
+                onToggleFollow={() => handleToggle(selectedUser)}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-8">

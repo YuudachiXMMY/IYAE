@@ -19,8 +19,10 @@ import {
   buildCurrentUserSeedPost,
   migrateCommunityState,
   buildInitialCommunityPosts,
+  toSocialPost,
 } from '@/lib/community-feed'
 import type { SocialPost, PostComment } from '@/lib/community-feed'
+import type { Post } from '@/lib/api'
 
 // Factory function for creating test posts
 function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
@@ -56,6 +58,89 @@ function makeComment(overrides: Partial<PostComment> = {}): PostComment {
     ...overrides,
   }
 }
+
+function makeServerPost(overrides: Partial<Post> = {}): Post {
+  return {
+    id: 42,
+    userId: 7,
+    username: 'real.user',
+    content: 'Real server post',
+    mediaUrls: ['https://cdn.example.com/look.jpg'],
+    status: 'ACTIVE',
+    likeCount: 12,
+    commentCount: 3,
+    likedByCurrentUser: true,
+    createdAt: '2026-09-06T12:00:00.000Z',
+    city: null,
+    topic: null,
+    savedLookId: null,
+    productIds: [],
+    ...overrides,
+  }
+}
+
+describe('toSocialPost adapter (Phase 6)', () => {
+  it('maps a server post to a SocialPost with REAL counts (never fabricated)', () => {
+    const sp = toSocialPost(makeServerPost({ likeCount: 12, likedByCurrentUser: true }))
+    expect(sp.likeCount).toBe(12) // REAL server aggregate
+    expect(sp.likedByCurrentUser).toBe(true)
+    expect(sp.serverId).toBe(42) // numeric id preserved for like/report write-through
+    expect(sp.creatorUserId).toBe(7)
+    expect(sp.id).toBe('server-42') // namespaced string id (no demo collision)
+    expect(sp.creatorUsername).toBe('real.user')
+    expect(sp.caption).toBe('Real server post')
+    expect(sp.image).toBe('https://cdn.example.com/look.jpg')
+  })
+
+  it('derives feedViews from city/topic and always includes discover', () => {
+    expect(toSocialPost(makeServerPost({ city: null, topic: null })).feedViews).toEqual(['discover'])
+    expect(toSocialPost(makeServerPost({ city: 'Toronto' })).feedViews).toContain('toronto')
+    expect(toSocialPost(makeServerPost({ topic: 'body-confidence' })).feedViews).toContain('body-confidence')
+  })
+
+  it('maps server status to the local lifecycle state', () => {
+    expect(toSocialPost(makeServerPost({ status: 'ACTIVE' })).lifecycleState).toBe('active')
+    expect(toSocialPost(makeServerPost({ status: 'ARCHIVED' })).lifecycleState).toBe('archived')
+    expect(toSocialPost(makeServerPost({ status: 'PENDING_DELETE' })).lifecycleState).toBe('pending_delete')
+  })
+
+  it('turns product ids into shop product links', () => {
+    const sp = toSocialPost(makeServerPost({ productIds: ['100', '200'] }))
+    expect(sp.productLinks).toHaveLength(2)
+    expect(sp.productLinks[0].href).toBe('/products/100')
+    expect(sp.productLinks[0].productId).toBe(100)
+  })
+
+  it('is pure — does not mutate its input', () => {
+    const input = makeServerPost({ city: 'Toronto' })
+    const snapshot = JSON.stringify(input)
+    toSocialPost(input)
+    expect(JSON.stringify(input)).toBe(snapshot)
+  })
+})
+
+describe('getFeedByTab — named server feeds (Phase 6)', () => {
+  const discoverPost = makePost({ id: 'd1', feedViews: ['discover'], lifecycleState: 'active' })
+  const torontoPost = makePost({ id: 't1', feedViews: ['discover', 'toronto'], lifecycleState: 'active' })
+  const bodyPost = makePost({ id: 'b1', feedViews: ['discover', 'body-confidence'], lifecycleState: 'active' })
+  const archivedToronto = makePost({ id: 't2', feedViews: ['discover', 'toronto'], lifecycleState: 'archived' })
+  const all = [discoverPost, torontoPost, bodyPost, archivedToronto]
+
+  it('discover returns every active post with the discover view', () => {
+    const ids = getFeedByTab('discover', all, []).map((p) => p.id)
+    expect(ids).toEqual(['d1', 't1', 'b1']) // archived excluded
+  })
+
+  it('toronto filters by the toronto feedView and excludes moderated posts', () => {
+    const ids = getFeedByTab('toronto', all, []).map((p) => p.id)
+    expect(ids).toEqual(['t1']) // t2 archived excluded
+  })
+
+  it('body-confidence filters by the body-confidence feedView', () => {
+    const ids = getFeedByTab('body-confidence', all, []).map((p) => p.id)
+    expect(ids).toEqual(['b1'])
+  })
+})
 
 describe('toggleLike', () => {
   it('increments likeCount and sets likedByCurrentUser to true when not liked', () => {

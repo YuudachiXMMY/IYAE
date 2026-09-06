@@ -17,11 +17,14 @@ import {
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import {
   admin,
+  adminReports,
   ApiError,
   type AdminProduct,
   type AdminProductStatus,
   type AdminPost,
   type AdminPostStatus,
+  type PostReport,
+  type CommunityReportStatus,
   type PromotionResponse,
   type PromotionSlotType,
 } from "@/lib/api";
@@ -29,6 +32,7 @@ import { toast } from "sonner";
 
 const PRODUCT_TABS = ["ALL", "PUBLISHED", "DRAFT", "ARCHIVED"] as const;
 const POST_TABS = ["ALL", "ACTIVE", "ARCHIVED", "PENDING_DELETE"] as const;
+const REPORT_TABS = ["OPEN", "RESOLVED", "DISMISSED"] as const;
 
 function formatPrice(price: number, currency: string) {
   return new Intl.NumberFormat("en-CA", {
@@ -371,6 +375,127 @@ function PromotionModeration() {
   );
 }
 
+// ── Report queue ─────────────────────────────────────────────────────────────────
+
+function ReportsModeration() {
+  const [tab, setTab] = useState<(typeof REPORT_TABS)[number]>("OPEN");
+  const [reports, setReports] = useState<PostReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [confirm, setConfirm] = useState<PostReport | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      // adminReports.list returns Paged<PostReport> — read .content (unlike the bare-array admin.* calls).
+      const res = await adminReports.list(tab as CommunityReportStatus);
+      setReports(res.content);
+    } catch {
+      setReports([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function resolve(
+    report: PostReport,
+    status: CommunityReportStatus,
+    removePost: boolean
+  ) {
+    try {
+      const updated = await adminReports.resolve(report.id, status, removePost);
+      setReports((prev) => prev.map((x) => (x.id === report.id ? updated : x)));
+      toast.success(removePost ? "Report resolved · post removed" : `Report ${title(status)}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Update failed");
+    }
+  }
+
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
+        {REPORT_TABS.map((t) => (
+          <Button
+            key={t}
+            size="sm"
+            variant={t === tab ? "default" : "outline"}
+            className="rounded-full"
+            onClick={() => setTab(t)}
+          >
+            {title(t)}
+          </Button>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : reports.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No reports.</p>
+      ) : (
+        <div className="flex flex-col divide-y divide-border/60 rounded-card border border-border/60 bg-card">
+          {reports.map((report) => (
+            <div key={report.id} className="flex flex-wrap items-center gap-3 p-4">
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm text-foreground">{report.reason}</p>
+                <p className="text-xs text-muted-foreground">
+                  Reported by {report.reporterUsername} · post #{report.postId}
+                </p>
+              </div>
+              <StatusBadge status={report.status} />
+              {report.status === "OPEN" && (
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" onClick={() => void resolve(report, "RESOLVED", false)}>
+                    Resolve
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => void resolve(report, "DISMISSED", false)}>
+                    Dismiss
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => setConfirm(report)}
+                  >
+                    Resolve &amp; remove post
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove reported post?</DialogTitle>
+            <DialogDescription>
+              This resolves the report and flags the post for deletion, hiding it from every feed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirm) void resolve(confirm, "RESOLVED", true);
+                setConfirm(null);
+              }}
+            >
+              Resolve &amp; remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, loading } = useRequireAuth("ADMIN");
 
@@ -402,6 +527,7 @@ export default function AdminPage() {
           <TabsList>
             <TabsTrigger value="catalog">Catalog</TabsTrigger>
             <TabsTrigger value="community">Community</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
             <TabsTrigger value="promotions">Promotions</TabsTrigger>
           </TabsList>
           <TabsContent value="catalog">
@@ -409,6 +535,9 @@ export default function AdminPage() {
           </TabsContent>
           <TabsContent value="community">
             <CommunityModeration />
+          </TabsContent>
+          <TabsContent value="reports">
+            <ReportsModeration />
           </TabsContent>
           <TabsContent value="promotions">
             <PromotionModeration />

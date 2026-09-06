@@ -12,6 +12,7 @@ import {
   toggleFollow,
   updatePostInState,
   buildOutfitGeneratorHref,
+  toSocialPost,
   type SocialPost,
   type CommunityTab,
 } from "@/lib/community-feed";
@@ -19,7 +20,14 @@ import {
   SOCIAL_PROFILES,
   findSocialProfile,
 } from "@/lib/social-graph";
+import {
+  posts as postsApi,
+  follows as followsApi,
+  type CommunityFeedType,
+} from "@/lib/api";
+import { BRAND } from "@/lib/brand";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
+import { CreateFashionPostDialog } from "@/components/profile/CreateFashionPostDialog";
 import { NavBar } from "@/components/NavBar";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -28,6 +36,8 @@ import {
   Bookmark,
   Compass,
   Heart,
+  HeartHandshake,
+  MapPin,
   MessageCircleMore,
   Repeat2,
   Search,
@@ -37,9 +47,31 @@ import {
 import { cn, humanizeNumber } from "@/lib/utils";
 import { PostMedia } from "@/components/community/PostMedia";
 
+// The four server-backed named feeds hit GET /api/posts?feed=; saved/reposted stay LOCAL.
+const SERVER_FEEDS: CommunityFeedType[] = ["following", "discover", "toronto", "body-confidence"];
+
+function isServerFeed(tab: CommunityTab): tab is CommunityFeedType {
+  return (SERVER_FEEDS as string[]).includes(tab);
+}
+
+/** Relative label for a server ISO timestamp; demo posts already carry a short label. */
+function formatPostedAt(postedAt: string): string {
+  const t = Date.parse(postedAt);
+  if (Number.isNaN(t)) return `${postedAt} ago`;
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// Phase 6: four named server feeds first, then the local personal collections.
 const TABS: { key: CommunityTab; label: string }[] = [
-  { key: "for-you", label: "For you" },
   { key: "following", label: "Following" },
+  { key: "discover", label: "Discover" },
+  { key: "toronto", label: "Toronto" },
+  { key: "body-confidence", label: "Body confidence" },
   { key: "saved", label: "Saved" },
   { key: "reposted", label: "Reposted" },
 ];
@@ -53,10 +85,25 @@ const EMPTY_STATE: Record<
     title: "Nothing here yet",
     description: "Check back soon for fresh style inspiration.",
   },
+  discover: {
+    icon: Sparkles,
+    title: "Nothing to discover yet",
+    description: "Be the first to share a look with the community.",
+  },
   following: {
     icon: Compass,
-    title: "Your following feed is empty",
-    description: "Follow creators to see their latest looks here.",
+    title: "Your Following feed is empty",
+    description: "Follow people to fill your Following feed.",
+  },
+  toronto: {
+    icon: MapPin,
+    title: "No Toronto looks yet",
+    description: "Local style from your city will show up here.",
+  },
+  "body-confidence": {
+    icon: HeartHandshake,
+    title: "No body-confidence posts yet",
+    description: "A space for honest, real-body style. Share yours.",
   },
   saved: {
     icon: Bookmark,
@@ -75,7 +122,8 @@ interface PostCardProps {
   state: { followedUsernames: string[]; posts: SocialPost[] };
   index: number;
   onPostUpdate: (updatedPost: SocialPost) => void;
-  onToggleFollow: (username: string) => void;
+  onToggleLike: (post: SocialPost) => void;
+  onToggleFollow: (post: SocialPost) => void;
   onOpenDetail: (post: SocialPost) => void;
 }
 
@@ -84,6 +132,7 @@ function PostCard({
   state,
   index,
   onPostUpdate,
+  onToggleLike,
   onToggleFollow,
   onOpenDetail,
 }: PostCardProps) {
@@ -129,7 +178,7 @@ function PostCard({
 
         {!post.ownedByCurrentUser && (
           <button
-            onClick={() => onToggleFollow(post.creatorUsername)}
+            onClick={() => onToggleFollow(post)}
             className={cn(
               "rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-all duration-200",
               isFollowing
@@ -148,7 +197,7 @@ function PostCard({
       {/* Action buttons */}
       <div className="px-5 py-3 flex items-center gap-1">
         <button
-          onClick={() => onPostUpdate(toggleLike(post))}
+          onClick={() => onToggleLike(post)}
           className={cn(
             "p-2 rounded-full transition-all duration-200",
             post.likedByCurrentUser
@@ -216,7 +265,7 @@ function PostCard({
         </p>
 
         <p className="text-xs text-muted-foreground mt-2">
-          {post.postedAt} ago
+          {formatPostedAt(post.postedAt)}
         </p>
 
         {post.comments.length > 0 ? (
@@ -295,9 +344,16 @@ export default function CommunityPage() {
     followedUsernames: string[];
     posts: SocialPost[];
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<CommunityTab>("for-you");
+  const [activeTab, setActiveTab] = useState<CommunityTab>("discover");
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [creatorSearch, setCreatorSearch] = useState("");
+
+  const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [feedRefreshKey, setFeedRefreshKey] = useState(0);
+
+  // Server feed (the 4 named feeds). null = not loaded / fell back to the local demo layer.
+  const [feedPosts, setFeedPosts] = useState<SocialPost[] | null>(null);
+  const [feedLoading, setFeedLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -314,21 +370,72 @@ export default function CommunityPage() {
     if (user && state) saveCommunityState(String(user.id), state);
   }, [state, user]);
 
+  // Fetch the selected server feed; degrade gracefully to the localStorage demo on error/offline.
+  useEffect(() => {
+    if (!user || !isServerFeed(activeTab)) {
+      setFeedPosts(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    setFeedLoading(true);
+    postsApi
+      .feed(activeTab, 0, 20, ctrl.signal)
+      .then((res) => setFeedPosts(res.content.map(toSocialPost)))
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        setFeedPosts(null); // fall back to the local demo layer (unauth / offline / 404)
+      })
+      .finally(() => setFeedLoading(false));
+    return () => ctrl.abort();
+  }, [user, activeTab, feedRefreshKey]);
+
   function handlePostUpdate(updatedPost: SocialPost) {
     setState((prev) => (prev ? updatePostInState(prev, updatedPost) : prev));
+    setFeedPosts((prev) =>
+      prev ? prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)) : prev
+    );
   }
 
-  function handleToggleFollow(username: string) {
+  // Like write-through: real server posts hit POST/DELETE /like; demo posts stay local.
+  function handleToggleLike(post: SocialPost) {
+    handlePostUpdate(toggleLike(post)); // optimistic
+    if (post.serverId == null) return;
+    const req = post.likedByCurrentUser
+      ? postsApi.unlike(post.serverId)
+      : postsApi.like(post.serverId);
+    req
+      .then((server) => handlePostUpdate(toSocialPost(server))) // reconcile with REAL count
+      .catch(() => handlePostUpdate(post)); // revert to the pre-toggle state
+  }
+
+  // Demo follow (sidebar creators have no server id) — local graph only.
+  function handleFollowDemo(username: string) {
     setState((prev) => (prev ? toggleFollow(prev, username) : prev));
+  }
+
+  // Real follow for server-backed post authors; optimistic local mirror + revert on failure.
+  function handleToggleFollowReal(post: SocialPost) {
+    const username = post.creatorUsername;
+    const currentlyFollowing = state?.followedUsernames.includes(username) ?? false;
+    setState((prev) => (prev ? toggleFollow(prev, username) : prev));
+    if (post.creatorUserId == null) return;
+    const req = currentlyFollowing
+      ? followsApi.remove(post.creatorUserId)
+      : followsApi.toggle(post.creatorUserId);
+    req.catch(() =>
+      setState((prev) => (prev ? toggleFollow(prev, username) : prev))
+    );
   }
 
   function handleOpenDetail(post: SocialPost) {
     setSelectedPost(post);
   }
 
-  const filteredPosts = state
+  const localPosts = state
     ? getFeedByTab(activeTab, state.posts, state.followedUsernames)
     : [];
+  // Server feeds render REAL posts; on error/unauth they fall back to the local demo layer.
+  const filteredPosts = isServerFeed(activeTab) ? feedPosts ?? localPosts : localPosts;
 
   const filteredCreators = SOCIAL_PROFILES.filter(
     (p) =>
@@ -356,11 +463,20 @@ export default function CommunityPage() {
         <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
           {/* Header — editorial, no redundancy */}
           <h1 className="font-display text-4xl sm:text-5xl tracking-[-0.04em] text-foreground">
-            Communette
+            {BRAND.name} Community
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 mb-6">
+          <p className="text-sm text-muted-foreground mt-1 mb-4">
             Discover looks, follow creators, and find your next outfit.
           </p>
+
+          {user && (
+            <button
+              onClick={() => setCreatePostOpen(true)}
+              className="mb-6 inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-background hover:opacity-80 active:scale-[0.98] transition-all duration-200"
+            >
+              <Share2 size={14} /> Share a Look
+            </button>
+          )}
 
           {/* Tab bar */}
           <div className="rounded-[2.4rem] bg-card/80 backdrop-blur-xl p-1.5 flex gap-1 shadow-heavy mb-8">
@@ -391,7 +507,7 @@ export default function CommunityPage() {
               {SOCIAL_PROFILES.map((profile) => (
                 <button
                   key={profile.username}
-                  onClick={() => handleToggleFollow(profile.username)}
+                  onClick={() => handleFollowDemo(profile.username)}
                   className="flex flex-col items-center gap-1.5 shrink-0 group"
                 >
                   <div
@@ -421,22 +537,29 @@ export default function CommunityPage() {
             {/* Left: Post Feed */}
             <div className="space-y-6">
               {filteredPosts.length === 0 ? (
-                <div className="rounded-[2.4rem] bg-card/75 backdrop-blur-xl shadow-heavy py-20 text-center">
-                  <EmptyIcon size={32} className="mx-auto text-muted-foreground/50 mb-4" strokeWidth={1.5} />
-                  <p className="text-foreground font-medium">{emptyConfig.title}</p>
-                  <p className="mt-1.5 text-sm text-muted-foreground max-w-xs mx-auto">
-                    {emptyConfig.description}
-                  </p>
-                </div>
+                feedLoading ? (
+                  <div className="rounded-[2.4rem] bg-card/75 backdrop-blur-xl shadow-heavy py-20 text-center">
+                    <p className="text-sm text-muted-foreground">Loading feed…</p>
+                  </div>
+                ) : (
+                  <div className="rounded-[2.4rem] bg-card/75 backdrop-blur-xl shadow-heavy py-20 text-center">
+                    <EmptyIcon size={32} className="mx-auto text-muted-foreground/50 mb-4" strokeWidth={1.5} />
+                    <p className="text-foreground font-medium">{emptyConfig.title}</p>
+                    <p className="mt-1.5 text-sm text-muted-foreground max-w-xs mx-auto">
+                      {emptyConfig.description}
+                    </p>
+                  </div>
+                )
               ) : (
                 filteredPosts.map((post, index) => (
                   <PostCard
                     key={post.id}
                     post={post}
-                    state={state!}
+                    state={state ?? { followedUsernames: [], posts: [] }}
                     index={index}
                     onPostUpdate={handlePostUpdate}
-                    onToggleFollow={handleToggleFollow}
+                    onToggleLike={handleToggleLike}
+                    onToggleFollow={handleToggleFollowReal}
                     onOpenDetail={handleOpenDetail}
                   />
                 ))
@@ -498,7 +621,7 @@ export default function CommunityPage() {
                         </span>
                       </div>
                       <button
-                        onClick={() => handleToggleFollow(profile.username)}
+                        onClick={() => handleFollowDemo(profile.username)}
                         className={cn(
                           "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-all duration-200 shrink-0",
                           state?.followedUsernames.includes(profile.username)
@@ -534,6 +657,16 @@ export default function CommunityPage() {
           }}
           currentUserName={user?.name ?? undefined}
           currentUserHandle={user?.username ?? undefined}
+        />
+      )}
+
+      {user && (
+        <CreateFashionPostDialog
+          open={createPostOpen}
+          onOpenChange={setCreatePostOpen}
+          onSubmit={() => setFeedRefreshKey((k) => k + 1)}
+          currentUsername={user.username ?? ""}
+          currentDisplayName={user.name ?? ""}
         />
       )}
     </>

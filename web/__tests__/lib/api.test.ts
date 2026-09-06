@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { api, auth, admin, avatar, sizing, ApiError } from '@/lib/api'
+import { api, auth, admin, avatar, sizing, ApiError, posts, follows, adminReports } from '@/lib/api'
 import type { RegisterRequest, UpdateProfileRequest, UserResponse, ProfileVisibility, AvatarMode, SizeRecommendationResponse } from '@/lib/api'
 
 describe('api', () => {
@@ -254,6 +254,86 @@ describe('api', () => {
       expect(init.method).toBe('GET')
       expect(init.signal).toBe(controller.signal)
       expect(result).toEqual(body)
+    })
+  })
+
+  describe('posts + follows (Phase 6)', () => {
+    it('posts.feed builds the feed URL with feed/page/size + signal', async () => {
+      mockFetch.mockResolvedValue(
+        makeResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, last: true })
+      )
+      const controller = new AbortController()
+
+      await posts.feed('toronto', 1, 10, controller.signal)
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/posts?feed=toronto&page=1&size=10')
+      expect(init.method).toBe('GET')
+      expect(init.signal).toBe(controller.signal)
+    })
+
+    it('posts.create POSTs the Share-a-Look payload', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 1 }))
+
+      await posts.create({
+        content: 'hi',
+        savedLookId: 5,
+        productIds: ['100'],
+        topic: 'body-confidence',
+        city: 'Toronto',
+      })
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/posts')
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toMatchObject({
+        savedLookId: 5,
+        productIds: ['100'],
+        topic: 'body-confidence',
+        city: 'Toronto',
+      })
+    })
+
+    it('posts.like POSTs and posts.unlike DELETEs the toggle endpoint', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 1 }))
+      await posts.like(9)
+      await posts.unlike(9)
+      expect((mockFetch.mock.calls[0] as [string, RequestInit])[0]).toBe('/api/posts/9/like')
+      expect((mockFetch.mock.calls[0] as [string, RequestInit])[1].method).toBe('POST')
+      expect((mockFetch.mock.calls[1] as [string, RequestInit])[1].method).toBe('DELETE')
+    })
+
+    it('posts.report POSTs a reason', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 1, status: 'OPEN' }))
+      await posts.report(9, 'spam')
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/posts/9/report')
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({ reason: 'spam' })
+    })
+
+    it('follows.counts GETs the counts endpoint', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ followers: 3, following: 5 }))
+      const result = await follows.counts(7)
+      const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/follows/7/counts')
+      expect(result).toEqual({ followers: 3, following: 5 })
+    })
+
+    it('follows.toggle POSTs and follows.remove DELETEs', async () => {
+      mockFetch.mockResolvedValue(makeResponse({}, 204))
+      await follows.toggle(7)
+      await follows.remove(7)
+      expect((mockFetch.mock.calls[0] as [string, RequestInit])[1].method).toBe('POST')
+      expect((mockFetch.mock.calls[1] as [string, RequestInit])[1].method).toBe('DELETE')
+    })
+
+    it('adminReports.resolve builds the resolve query', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 1, status: 'RESOLVED' }))
+      await adminReports.resolve(1, 'RESOLVED', true)
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/reports/1/resolve?status=RESOLVED&removePost=true')
+      expect(init.method).toBe('PUT')
     })
   })
 })

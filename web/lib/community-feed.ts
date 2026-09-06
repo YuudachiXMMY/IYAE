@@ -1,8 +1,13 @@
 "use client";
 
+// Type-only import (erased at build) — keeps this pure module free of the runtime api client.
+import type { Post, CommunityPostStatus } from "@/lib/api";
+
 export type PostType = "outfit_photo" | "ai_outfit" | "wearing_it" | "ar_try_on";
-export type FeedView = "for-you" | "following";
-export type CommunityTab = "for-you" | "following" | "saved" | "reposted";
+// Phase 6: the three server-backed named feeds join the local views. `saved`/`reposted`
+// stay LOCAL personal collections (not server feeds); CommunityTab = FeedView ∪ those.
+export type FeedView = "for-you" | "following" | "discover" | "toronto" | "body-confidence";
+export type CommunityTab = FeedView | "saved" | "reposted";
 export type LifecycleState = "active" | "archived" | "pending_delete";
 
 export interface ProductLink {
@@ -35,6 +40,10 @@ export interface PostComment {
 
 export interface SocialPost {
   id: string;
+  /** Numeric server post id when server-backed — enables like/report write-through. */
+  serverId?: number;
+  /** Numeric author id when server-backed — enables real follow write-through. */
+  creatorUserId?: number;
   creatorUsername: string;
   creatorName: string;
   image: string;
@@ -299,9 +308,66 @@ export function getFeedByTab(
       return active.filter((p) => p.savedByCurrentUser === true);
     case "reposted":
       return active.filter((p) => p.repostedByCurrentUser === true);
+    case "discover":
+    case "toronto":
+    case "body-confidence":
+      return active.filter((p) => p.feedViews.includes(tab));
     default:
       return active;
   }
+}
+
+// ── Server adapter (Phase 6) ────────────────────────────────────────────────────
+
+function toLifecycleState(status: CommunityPostStatus): LifecycleState {
+  switch (status) {
+    case "ARCHIVED":
+      return "archived";
+    case "PENDING_DELETE":
+      return "pending_delete";
+    default:
+      return "active";
+  }
+}
+
+/**
+ * Maps a server {@link Post} to the UI {@link SocialPost}. Pure + deterministic
+ * (no Date.now / network / localStorage). Counts are passed through verbatim — REAL
+ * server aggregates, never fabricated. The string `id` is namespaced (`server-<id>`)
+ * so server posts never collide with demo/user posts; `serverId`/`creatorUserId`
+ * carry the numeric ids for like/report/follow write-through.
+ */
+export function toSocialPost(serverPost: Post): SocialPost {
+  const feedViews: FeedView[] = ["discover"];
+  if (serverPost.city) feedViews.push("toronto");
+  if (serverPost.topic === "body-confidence") feedViews.push("body-confidence");
+  return {
+    id: `server-${serverPost.id}`,
+    serverId: serverPost.id,
+    creatorUserId: serverPost.userId,
+    creatorUsername: serverPost.username,
+    creatorName: serverPost.username,
+    image: serverPost.mediaUrls[0] ?? "/assets/images/products/placeholder.svg",
+    caption: serverPost.content ?? "",
+    postedAt: serverPost.createdAt,
+    type: "outfit_photo",
+    tags: serverPost.topic ? [serverPost.topic] : [],
+    productLinks: serverPost.productIds.map((pid, i) => ({
+      id: `server-${serverPost.id}-pl-${i}`,
+      label: "Shop this item",
+      href: `/products/${pid}`,
+      productId: Number(pid),
+    })),
+    feedViews,
+    likeCount: serverPost.likeCount,
+    comments: [],
+    likedByCurrentUser: serverPost.likedByCurrentUser,
+    savedByCurrentUser: false,
+    repostedByCurrentUser: false,
+    lifecycleState: toLifecycleState(serverPost.status),
+    deleteRequestedAt: null,
+    taggedUsernames: [],
+  };
 }
 
 export function toggleLike(post: SocialPost): SocialPost {
