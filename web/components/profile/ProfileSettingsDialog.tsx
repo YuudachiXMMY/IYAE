@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { LocalImagePicker } from "@/components/profile/LocalImagePicker";
 import { getBodyMeasurementCoverage } from "@/lib/profile-dashboard";
 import { STYLE_AESTHETICS, FIT_PREFERENCES } from "@/lib/profile-options";
-import { api, auth, ApiError } from "@/lib/api";
+import { api, auth, avatar, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Lock, Camera } from "lucide-react";
@@ -99,8 +99,24 @@ export function ProfileSettingsDialog({
   });
   const [savingMeasurements, setSavingMeasurements] = useState(false);
 
+  // Privacy: one-tap delete of avatar + body data (two-step confirm — irreversible)
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingData, setDeletingData] = useState(false);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  // Move focus to Cancel when entering the two-step confirm so keyboard/SR users are
+  // not left on <body>, one blind activation away from an irreversible delete (M10).
+  useEffect(() => {
+    if (confirmingDelete) cancelDeleteRef.current?.focus();
+  }, [confirmingDelete]);
+
   // Re-sync local state when dialog reopens with fresh props
   useEffect(() => {
+    // Clear the two-step delete confirm on every open/close toggle so a user who
+    // enters confirm mode then dismisses (Esc/outside-click) never reopens into
+    // "Confirm delete" — one accidental tap would irreversibly purge their data.
+    setConfirmingDelete(false);
+    setDeletingData(false);
     if (!open) return;
     setName(user.name ?? "");
     setUsername(user.username ?? "");
@@ -196,6 +212,26 @@ export function ProfileSettingsDialog({
       setSavingMeasurements(false);
     }
   }, [measurements]);
+
+  const handleDeleteBodyData = useCallback(async () => {
+    setDeletingData(true);
+    try {
+      await avatar.delete();
+      toast.success("Your body data was deleted");
+      setConfirmingDelete(false);
+      // Clear the local measurement editor so the UI reflects the purge immediately.
+      setMeasurements(() => {
+        const cleared: Record<string, string> = {};
+        for (const { key } of MEASUREMENT_FIELDS) cleared[key] = "";
+        return cleared;
+      });
+      onUserRefresh();
+    } catch {
+      toast.error("Failed to delete body data");
+    } finally {
+      setDeletingData(false);
+    }
+  }, [onUserRefresh]);
 
   const handleActiveTabSave = useCallback(() => {
     if (activeTab === "edit-profile") return handleSaveProfile();
@@ -376,6 +412,50 @@ export function ProfileSettingsDialog({
                   <Lock className="w-3.5 h-3.5" />
                   <span>Always private</span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Delete body data</p>
+                  <p className="text-xs text-muted-foreground">
+                    Permanently removes your avatar and measurements. This cannot be undone.
+                  </p>
+                </div>
+                {confirmingDelete ? (
+                  <div className="flex gap-2" aria-live="polite">
+                    <Button
+                      ref={cancelDeleteRef}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full text-xs"
+                      disabled={deletingData}
+                      onClick={() => setConfirmingDelete(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="rounded-full text-xs"
+                      disabled={deletingData}
+                      onClick={handleDeleteBodyData}
+                    >
+                      {deletingData ? "Deleting..." : "Confirm delete"}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="rounded-full text-xs"
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    Delete my avatar &amp; body data
+                  </Button>
+                )}
               </div>
             </div>
           </TabsContent>

@@ -9,23 +9,23 @@ import java.util.Map;
 public class MockAIProvider implements AIProvider {
 
     private static final String OUTFIT_RESPONSE =
-        "I've put together the perfect outfit for you!\n\n" +
-        "[GENERATE_OUTFIT]{\"event\":\"dinner date\",\"style\":\"elegant\",\"colorPalette\":[\"black\",\"gold\"]}[/GENERATE_OUTFIT]";
+        "Done — here's the look I'd actually put you in.\n\n" +
+        "[GENERATE_OUTFIT]{\"event\":\"dinner date\",\"style\":\"elegant\",\"colorPalette\":[\"black\",\"gold\"],\"weather\":\"cold, light snow\",\"mood\":\"confident\"}[/GENERATE_OUTFIT]";
 
     private static final List<String> STEP_RESPONSES = List.of(
-        "Welcome to IYAE! I'm your personal AI stylist. What's the occasion you're dressing for?" +
+        "Hey, I'm your IYAE stylist. Tell me what you're dressing for and I'll pull together one look worth keeping." +
         "\n\n[SUGGESTIONS][\"Date night\",\"Help me figure it out\",\"Surprise me!\"][/SUGGESTIONS]",
-        "That sounds like a wonderful event! Tell me more about the vibe — is it formal, casual, or somewhere in between?" +
+        "Love it. Give me the vibe — are we going polished, easygoing, or somewhere in the middle?" +
         "\n\n[SUGGESTIONS][\"Formal and elegant\",\"Smart casual\",\"Skip ahead to styles\"][/SUGGESTIONS]",
-        "Great context! Now let's talk style. Do you lean toward classic elegance, modern minimalism, or something bold and expressive?" +
+        "Got it. My instinct is clean lines with one confident detail — does that sound like you, or should we go bolder?" +
         "\n\n[SUGGESTIONS][\"Classic elegance\",\"Bold and expressive\",\"Show me what's trending\"][/SUGGESTIONS]",
-        "Love that! Colors can really make an outfit. Do you have any favorite colors, or shades you'd like to avoid?" +
+        "Good call. Any colors you reach for — or ones you'd rather skip? I'll build around it." +
         "\n\n[SUGGESTIONS][\"Warm earth tones\",\"Cool blues and greens\",\"You pick for me\"][/SUGGESTIONS]",
-        "Perfect. Any practical considerations — budget range, weather, or dress code requirements I should keep in mind?" +
+        "Noted. It's chilly out there today, so I'll plan for warmth without losing the shape. Anything else — budget or dress code?" +
         "\n\n[SUGGESTIONS][\"Under $200\",\"No constraints\",\"Let's build the outfit!\"][/SUGGESTIONS]",
-        "I'm getting a clear picture of your ideal look. I'm thinking something chic yet comfortable — shall I sketch out an outfit direction for you?" +
+        "I've got a clear picture now — elegant, weather-smart, and unmistakably you. Want me to put the full look together?" +
         "\n\n[SUGGESTIONS][\"Yes, sketch it out!\",\"Tweak a few things\",\"Generate my outfit now!\"][/SUGGESTIONS]",
-        "Based on everything you've shared, I have the perfect outfit in mind. Ready for me to put it all together?" +
+        "Say the word and I'll finalize it — one decisive look, no second-guessing." +
         "\n\n[SUGGESTIONS][\"Yes, put it together!\",\"Swap the shoes\",\"Add an accessory\"][/SUGGESTIONS]"
     );
 

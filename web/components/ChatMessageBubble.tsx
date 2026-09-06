@@ -2,35 +2,12 @@
 
 import DOMPurify from "dompurify";
 import { OutfitCard } from "@/components/OutfitCard";
-
-interface OutfitItem {
-  slot: "top" | "bottom" | "shoes" | "accessory";
-  productId: number;
-  productName: string;
-  productPrice: number;
-  category: string;
-  media: string[];
-  glbUrl?: string;
-}
-
-interface OutfitResponse {
-  id: number | null;
-  items: OutfitItem[];
-  explanation: string;
-}
-
-interface ChatMessage {
-  id: number;
-  role: "USER" | "ASSISTANT";
-  content: string;
-  outfit?: OutfitResponse | null;
-  outfitRecommendationId?: number | null;
-  suggestions?: string[];
-  createdAt: string;
-}
+import type { ChatMessage } from "@/lib/api";
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
+  /** The user's avatar GLB URL, threaded to the inline OutfitCard try-on preview */
+  avatarUrl?: string | null;
 }
 
 /** Strip [GENERATE_OUTFIT]...[/GENERATE_OUTFIT] markers from AI responses */
@@ -60,7 +37,7 @@ function formatTimestamp(isoString: string): string {
   });
 }
 
-export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
+export function ChatMessageBubble({ message, avatarUrl }: ChatMessageBubbleProps) {
   const isUser = message.role === "USER";
   const cleanContent = isUser
     ? message.content
@@ -106,6 +83,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           <OutfitCard
             outfit={message.outfit}
             outfitId={message.outfitRecommendationId}
+            avatarUrl={avatarUrl}
           />
         )}
         <span className="text-[10px] text-muted-foreground/40 px-1">

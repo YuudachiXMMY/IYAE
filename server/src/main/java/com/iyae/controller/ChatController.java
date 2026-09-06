@@ -3,7 +3,9 @@ package com.iyae.controller;
 import com.iyae.dto.ChatMessageRequest;
 import com.iyae.dto.ChatMessageResponse;
 import com.iyae.dto.ChatSessionResponse;
+import com.iyae.dto.WeatherResponse;
 import com.iyae.service.ChatService;
+import com.iyae.service.WeatherService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,15 @@ import java.util.List;
 public class ChatController {
 
     private final ChatService chatService;
+    private final WeatherService weatherService;
+
+    @GetMapping("/weather")
+    public ResponseEntity<WeatherResponse> getWeather() {
+        WeatherResponse response = weatherService.getCurrentToronto()
+            .map(w -> new WeatherResponse(w.temperatureC(), w.feelsLikeC(), w.condition(), true))
+            .orElse(new WeatherResponse(null, null, null, false));
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping("/sessions")
     public ResponseEntity<ChatSessionResponse> createSession(Authentication authentication) {

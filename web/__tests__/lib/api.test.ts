@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { api, auth, admin, ApiError } from '@/lib/api'
-import type { RegisterRequest, UpdateProfileRequest, UserResponse, ProfileVisibility, AvatarMode } from '@/lib/api'
+import { api, auth, admin, avatar, sizing, ApiError } from '@/lib/api'
+import type { RegisterRequest, UpdateProfileRequest, UserResponse, ProfileVisibility, AvatarMode, SizeRecommendationResponse } from '@/lib/api'
 
 describe('api', () => {
   const mockFetch = vi.fn()
@@ -211,6 +211,49 @@ describe('api', () => {
       expect(url).toBe('/api/admin/promotions/3/slot')
       expect(init.method).toBe('PUT')
       expect(JSON.parse(init.body as string)).toEqual({ slotType: 'FEATURED' })
+    })
+  })
+
+  describe('avatar', () => {
+    it('avatar.delete calls DELETE /api/avatar', async () => {
+      mockFetch.mockResolvedValue(makeResponse({}, 204))
+
+      await avatar.delete()
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/avatar')
+      expect(init.method).toBe('DELETE')
+    })
+
+    it('avatar.getStatus calls GET /api/avatar/status', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ status: 'READY', glbUrl: null, errorMessage: null, retryCount: 0 }))
+
+      await avatar.getStatus()
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/avatar/status')
+      expect(init.method).toBe('GET')
+    })
+  })
+
+  describe('sizing', () => {
+    it('sizing.getRecommendedSize calls GET the recommended-size URL with the signal', async () => {
+      const body: SizeRecommendationResponse = {
+        recommendedSize: 'M',
+        basis: 'MEASUREMENT_CHART',
+        confidence: 0.8,
+        availableSizes: ['S', 'M', 'L'],
+      }
+      mockFetch.mockResolvedValue(makeResponse(body))
+      const controller = new AbortController()
+
+      const result = await sizing.getRecommendedSize(42, controller.signal)
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/products/42/recommended-size')
+      expect(init.method).toBe('GET')
+      expect(init.signal).toBe(controller.signal)
+      expect(result).toEqual(body)
     })
   })
 })

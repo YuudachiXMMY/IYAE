@@ -80,6 +80,104 @@ test.describe('AI Stylist chat flow', () => {
     }
   });
 
+  test('weather chip renders current conditions when weather is available', async ({ page }) => {
+    // Deterministic path: stub /api/chat/weather so the chip MUST render the data.
+    await page.route('**/api/chat/weather', (route) =>
+      route.fulfill({
+        json: { temperatureC: 18, feelsLikeC: 17, condition: 'Clear sky', available: true },
+      })
+    );
+    await page.goto('/chat');
+
+    // Both header chips (mobile + desktop) are always mounted and share one fetch;
+    // assert the chip actually reflects the stubbed weather rather than "is a boolean".
+    const chip = page.getByRole('status', { name: /current weather/i }).first();
+    await expect(chip).toContainText('Toronto', { timeout: 8000 });
+    await expect(chip).toContainText('18°C');
+    await expect(chip).toContainText('Clear sky');
+  });
+
+  test('weather chip is gracefully absent when weather is unavailable', async ({ page }) => {
+    await page.route('**/api/chat/weather', (route) =>
+      route.fulfill({
+        json: { temperatureC: null, feelsLikeC: null, condition: null, available: false },
+      })
+    );
+    const weatherResponse = page.waitForResponse('**/api/chat/weather');
+    await page.goto('/chat');
+    await weatherResponse;
+
+    // available:false → the chip renders nothing so the header degrades gracefully.
+    await expect(page.getByRole('status', { name: /current weather/i })).toHaveCount(0);
+  });
+
+  test('welcome screen shows occasion and mood quick-pick chips', async ({ page }) => {
+    await page.goto('/chat');
+    await expect(page.getByText('Your AI stylist')).toBeVisible({ timeout: 10000 });
+    // Occasion/mood chips render as accessible suggestion groups.
+    await expect(page.getByText('Occasion')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Mood')).toBeVisible();
+  });
+
+  test('inline "Try on my avatar" toggle expands the avatar preview', async ({ page }) => {
+    test.slow();
+    // Deterministically satisfy both preconditions for the try-on button:
+    // (1) the user has an avatar, and (2) the recommended outfit carries a garment GLB.
+    await page.route('**/api/avatar', (route) =>
+      route.fulfill({ json: { avatarUrl: '/assets/test-avatar.glb', status: 'READY' } })
+    );
+    // Seed one ACTIVE session so the send flow skips session creation (no reload race).
+    await page.route('**/api/chat/sessions', (route) =>
+      route.fulfill({ json: [{ id: 4242, status: 'ACTIVE', createdAt: '2026-01-01T00:00:00Z' }] })
+    );
+    await page.route('**/api/chat/sessions/*/messages', (route) => {
+      if (route.request().method() === 'POST') {
+        return route.fulfill({
+          json: {
+            id: 9001,
+            role: 'ASSISTANT',
+            content: "Here's a breezy summer look.",
+            outfit: {
+              id: 9001,
+              explanation: 'Light layers for a warm day.',
+              items: [
+                {
+                  slot: 'top',
+                  productId: 1,
+                  productName: 'Linen Shirt',
+                  productPrice: 60,
+                  category: 'top',
+                  media: [],
+                  glbAssetUrl: '/assets/top.glb',
+                },
+              ],
+            },
+            outfitRecommendationId: 9001,
+            suggestions: [],
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        });
+      }
+      return route.fulfill({ json: [] }); // GET history → empty
+    });
+
+    await page.goto('/chat');
+
+    const textarea = page.getByPlaceholder('Describe what you\'re dressing for...');
+    await textarea.fill('Something for a warm summer day');
+    await page.getByRole('button', { name: 'Send message' }).click();
+
+    // With an avatar + a garment GLB, the OutfitCard exposes the inline try-on toggle.
+    const tryOn = page.getByRole('button', { name: /try on my avatar/i });
+    await expect(tryOn).toBeVisible({ timeout: 15000 });
+    await tryOn.click();
+
+    // Toggling reveals the avatar preview (the button flips to the collapse label).
+    await expect(
+      page.getByRole('button', { name: /hide avatar preview/i })
+    ).toBeVisible({ timeout: 5000 });
+  });
+
   test('navigating to /looks page shows saved looks section', async ({ page }) => {
     await page.goto('/looks');
 

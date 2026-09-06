@@ -93,7 +93,10 @@ export function FloatingAIStylist() {
         { content: userMsg }
       );
       const rawContent = response.reply || response.message || response.content || "";
-      const cleanContent = rawContent.replace(/\[SUGGESTIONS\][\s\S]*?\[\/SUGGESTIONS\]/g, "").trim();
+      const cleanContent = rawContent
+        .replace(/\[GENERATE_OUTFIT\][\s\S]*?\[\/GENERATE_OUTFIT\]/g, "")
+        .replace(/\[SUGGESTIONS\][\s\S]*?\[\/SUGGESTIONS\]/g, "")
+        .trim();
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: cleanContent },
