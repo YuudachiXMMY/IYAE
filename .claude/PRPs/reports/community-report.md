@@ -128,6 +128,24 @@ updated). The web profile page now fetches `follows.counts(id)`.
 - `web/lib/api.ts`'s `posts.byUser` is available for a real server-backed profile post grid (the
   profile page still lists posts from the local demo state).
 
+## Adversarial review + fixes
+After implementation, a multi-dimension review workflow (5 dimensions → adversarial verify of every
+CRITICAL/HIGH/MEDIUM finding) was run over the full Phase 6 diff. It confirmed **8 defects**, all now
+fixed (commit `95fbcef`):
+
+| # | Sev | Fix |
+|---|---|---|
+| 1 | HIGH | **PII leak** — `/api/follows/{id}/followers\|following` returned full `UserResponse` (email + demographics) for any user. New redacted `PublicUserSummary` DTO (no email/demographics); service+controller+web client+StyleCircleDialog switched over. |
+| 2 | HIGH | **Self-follow** — own posts in Discover/Toronto/Body-confidence rendered a self-Follow button + fired a self-follow request. Feed effect now stamps `ownedByCurrentUser = creatorUserId === user.id`. |
+| 3 | MED | **Dropped commentCount** — `toSocialPost` hardcoded `comments:[]`. Added `SocialPost.commentCount`; card + dialog show the real count; dialog lazy-loads server comments. |
+| 4 | MED | **Stale feed on switch** — `feedPosts` now cleared at fetch start so the Loading state shows. |
+| 5 | MED | **Dialog like/save lost** — dialog `onUpdate` → `handlePostUpdate` (updates feedPosts+state); new `onToggleLike` prop routes the like to the server write-through. |
+| 6 | MED | **Reconcile clobbered flags** — like reconcile now merges ONLY `likeCount`/`likedByCurrentUser`, preserving local save/repost. |
+| 7 | MED | **Undeletable saved look** — V15 `saved_look_id` FK is now `ON DELETE SET NULL`. |
+| 8 | MED | **Empty demo fallback** — Discover maps to the `for-you` fallback tab when the server feed is unavailable. |
+
+Post-fix validation: server 494 tests green; web tsc clean; web vitest 259 passed.
+
 ## Next Steps
 - [ ] Run `./dev.sh start` to confirm V15 boots under `ddl-auto=validate` on real MySQL, and run
       `npm run test:e2e -- community.spec.ts` against a live dev server + API.
