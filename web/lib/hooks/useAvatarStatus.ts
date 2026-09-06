@@ -69,5 +69,5 @@ export function useAvatarStatus() {
 
   const clearActionError = useCallback(() => setActionError(null), []);
 
-  return { status, loading, actionError, generate, regenerate, clearActionError };
+  return { status, loading, actionError, generate, regenerate, clearActionError, refresh: fetchStatus };
 }

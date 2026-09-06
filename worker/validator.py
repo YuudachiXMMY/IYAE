@@ -115,6 +115,78 @@ def validate_metadata(metadata: dict) -> dict:
     return {"valid": len(errors) == 0, "errors": errors}
 
 
+def validate_glb_geometry(file_path: str) -> dict:
+    """Independently parse a GLB's geometry and validate triangle_count + bbox.
+
+    Defense-in-depth: recomputes geometry from the file's own glTF JSON instead of
+    trusting the provider-supplied output metadata. NOTE: it reads the
+    ACCESSOR-DECLARED ``count``/``min``/``max`` (themselves part of the
+    provider-controlled JSON chunk) and does NOT decode ``bufferView``/``buffer``
+    bytes -- so it catches metadata that is inconsistent with the file's own
+    declared accessors, but it does not prove the declared accessors match the
+    underlying buffer data. Reuses the module thresholds ``MAX_TRIANGLE_COUNT``,
+    ``BBOX_MIN_DIM`` and ``BBOX_MAX_DIM``.
+
+    Geometry is read via ``pygltflib`` (lazy import) through the shared
+    ``compute_glb_geometry_stats`` helper (POSITION accessor ``min``/``max``
+    unioned across meshes; mode-aware index counts). A GLB with no geometry (e.g.
+    the stub empty-scene GLB) passes -- there is nothing to reject. A parse failure
+    is reported as a validation error (task FAILED); it never raises, so the poll
+    loop cannot crash on a bad file.
+
+    Returns ``{"valid": bool, "errors": [...], "triangle_count": int|None, "bbox": dict|None}``.
+    """
+    from pygltflib import GLTF2
+
+    from glb_geometry import compute_glb_geometry_stats
+
+    result: dict = {"valid": False, "errors": [], "triangle_count": None, "bbox": None}
+
+    try:
+        gltf = GLTF2.load(file_path)
+    except Exception as e:
+        result["errors"].append(f"Failed to parse GLB geometry: {e}")
+        return result
+
+    try:
+        stats = compute_glb_geometry_stats(gltf)
+    except Exception as e:
+        result["errors"].append(f"Failed to read GLB geometry: {e}")
+        return result
+
+    result["errors"].extend(stats["errors"])
+    triangle_count = stats["triangle_count"]
+    result["triangle_count"] = triangle_count
+
+    if triangle_count > MAX_TRIANGLE_COUNT:
+        result["errors"].append(
+            f"triangle_count {triangle_count} exceeds limit of {MAX_TRIANGLE_COUNT}"
+        )
+
+    if stats["bounds_found"]:
+        mins, maxs = stats["mins"], stats["maxs"]
+        result["bbox"] = {"min": mins, "max": maxs}
+        for axis in range(3):
+            lo, hi = mins[axis], maxs[axis]
+            if math.isnan(lo) or math.isnan(hi) or math.isinf(lo) or math.isinf(hi):
+                result["errors"].append(
+                    f"bbox coordinate on axis {axis} is NaN or Inf"
+                )
+                continue
+            dim = hi - lo
+            if dim < BBOX_MIN_DIM:
+                result["errors"].append(
+                    f"bbox dimension on axis {axis} is {dim:.4f}m, below minimum {BBOX_MIN_DIM}m"
+                )
+            if dim > BBOX_MAX_DIM:
+                result["errors"].append(
+                    f"bbox dimension on axis {axis} is {dim:.4f}m, above maximum {BBOX_MAX_DIM}m"
+                )
+
+    result["valid"] = len(result["errors"]) == 0
+    return result
+
+
 def validate_usdz(file_path: str) -> dict:
     """Basic USDZ validation."""
     result = {"valid": False, "errors": []}

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from validator import (
     validate_glb,
+    validate_glb_geometry,
     validate_usdz,
     validate_metadata,
     validate_triangle_count,
@@ -16,6 +17,7 @@ from validator import (
     validate_skin_metadata,
     validate_required_bones,
     GLB_MAGIC,
+    MAX_TRIANGLE_COUNT,
 )
 
 
@@ -403,5 +405,174 @@ class TestValidateRequiredBones:
                 result = validate_required_bones(path, "BOTTOM")
             assert result["valid"]
             assert set(result["bone_names"]) == set(bones)
+        finally:
+            os.unlink(path)
+
+
+def _make_geometry_gltf(*, pos_min, pos_max, index_count=36):
+    """Mock a GLTF2 with a single mesh/primitive: POSITION accessor (min/max)
+    at accessor index 1 and an index accessor (count) at index 0."""
+    pos_acc = MagicMock()
+    pos_acc.min = pos_min
+    pos_acc.max = pos_max
+    pos_acc.count = 8
+    idx_acc = MagicMock()
+    idx_acc.count = index_count
+    attrs = MagicMock()
+    attrs.POSITION = 1
+    prim = MagicMock()
+    prim.attributes = attrs
+    prim.indices = 0
+    mesh = MagicMock()
+    mesh.primitives = [prim]
+    gltf = MagicMock()
+    gltf.accessors = [idx_acc, pos_acc]
+    gltf.meshes = [mesh]
+    return gltf
+
+
+class TestValidateGlbGeometry:
+    """Independent geometry validation (defense-in-depth against fabricated metadata)."""
+
+    def test_valid_geometry_passes(self):
+        """A real box GLB parses; triangle_count/bbox are computed and pass thresholds."""
+        import trimesh
+
+        box = trimesh.creation.box(extents=(0.4, 1.0, 0.3))
+        with tempfile.NamedTemporaryFile(suffix=".glb", delete=False) as f:
+            f.write(box.export(file_type="glb"))
+            path = f.name
+        try:
+            result = validate_glb_geometry(path)
+            assert result["valid"], result["errors"]
+            assert result["triangle_count"] == 12
+            assert result["bbox"] is not None
+        finally:
+            os.unlink(path)
+
+    def test_oversized_triangle_count_fails(self):
+        """A GLB whose index accessor implies > 500k triangles is rejected."""
+        path = _make_valid_glb_file()
+        try:
+            over = (MAX_TRIANGLE_COUNT + 1) * 3
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.5], index_count=over
+            )
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert result["triangle_count"] == MAX_TRIANGLE_COUNT + 1
+            assert any("exceeds limit" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_nan_bounds_fail(self):
+        """NaN in the POSITION bounds is rejected."""
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[float("nan"), 0.0, 0.0], pos_max=[0.5, 1.0, 0.5]
+            )
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("NaN or Inf" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_degenerate_bbox_fails(self):
+        """A flat GLB (an axis dimension below 0.01m) is rejected."""
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.001]
+            )
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("below minimum" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_oversized_bbox_fails(self):
+        """A GLB larger than 10m on an axis is rejected."""
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 15.0, 0.5]
+            )
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("above maximum" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_parse_failure_is_validation_error(self):
+        """An unparseable file is a validation error, not a raised exception."""
+        with tempfile.NamedTemporaryFile(suffix=".glb", delete=False) as f:
+            f.write(b"NOT_A_GLB_FILE")
+            path = f.name
+        try:
+            result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("Failed to parse" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_empty_geometry_passes(self):
+        """A GLB with no meshes (e.g. the stub empty scene) has nothing to reject."""
+        path = _make_valid_glb_file()
+        try:
+            gltf = MagicMock()
+            gltf.meshes = []
+            gltf.accessors = []
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert result["valid"]
+            assert result["errors"] == []
+            assert result["bbox"] is None
+        finally:
+            os.unlink(path)
+
+    def test_negative_indices_accessor_rejected(self):
+        """A negative indices accessor index must be rejected, not silently wrapped.
+
+        Python negative indexing would resolve accessors[-1] to a real accessor,
+        so the triangle count would be derived from the wrong buffer instead of
+        the GLB being flagged as malformed.
+        """
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.5]
+            )
+            gltf.meshes[0].primitives[0].indices = -1
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("out of range" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_negative_position_accessor_rejected(self):
+        """A negative POSITION accessor index must be rejected, not silently wrapped."""
+        path = _make_valid_glb_file()
+        try:
+            gltf = _make_geometry_gltf(
+                pos_min=[0.0, 0.0, 0.0], pos_max=[0.5, 1.0, 0.5]
+            )
+            gltf.meshes[0].primitives[0].attributes.POSITION = -2
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_glb_geometry(path)
+            assert not result["valid"]
+            assert any("out of range" in e for e in result["errors"])
         finally:
             os.unlink(path)
