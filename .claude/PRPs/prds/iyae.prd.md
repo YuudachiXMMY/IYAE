@@ -167,7 +167,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 | 6 | Community | Following/Discover/Toronto/Body-confidence feeds; posts/likes/comments; Share a Look; real social-proof counts; moderation | pending | with 7 | 5 | - |
 | 7 | Resale / Circular / Trade-in | Data-model additions + listing lifecycle (depth per Open Questions) | pending | with 6 | 2, 5 | - |
 | 8 | Toronto Physical Touchpoints + Shipping | In-city pickup / same-day; multi-carrier shipping (never Canada-Post-only) | pending | - | 5 | - |
-| 9 | Hardening, A11y & KPI Instrumentation | Email verification on; rate-limit trusted-proxies; WCAG 2.1 AA incl. 3D viewer; conversion/return/retention/bracketing A/B cohorts; dark-pattern-free checkout | pending | with 2 | 1 | - |
+| 9 | Hardening, A11y & KPI Instrumentation | Email verification on; rate-limit trusted-proxies; WCAG 2.1 AA incl. 3D viewer; conversion/return/retention/bracketing A/B cohorts; dark-pattern-free checkout | in-progress | with 2 | 1 | [plan](../plans/hardening-a11y-kpi-instrumentation.plan.md) |
 
 ### Phase Details
 
