@@ -11,6 +11,7 @@ import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.PasswordResetToken;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.Role;
+import com.iyae.exception.EmailNotVerifiedException;
 import com.iyae.repository.BodyProfileRepository;
 import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.PasswordResetTokenRepository;
@@ -82,6 +83,7 @@ class AuthServiceTest {
     void setUp() {
         ReflectionTestUtils.setField(authService, "verificationTokenTtl", Duration.ofHours(24));
         ReflectionTestUtils.setField(authService, "passwordResetTtl", Duration.ofHours(1));
+        ReflectionTestUtils.setField(authService, "requireEmailVerification", true);
 
         testUser = User.builder()
                 .id(1L)
@@ -89,6 +91,7 @@ class AuthServiceTest {
                 .passwordHash("$2a$10$hashedpassword")
                 .name("Test User")
                 .role(Role.BUYER)
+                .emailVerified(true)
                 .build();
     }
 
@@ -162,6 +165,35 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Invalid email or password");
+    }
+
+    @Test
+    void login_unverifiedEmail_throwsEmailNotVerified() {
+        LoginRequest request = new LoginRequest("test@example.com", "password123");
+        testUser.setEmailVerified(false);
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(passwordEncoder.matches("password123", "$2a$10$hashedpassword")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(EmailNotVerifiedException.class)
+                .hasMessage("Please verify your email before signing in");
+        verify(jwtTokenProvider, never()).generateToken(anyString());
+    }
+
+    @Test
+    void login_unverifiedEmail_flagOff_succeeds() {
+        ReflectionTestUtils.setField(authService, "requireEmailVerification", false);
+        LoginRequest request = new LoginRequest("test@example.com", "password123");
+        testUser.setEmailVerified(false);
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(passwordEncoder.matches("password123", "$2a$10$hashedpassword")).thenReturn(true);
+        when(jwtTokenProvider.generateToken("test@example.com")).thenReturn("test.jwt.token");
+
+        AuthResponse response = authService.login(request);
+
+        assertThat(response.token()).isEqualTo("test.jwt.token");
     }
 
     @Test
@@ -454,5 +486,47 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.resetPassword(rawToken, "newPassword123"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Reset link is invalid or has expired");
+    }
+
+    // -------------------------------------------------------------------------
+    // resendVerification tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    void resendVerification_unverifiedUser_regeneratesTokenAndSendsEmail() {
+        testUser.setEmailVerified(false);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(secureTokenService.generateRawToken()).thenReturn("raw-verify-token");
+        when(secureTokenService.hashToken("raw-verify-token")).thenReturn("hashed-verify-token");
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+        MessageResponse response = authService.resendVerification("test@example.com");
+
+        assertThat(response.message()).contains("If an account exists");
+        assertThat(testUser.getVerificationToken()).isEqualTo("hashed-verify-token");
+        verify(authMailService).sendVerificationEmail(
+                eq("test@example.com"), eq("Test User"), eq("raw-verify-token"));
+    }
+
+    @Test
+    void resendVerification_alreadyVerified_isNoOpButGeneric() {
+        testUser.setEmailVerified(true);
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+
+        MessageResponse response = authService.resendVerification("test@example.com");
+
+        assertThat(response.message()).contains("If an account exists");
+        verify(userRepository, never()).save(any());
+        verify(authMailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendVerification_unknownEmail_returnsGenericMessage() {
+        when(userRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+        MessageResponse response = authService.resendVerification("nobody@example.com");
+
+        assertThat(response.message()).contains("If an account exists");
+        verify(authMailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());
     }
 }

@@ -6,6 +6,7 @@ import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.PasswordResetToken;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.Role;
+import com.iyae.exception.EmailNotVerifiedException;
 import com.iyae.repository.BodyProfileRepository;
 import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.PasswordResetTokenRepository;
@@ -45,6 +46,9 @@ public class AuthService {
 
     @Value("${app.auth.password-reset-ttl}")
     private Duration passwordResetTtl;
+
+    @Value("${app.auth.require-email-verification:true}")
+    private boolean requireEmailVerification;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -138,6 +142,12 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid email or password");
         }
 
+        // Block unverified accounts only after the credential check, so we never
+        // reveal whether an email exists (preserves the constant-time enumeration defense).
+        if (requireEmailVerification && !Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new EmailNotVerifiedException("Please verify your email before signing in");
+        }
+
         String token = jwtTokenProvider.generateToken(user.getEmail());
         return new AuthResponse(token, UserResponse.from(user));
     }
@@ -199,6 +209,29 @@ public class AuthService {
         userRepository.save(user);
 
         return new MessageResponse("Email verified successfully");
+    }
+
+    @Transactional
+    public MessageResponse resendVerification(String email) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            if (Boolean.TRUE.equals(user.getEmailVerified())) {
+                return; // already verified — no-op, but response stays generic
+            }
+            String rawToken = secureTokenService.generateRawToken();
+            String tokenHash = secureTokenService.hashToken(rawToken);
+            user.setVerificationToken(tokenHash);
+            user.setVerificationTokenExpiresAt(Instant.now().plus(verificationTokenTtl));
+            userRepository.save(user);
+
+            try {
+                authMailService.sendVerificationEmail(user.getEmail(), user.getName(), rawToken);
+            } catch (AuthMailService.EmailDeliveryException e) {
+                // Swallow to prevent account enumeration via 503 vs 200 side-channel
+                log.warn("Failed to resend verification email for user {}", user.getId(), e);
+            }
+        });
+
+        return new MessageResponse("If an account exists and is unverified, we've sent a new verification link");
     }
 
     @Transactional

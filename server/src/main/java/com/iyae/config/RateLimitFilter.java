@@ -23,6 +23,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new RateRule("POST", "/api/auth/login", 5, 60_000),
             new RateRule("POST", "/api/auth/register", 3, 60_000),
             new RateRule("POST", "/api/auth/forgot-password", 3, 60_000),
+            new RateRule("POST", "/api/auth/resend-verification", 3, 60_000),
             new RateRule("PUT",  "/api/auth/me", 10, 60_000),
             new RateRule(null,   "/api/chat/", 10, 60_000),
             new RateRule(null,   "/api/checkout", 5, 60_000),

@@ -2,9 +2,8 @@ spring:
   jpa:
     show-sql: false
 
-app:
-  auth:
-    require-email-verification: false
+# Email verification is REQUIRED in production (base default app.auth.require-email-verification=true).
+# Do not re-add an override here — dev keeps it off via application-dev.yml.
 
 logging:
   level:

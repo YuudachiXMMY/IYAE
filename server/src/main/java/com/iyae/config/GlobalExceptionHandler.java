@@ -2,6 +2,7 @@ package com.iyae.config;
 
 import com.iyae.ai.AIProviderException;
 import com.iyae.dto.ErrorResponse;
+import com.iyae.exception.EmailNotVerifiedException;
 import com.iyae.service.AuthMailService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -38,6 +39,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(new ErrorResponse("Access denied", HttpStatus.FORBIDDEN.value(), Instant.now()));
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleEmailNotVerified(EmailNotVerifiedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(new ErrorResponse(ex.getMessage(), HttpStatus.FORBIDDEN.value(), Instant.now()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
