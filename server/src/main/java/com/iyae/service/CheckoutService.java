@@ -1,5 +1,6 @@
 package com.iyae.service;
 
+import com.iyae.dto.CheckoutRequest;
 import com.iyae.entity.Cart;
 import com.iyae.entity.CartItem;
 import com.iyae.entity.Order;
@@ -27,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +48,7 @@ public class CheckoutService {
     private final ObjectMapper objectMapper;
     private final AnalyticsService analyticsService;
     private final ResaleService resaleService;
+    private final FulfillmentService fulfillmentService;
 
     @Value("${STRIPE_SECRET_KEY:}")
     private String stripeSecretKey;
@@ -65,12 +68,14 @@ public class CheckoutService {
 
     private record ItemSnapshot(long productId, String productName, int quantity, String unitPrice, String selectedSize) {}
 
-    public Map<String, String> initiateCheckout(String email) {
+    public Map<String, String> initiateCheckout(String email, CheckoutRequest req) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
 
+        FulfillmentService.ResolvedFulfillment fulfillment = fulfillmentService.resolve(req);
+
         if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
-            return stubCheckout(user);
+            return stubCheckout(user, fulfillment);
         }
 
         Cart cart = cartRepository.findByUserId(user.getId())
@@ -81,7 +86,7 @@ public class CheckoutService {
         }
 
         try {
-            List<SessionCreateParams.LineItem> lineItems = items.stream()
+            List<SessionCreateParams.LineItem> lineItems = new ArrayList<>(items.stream()
                     .map(item -> SessionCreateParams.LineItem.builder()
                             .setQuantity((long) item.getQuantity())
                             .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
@@ -97,7 +102,23 @@ public class CheckoutService {
                                             .build())
                                     .build())
                             .build())
-                    .toList();
+                    .toList());
+
+            if (fulfillment.fee().compareTo(BigDecimal.ZERO) > 0) {
+                lineItems.add(SessionCreateParams.LineItem.builder()
+                        .setQuantity(1L)
+                        .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
+                                .setCurrency("cad")
+                                .setUnitAmount(fulfillment.fee()
+                                        .multiply(BigDecimal.valueOf(100))
+                                        .setScale(0, RoundingMode.HALF_UP)
+                                        .longValue())
+                                .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                        .setName("Shipping — " + fulfillment.carrier().getDisplayName())
+                                        .build())
+                                .build())
+                        .build());
+            }
 
             SessionCreateParams params = SessionCreateParams.builder()
                     .setMode(SessionCreateParams.Mode.PAYMENT)
@@ -109,9 +130,10 @@ public class CheckoutService {
 
             Session session = stripeGateway.createSession(params, stripeSecretKey);
 
-            BigDecimal total = items.stream()
+            BigDecimal itemsTotal = items.stream()
                     .map(i -> i.getProduct().getPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal total = itemsTotal.add(fulfillment.fee());
 
             String snapshot = buildItemsSnapshot(items);
             Order order = Order.builder()
@@ -121,6 +143,10 @@ public class CheckoutService {
                     .stripeSessionId(session.getId())
                     .paymentStatus("PENDING")
                     .itemsSnapshot(snapshot)
+                    .fulfillmentMethod(fulfillment.method())
+                    .pickupLocationId(fulfillment.pickupLocationId())
+                    .shippingCarrier(fulfillment.carrier())
+                    .shippingFee(fulfillment.fee())
                     .build();
             txTemplate.executeWithoutResult(status -> orderRepository.save(order));
 
@@ -278,7 +304,7 @@ public class CheckoutService {
         }
     }
 
-    private Map<String, String> stubCheckout(User user) {
+    private Map<String, String> stubCheckout(User user, FulfillmentService.ResolvedFulfillment fulfillment) {
         String sessionId = "cs_test_" + UUID.randomUUID();
         Cart cart = cartRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Cart not found"));
@@ -286,9 +312,10 @@ public class CheckoutService {
         if (items.isEmpty()) {
             throw new IllegalArgumentException("Cart is empty");
         }
-        BigDecimal total = items.stream()
+        BigDecimal itemsTotal = items.stream()
                 .map(i -> i.getProduct().getPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal total = itemsTotal.add(fulfillment.fee());
         String snapshot = buildItemsSnapshot(items);
         Order order = Order.builder()
                 .user(user)
@@ -297,10 +324,13 @@ public class CheckoutService {
                 .stripeSessionId(sessionId)
                 .paymentStatus("STUB")
                 .itemsSnapshot(snapshot)
+                .fulfillmentMethod(fulfillment.method())
+                .pickupLocationId(fulfillment.pickupLocationId())
+                .shippingCarrier(fulfillment.carrier())
+                .shippingFee(fulfillment.fee())
                 .build();
         txTemplate.executeWithoutResult(status -> orderRepository.save(order));
         log.info("STRIPE_SECRET_KEY not configured — created stub order {} for user {}", order.getId(), user.getEmail());
-        // Stub orders are immediately PAID — emit both funnel events for dev/analytics parity.
         String sizeBracket = firstSizeBracket(items);
         analyticsService.record(user.getId(), EventType.CHECKOUT_INITIATED, null, order.getId(), sizeBracket, null);
         analyticsService.record(user.getId(), EventType.ORDER_PAID, null, order.getId(), sizeBracket, null);

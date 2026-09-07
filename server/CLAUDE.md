@@ -27,17 +27,17 @@ The server is the central backend service. It exposes all REST endpoints, manage
 ## Architecture
 
 ```
-controller/ (22)  --> REST endpoints (@Valid DTO binding, incl. StripeWebhookController, GuestAvatarController, SizeRecommendationController)
-service/    (28)  --> Business logic + ownership checks + orchestration + email delivery + Stripe checkout (incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway) + GuestAvatarService + SizeRecommendationService
-repository/ (22)  --> Spring Data JPA interfaces
-entity/     (22)  --> JPA entities (incl. PasswordResetToken, AvatarGenerationTask, RiggingTask, Post, PostLike, PostComment, Follow); Product carries a size_chart JSON column
-entity/enums/ (9) --> Role, ProductStatus, TaskStatus (incl. MATERIALIZED), SessionStatus, PostStatus, etc.
-dto/        (47)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse, SizeRecommendationResponse)
+controller/ (23)  --> REST endpoints (@Valid DTO binding, incl. StripeWebhookController, GuestAvatarController, SizeRecommendationController, FulfillmentController)
+service/    (29)  --> Business logic + ownership checks + orchestration + email delivery + Stripe checkout (incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway) + GuestAvatarService + SizeRecommendationService + FulfillmentService
+repository/ (23)  --> Spring Data JPA interfaces (incl. PickupLocationRepository)
+entity/     (23)  --> JPA entities (incl. PasswordResetToken, AvatarGenerationTask, RiggingTask, Post, PostLike, PostComment, Follow, PickupLocation); Product carries a size_chart JSON column
+entity/enums/ (11) --> Role, ProductStatus, TaskStatus (incl. MATERIALIZED), SessionStatus, PostStatus, FulfillmentMethod, ShippingCarrier, etc.
+dto/        (50)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse, SizeRecommendationResponse, CheckoutRequest, PickupLocationResponse, ShippingOptionResponse)
 ai/          (7)  --> Pluggable AI provider system (interface, factory, exception, 4 impls)
 security/    (3)  --> JWT filter + token provider + UserDetailsService
 config/     (10)  --> SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig, BrandProperties (@ConfigurationProperties "app.brand")
 util/        (1)  --> GlbPlaceholderGenerator (minimal GLB file generation)
-test/       (54)  --> 50 JUnit 5 + Mockito test files (25 service + 21 controller WebMvcTest + 4 other) + 4 test support (349 methods total)
+test/       (67)  --> 63 JUnit 5 + Mockito test files (30 service + 25 controller WebMvcTest + 8 other) + 4 test support (528 methods total)
 ```
 
 ## API Endpoints (External Interface)
@@ -62,6 +62,8 @@ test/       (54)  --> 50 JUnit 5 + Mockito test files (25 service + 21 controlle
 | GET | `/api/promotions/featured` | PromotionController | Featured products |
 | POST | `/api/public/avatar/generate` | GuestAvatarController | Anonymous avatar generation (rate-limited: 3/60s) |
 | GET | `/api/public/avatar/status/{taskId}` | GuestAvatarController | Poll guest avatar task status |
+| GET | `/api/fulfillment/pickup-locations` | FulfillmentController | Public reference reads for the checkout fulfillment selector |
+| GET | `/api/fulfillment/shipping-options` | FulfillmentController | Public reference reads for the checkout fulfillment selector |
 
 ### Authenticated (any role)
 
@@ -145,7 +147,7 @@ There is no SMTP path in any profile. `AuthMailService` POSTs the mail `{type, t
 
 ## Data Model
 
-22 tables managed by Flyway migrations (`V1__baseline_schema.sql` through `V11__product_size_chart.sql`). `products.size_chart` is a nullable JSON column that stores a size chart array (per-size measurement entries) used by size recommendation.
+Tables managed by Flyway migrations (`V1__baseline_schema.sql` through `V17__fulfillment_and_shipping.sql`). `products.size_chart` is a nullable JSON column that stores a size chart array (per-size measurement entries) used by size recommendation. `pickup_locations` (V17) backs in-city Toronto order pickup, and `orders` carries fulfillment columns (`fulfillment_method`, `pickup_location_id`, `shipping_carrier`, `shipping_fee`).
 
 ### Entity Relationship
 
@@ -187,6 +189,8 @@ User (hub)
 | PostStatus | `ACTIVE`, `ARCHIVED`, `PENDING_DELETE` |
 | CommentStatus | `ACTIVE`, `REMOVED` |
 | ReportStatus | `OPEN`, `RESOLVED`, `DISMISSED` |
+| FulfillmentMethod | `SHIP`, `PICKUP` |
+| ShippingCarrier | `UPS`, `PUROLATOR`, `FEDEX`, `CANADA_POST` |
 
 ### Seed Data (DataSeeder)
 
@@ -198,7 +202,7 @@ On first startup (empty database), `DataSeeder` creates:
 - **10 promotions**: 6 FEATURED (homepage carousel, weights 10-60) + 4 SPONSORED (in-feed, weights 1-4)
 - **10 garment assets**: 5 READY (placeholder.glb) + 5 PENDING (demo.glb or null)
 
-## Service Layer (28 services)
+## Service Layer (29 services)
 
 | Service | Purpose |
 |---------|---------|
@@ -228,6 +232,7 @@ On first startup (empty database), `DataSeeder` creates:
 | FollowService | User follow/unfollow toggle, list followers/following |
 | GuestAvatarService | Anonymous avatar generation for unauthenticated users (creates/reuses internal guest user, body type mapping, waist estimation from BMI, task creation + status polling) |
 | SizeRecommendationService | Two-tier recommended-size resolution: Tier 1 MEASUREMENT_CHART (Euclidean distance over {chestCm,waistCm,hipsCm,inseamCm} vs product `size_chart` entries), Tier 2 SELF_REPORTED (category->self-reported size mapping), else NONE |
+| FulfillmentService | Resolve/validate checkout fulfillment (SHIP carrier or PICKUP Toronto location), list options; never Canada-Post-only |
 
 ## Rate Limiting
 
@@ -365,7 +370,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - **Framework**: JUnit 5 + Mockito + MockMvc + AssertJ (via `spring-boot-starter-test`)
 - **Test profile**: `application-test.yml` (H2 in-memory, Flyway disabled, mock AI)
 - **Test directory**: `server/src/test/java/com/iyae/`
-- **Current state**: 50 test files, 349 test methods (+ 4 test support files)
+- **Current state**: 63 test files, 528 test methods (+ 4 test support files)
 
 ### Test Inventory
 
@@ -389,7 +394,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `ReviewServiceTest` | `@ExtendWith(MockitoExtension)` | 9 | Create review, delete review, get reviews, summary, ownership, duplicate prevention |
 | `AvatarServiceTest` | `@ExtendWith(MockitoExtension)` | 8 | Gender identity mapping for avatar payload (null/blank->neutral, Male->male, Female->female, Non-binary->neutral, Prefer-not-to-say->neutral); deleteAvatarData clears avatar URL + body profile + avatar tasks, idempotent when no profile/tasks; declares a `BrandProperties` mock (guest email) |
 | `OutfitServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | Generate outfit (slot matching, scoring), manual outfit builder, get outfits, ownership |
-| `CheckoutServiceTest` | `@ExtendWith(MockitoExtension)` | 14 | Stripe checkout (session creation, webhook handling, order fulfillment, size in line items) |
+| `CheckoutServiceTest` | `@ExtendWith(MockitoExtension)` | 17 | Stripe checkout (session creation, webhook handling, order fulfillment, size in line items, +3 fulfillment: SHIP adds fee line item + fields, PICKUP fee 0 + location, invalid combo rejected) |
 | `PostServiceTest` | `@ExtendWith(MockitoExtension)` | 13 | Community post CRUD, feed, like, comment |
 | `PromotionServiceTest` | `@ExtendWith(MockitoExtension)` | 9 | Promotion CRUD + slot management |
 | `FollowServiceTest` | `@ExtendWith(MockitoExtension)` | 7 | Follow/unfollow toggle, list followers/following |
@@ -403,6 +408,8 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `SizeRecommendationServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | measurement-chart picks nearest size, self-reported returns top size (tops category), category mapping (dress uses dress size), no body profile -> NONE with zero confidence, self-reported size not available -> NONE, product not found -> IllegalArgumentException |
 | `SizeRecommendationControllerTest` | `@WebMvcTest` | 2 | GET /api/products/{id}/recommended-size authenticated returns 200 with shape, unauthenticated is denied |
 | `AvatarControllerTest` | `@WebMvcTest` | 6 | Avatar generate endpoint; DELETE /api/avatar authenticated returns 204, unauthenticated returns 403 |
+| `FulfillmentServiceTest` | `@ExtendWith(MockitoExtension)` | 8 | resolve ship+carrier/pickup+location/null-default; reject ship-no-carrier, pickup-no-location, unknown-location, mutually-exclusive; guardrail ≥2 carriers & never Canada-Post-only |
+| `FulfillmentControllerTest` | `@WebMvcTest` | 2 | GET /api/fulfillment/pickup-locations + /shipping-options return 200 unauthenticated (public) |
 
 ### Untested Areas (coverage gaps)
 
@@ -461,6 +468,10 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `src/main/resources/db/migration/V11__product_size_chart.sql` | Add nullable `size_chart` JSON column to products (stores a size chart array for size recommendation) |
 | `src/main/resources/db/migration/V12__marketplace_local_and_measurements.sql` | Add ADMIN to users.role enum; city/is_local on designer_profiles; new product_size_measurements table |
 | `src/main/resources/db/migration/V13__product_moderation_lock.sql` | Add products.moderation_locked for durable admin moderation (M2) |
+| `src/main/resources/db/migration/V14__analytics_events_and_cohorts.sql` | A/B-cohort KPI instrumentation (cohort_assignments + analytics_events tables) |
+| `src/main/resources/db/migration/V15__community_feeds_share_report.sql` | Phase 6: posts city/topic/saved_look_id FK/product_ids; users.city; post_comments moderation; post_reports table |
+| `src/main/resources/db/migration/V16__resale_listings.sql` | Phase 7: resale_listings table + orders.resale_listing_id (buyer resale of owned items) |
+| `src/main/resources/db/migration/V17__fulfillment_and_shipping.sql` | Phase 8: pickup_locations table (+2 Toronto seed rows) + orders fulfillment columns (fulfillment_method, pickup_location_id, shipping_carrier, shipping_fee) |
 
 ## Changelog
 
@@ -479,3 +490,4 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | 2026-09-06 | Merge #10 into main: reconciled two independent size-recommendation seams into one `SizeRecommendationService` (chart-based `recommend` + cm-measurement `recommendForBuyer`); renumbered Phase-5 migrations to avoid a V11 collision with `V11__product_size_chart` (marketplace -> V12, moderation_lock -> V13) |
 | 2026-09-06 | Phase 6 (PR-A server): V15 migration (posts.city/topic/saved_look_id FK/product_ids json; users.city; post_comments.status/deleted_at; post_reports table); named-feed queries in PostRepository (findFollowingFeed JPQL + city/topic finders, all constrain status=ACTIVE); FollowRepository count queries; new PostReport entity + CommentStatus/ReportStatus enums; PostService 4-arg getFeed dispatch (discover/following/toronto/body-confidence, unknown→400) + Share-a-Look in createPost (SavedLook ownership→403) + getPost/getComments/reportPost (idempotent); FollowService.getCounts; AdminModerationService listReports/resolveReport/removeComment; controllers extended (posts ?feed=/{id}/comments/report; follows /counts+/status; admin /reports+/comments/{id}/remove); DTOs PostReportRequest/Response, FollowCountsResponse. Tests 388→494 (+PostFeedDataJpaTest @DataJpaTest; +TestUsers.anAdmin). Fixed PostStatus doc-drift (was DELETED). |
 | 2026-09-06 | Code-review fix pass (H2/H3/H4/M1/M4/M6): `SizeRecommendationService.selfReportedSizeForCategory` reordered (shoe-before-dress) + synonyms; chart tier returns the available-cased label (M4); `AvatarService.deleteAvatarData` purges the on-disk avatar GLB under `worker.output-dir`/avatars/{id} (H3); `SchedulerConfig.weatherRefreshMs` SpEL floor so `WEATHER_CACHE_TTL=0`/negative can't crash startup (H4); `RateLimitFilter` chat rule scoped to `POST` so GET `/api/chat/weather` isn't throttled (M1); `ProductService.getProductById` non-owner path returns uniform "Product not found" (info-leak fix, mirrors the SizeRecommendationService gate — M6, full guard extraction deferred). +6 tests (SizeRecommendation category/casing, Avatar file-purge, Scheduler floor, RateLimit weather/POST, Product buyer-info-leak) |
+| 2026-09-06 | Phase 8 — Toronto Physical Touchpoints + Shipping (lightweight v1): V17 migration (pickup_locations + orders fulfillment columns); FulfillmentService/Controller + FulfillmentMethod/ShippingCarrier enums + PickupLocation entity/repo + CheckoutRequest/PickupLocation/ShippingOption DTOs; checkout now takes optional CheckoutRequest body, adds a Stripe shipping line item, persists fulfillment_method/pickup_location_id/shipping_carrier/shipping_fee (total = items + fee); `GET /api/fulfillment/**` public; OrderResponse exposes fulfillment + resolved pickup name. Multi-carrier guardrail (never Canada-Post-only). Server tests → 528. |
