@@ -23,7 +23,7 @@ remaining browser-only a11y work explicitly deferred (see Deviations).
 | B — Rate-limit trusted proxies + CIDR | ✅ Complete | `RateLimitProperties` + CIDR matcher + prod env; deviation: `HealthControllerTest` needed a `@MockBean RateLimitProperties` |
 | D — A/B-cohort KPI instrumentation | ✅ Complete | V11 migration + events/cohorts slice + emission + web emitter; deviation: interim DESIGNER gate for `/api/admin/kpis` |
 | E — Dark-pattern-free checkout | ✅ Complete | Itemized totals + audit doc + e2e guards |
-| C — WCAG 2.1 AA incl. 3D viewer | ◑ Partial (foundation) | Skip-link, landmark, AvatarViewer semantics + announced load, reduced-motion, descriptive alt shipped + tested; rest deferred (below) |
+| C — WCAG 2.1 AA incl. 3D viewer | ✅ Complete | Foundation shipped here; the deferred C2 browser-only work (useFocusTrap+ARViewer trap/Escape, PoseSelector roving-tabindex, remaining-viewer `role="status"`, form `aria-invalid`/`aria-describedby`, `@axe-core/playwright` scan) completed in the `phase9-hardening-a11y-completion` plan (see its report) |
 
 ## Validation Results
 
@@ -79,7 +79,7 @@ remaining browser-only a11y work explicitly deferred (see Deviations).
 | `checkout-flow.spec.ts` (extended, e2e) | +1 | no pre-checked boxes, no fake urgency, itemized total |
 
 ## Next Steps
-- [ ] Follow-up **C2**: `useFocusTrap`+`ARViewer`, `PoseSelector` roving-tabindex, form `aria-invalid`, remaining-viewer `role="status"`, `@axe-core/playwright` e2e — verify in a real browser.
+- [x] Follow-up **C2**: `useFocusTrap`+`ARViewer`, `PoseSelector` roving-tabindex, form `aria-invalid`, remaining-viewer `role="status"`, `@axe-core/playwright` e2e — **completed** in the `phase9-hardening-a11y-completion` plan (browser-level e2e still needs a live server to run).
 - [ ] Run `npm run test:e2e` against live dev+API to execute the new checkout + (future) a11y specs.
 - [ ] Move `/api/admin/kpis` to the ADMIN role once Phase 5 merges.
 - [ ] Wire client `analytics.track` calls into PDP view / add-to-cart surfaces.

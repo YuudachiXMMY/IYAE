@@ -6,6 +6,7 @@ import com.iyae.entity.User;
 import com.iyae.entity.enums.OrderStatus;
 import com.iyae.entity.enums.Role;
 import com.iyae.repository.OrderRepository;
+import com.iyae.repository.PickupLocationRepository;
 import com.iyae.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,9 @@ class OrderServiceTest {
 
     @Mock
     UserRepository userRepository;
+
+    @Mock
+    PickupLocationRepository pickupLocationRepository;
 
     @InjectMocks
     OrderService orderService;

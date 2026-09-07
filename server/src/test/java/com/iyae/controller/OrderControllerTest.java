@@ -1,6 +1,7 @@
 package com.iyae.controller;
 
 import com.iyae.dto.OrderResponse;
+import com.iyae.entity.enums.FulfillmentMethod;
 import com.iyae.entity.enums.OrderStatus;
 import com.iyae.service.OrderService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
@@ -31,7 +32,8 @@ class OrderControllerTest {
     OrderService orderService;
 
     private OrderResponse sampleOrder() {
-        return new OrderResponse(1L, OrderStatus.PENDING, BigDecimal.valueOf(99.99), "[]", Instant.now());
+        return new OrderResponse(1L, OrderStatus.PENDING, BigDecimal.valueOf(99.99), "[]", Instant.now(),
+                FulfillmentMethod.SHIP, null, BigDecimal.ZERO, null, null);
     }
 
     @Test

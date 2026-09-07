@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, Component } from "react";
+import { useState, useEffect, useRef, use, Component } from "react";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,6 +14,7 @@ import { api, ApiError, sizing, type SizeRecommendationResponse } from "@/lib/ap
 import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 import { SmartARViewer } from "@/components/SmartARViewer";
+import { useTrackEvent } from "@/lib/hooks/useTrackEvent";
 import type { Product } from "@/components/ProductListItem";
 
 interface ProductWithAsset extends Product {
@@ -109,6 +110,10 @@ export default function ProductDetailPage({
   const { id } = use(params);
   const { user } = useAuth();
   const { addServerItem, addDemoItem } = useCart();
+  const track = useTrackEvent();
+  // Guards the advisory VIEW emit so React StrictMode's double-invoked effect (dev)
+  // and re-renders fire at most one VIEW per product id.
+  const viewedProductId = useRef<number | null>(null);
 
   const [product, setProduct] = useState<ProductWithAsset | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -139,6 +144,12 @@ export default function ProductDetailPage({
           colorTags: p.colorTags ?? [],
         });
         setSelectedImage(0);
+        // Advisory client funnel event: one VIEW per product id (server emission stays
+        // authoritative). Ref-guarded so StrictMode's double-invoked effect emits once.
+        if (viewedProductId.current !== p.id) {
+          viewedProductId.current = p.id;
+          track({ type: "VIEW", productId: p.id });
+        }
         // Size preselect comes solely from the guarded /recommended-size effect below
         // (sizeRec), which validates the size is stocked and drives the same hint. Using
         // product.recommendedSize here too was a second, unguarded source that could
@@ -146,7 +157,9 @@ export default function ProductDetailPage({
       })
       .catch(() => setError("Product not found."))
       .finally(() => setProductLoading(false));
-  }, [id]);
+    // `track` is a stable useCallback ref (from useTrackEvent) — listed to satisfy
+    // exhaustive-deps without changing the effect's per-`id` run cadence.
+  }, [id, track]);
 
   useEffect(() => {
     setReviewsLoading(true);
@@ -209,6 +222,8 @@ export default function ProductDetailPage({
         });
       }
       setAddedMessage("Added to cart!");
+      // Advisory client funnel event (fire-and-forget); server emission stays authoritative.
+      track({ type: "ADD_TO_CART", productId: product.id, sizeBracket: sizeToSend });
       setTimeout(() => setAddedMessage(""), 2500);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -349,7 +364,7 @@ export default function ProductDetailPage({
                     onSelect={setSelectedSize}
                   />
                   {product.sizes.length > 0 && !selectedSize && (
-                    <p className="text-xs text-muted-foreground">Please select a size</p>
+                    <p id="pdp-size-required" className="text-xs text-muted-foreground">Please select a size</p>
                   )}
                 </div>
               )}
@@ -404,22 +419,30 @@ export default function ProductDetailPage({
                 <Button
                   onClick={handleAddToCart}
                   disabled={adding || (product.sizes && product.sizes.length > 0 && !selectedSize)}
+                  aria-describedby={
+                    product.sizes && product.sizes.length > 0 && !selectedSize
+                      ? "pdp-size-required"
+                      : undefined
+                  }
                   className="w-fit rounded-full bg-brand px-8 py-3 text-primary-foreground hover:bg-brand-hover"
                 >
                   {adding ? "Adding..." : "Add to Cart"}
                 </Button>
-                {addedMessage && (
-                  <p
-                    className={`text-sm ${
+                {addedMessage &&
+                  (() => {
+                    const isError =
                       addedMessage.startsWith("Error") ||
-                      addedMessage.startsWith("Failed")
-                        ? "text-destructive"
-                        : "text-success"
-                    }`}
-                  >
-                    {addedMessage}
-                  </p>
-                )}
+                      addedMessage.startsWith("Failed");
+                    return (
+                      <p
+                        role={isError ? "alert" : "status"}
+                        aria-live={isError ? "assertive" : "polite"}
+                        className={`text-sm ${isError ? "text-destructive" : "text-success"}`}
+                      >
+                        {addedMessage}
+                      </p>
+                    );
+                  })()}
                 {!user && (
                   <p className="text-xs text-muted-foreground">
                     Browsing as guest —{" "}

@@ -54,6 +54,7 @@ dashboard-*.png
 
 # Claude Code / AI tooling
 .claude/team-plan/
+.claude/worktrees/
 
 # SMPL-X model files — license forbids redistribution; fetch on demand.
 # See smplx_models/README.md and scripts/fetch-smplx-models.sh

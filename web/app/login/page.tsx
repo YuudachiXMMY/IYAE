@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [errorField, setErrorField] = useState<"email" | "password" | "both" | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
@@ -24,14 +25,17 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setErrorField(null);
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError("Please enter a valid email address.");
+      setErrorField("email");
       return;
     }
     if (!password) {
       setError("Password is required.");
+      setErrorField("password");
       return;
     }
 
@@ -46,6 +50,8 @@ export default function LoginPage() {
       } else {
         setError("An unexpected error occurred");
       }
+      // Invalid credentials are ambiguous about which field is wrong — flag both.
+      setErrorField("both");
     } finally {
       setIsLoading(false);
     }
@@ -65,7 +71,11 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              <div
+                id="login-error"
+                role="alert"
+                className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
+              >
                 {error}
               </div>
             )}
@@ -78,6 +88,12 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                aria-invalid={errorField === "email" || errorField === "both"}
+                aria-describedby={
+                  errorField === "email" || errorField === "both"
+                    ? "login-error"
+                    : undefined
+                }
               />
             </div>
             <div className="space-y-2">
@@ -90,6 +106,12 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
+                aria-invalid={errorField === "password" || errorField === "both"}
+                aria-describedby={
+                  errorField === "password" || errorField === "both"
+                    ? "login-error"
+                    : undefined
+                }
               />
               <div className="text-right">
                 <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">

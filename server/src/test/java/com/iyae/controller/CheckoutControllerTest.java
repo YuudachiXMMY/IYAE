@@ -16,7 +16,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -56,7 +58,7 @@ class CheckoutControllerTest {
     void checkout_verifiedUser_returns200() throws Exception {
         when(userRepository.findByEmail("buyer@example.com"))
                 .thenReturn(Optional.of(verifiedBuyer("buyer@example.com")));
-        when(checkoutService.initiateCheckout("buyer@example.com"))
+        when(checkoutService.initiateCheckout(eq("buyer@example.com"), any()))
                 .thenReturn(Map.of("sessionId", "cs_test_123", "url", "https://checkout.stripe.com/test"));
 
         mockMvc.perform(post("/api/checkout").with(csrf()))
@@ -85,7 +87,7 @@ class CheckoutControllerTest {
     void checkout_serviceThrowsIllegalArgument_returns400() throws Exception {
         when(userRepository.findByEmail("buyer@example.com"))
                 .thenReturn(Optional.of(verifiedBuyer("buyer@example.com")));
-        when(checkoutService.initiateCheckout(anyString()))
+        when(checkoutService.initiateCheckout(anyString(), any()))
                 .thenThrow(new IllegalArgumentException("Cart is empty"));
 
         mockMvc.perform(post("/api/checkout").with(csrf()))

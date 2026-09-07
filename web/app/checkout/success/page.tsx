@@ -1,18 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { NavBar } from "@/components/NavBar";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
+
+interface OrderLike {
+  fulfillmentMethod?: "SHIP" | "PICKUP";
+  shippingCarrier?: string | null;
+  pickupLocationName?: string | null;
+}
 
 export default function CheckoutSuccessPage() {
+  const [order, setOrder] = useState<OrderLike | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .get<OrderLike[]>("/api/orders", { signal: controller.signal })
+      .then((orders) => {
+        if (orders && orders.length > 0) setOrder(orders[0]);
+      })
+      .catch(() => {
+        /* best-effort — the generic confirmation still renders */
+      });
+    return () => controller.abort();
+  }, []);
+
+  const isPickup = order?.fulfillmentMethod === "PICKUP";
+
   return (
     <>
       <NavBar />
       <PageShell>
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          {/* Checkmark icon */}
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -35,8 +59,13 @@ export default function CheckoutSuccessPage() {
             Order Confirmed!
           </h1>
           <p className="mt-4 max-w-sm text-base text-muted-foreground">
-            Thank you for your purchase. We&apos;ve received your order and
-            will begin processing it right away.
+            {isPickup
+              ? `We'll email you when your order is ready for pickup${
+                  order?.pickupLocationName ? ` at ${order.pickupLocationName}` : ""
+                }.`
+              : order?.shippingCarrier
+                ? `Thank you for your purchase. Your order will ship with ${order.shippingCarrier}.`
+                : "Thank you for your purchase. We've received your order and will begin processing it right away."}
           </p>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -46,10 +75,7 @@ export default function CheckoutSuccessPage() {
               </Button>
             </Link>
             <Link href="/products">
-              <Button
-                variant="outline"
-                className="rounded-full border-border px-8"
-              >
+              <Button variant="outline" className="rounded-full border-border px-8">
                 Continue Shopping
               </Button>
             </Link>

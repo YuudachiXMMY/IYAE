@@ -1,12 +1,15 @@
 package com.iyae.service;
 
+import com.iyae.dto.CheckoutRequest;
 import com.iyae.entity.Cart;
 import com.iyae.entity.CartItem;
 import com.iyae.entity.Order;
 import com.iyae.entity.Product;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.FulfillmentMethod;
 import com.iyae.entity.enums.OrderStatus;
 import com.iyae.entity.enums.Role;
+import com.iyae.entity.enums.ShippingCarrier;
 import com.iyae.repository.CartItemRepository;
 import com.iyae.repository.CartRepository;
 import com.iyae.repository.OrderRepository;
@@ -65,6 +68,9 @@ class CheckoutServiceTest {
     @Mock
     ResaleService resaleService;
 
+    @Mock
+    FulfillmentService fulfillmentService;
+
     @InjectMocks
     CheckoutService checkoutService;
 
@@ -100,6 +106,10 @@ class CheckoutServiceTest {
                 .quantity(1)
                 .selectedSize("M")
                 .build();
+
+        lenient().when(fulfillmentService.resolve(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new FulfillmentService.ResolvedFulfillment(
+                        FulfillmentMethod.SHIP, null, null, java.math.BigDecimal.ZERO));
     }
 
     // ---- stub path (no Stripe key configured) ----
@@ -115,7 +125,7 @@ class CheckoutServiceTest {
             return null;
         }).when(txTemplate).executeWithoutResult(any());
 
-        Map<String, String> result = checkoutService.initiateCheckout("buyer@test.com");
+        Map<String, String> result = checkoutService.initiateCheckout("buyer@test.com", null);
 
         assertThat(result).containsKey("sessionId");
         assertThat(result).containsKey("url");
@@ -130,7 +140,7 @@ class CheckoutServiceTest {
         when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
         when(cartItemRepository.findByCartId(10L)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com"))
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Cart is empty");
     }
@@ -140,7 +150,7 @@ class CheckoutServiceTest {
         when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
         when(cartRepository.findByUserId(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com"))
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Cart not found");
     }
@@ -149,7 +159,7 @@ class CheckoutServiceTest {
     void initiateCheckout_unknownUser_throwsIllegalArgumentException() {
         when(userRepository.findByEmail("ghost@test.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> checkoutService.initiateCheckout("ghost@test.com"))
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("ghost@test.com", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("User not found");
     }
@@ -165,7 +175,7 @@ class CheckoutServiceTest {
             return null;
         }).when(txTemplate).executeWithoutResult(any());
 
-        checkoutService.initiateCheckout("buyer@test.com");
+        checkoutService.initiateCheckout("buyer@test.com", null);
 
         verify(orderRepository).save(argThat(order ->
                 order.getItemsSnapshot() != null
@@ -193,7 +203,7 @@ class CheckoutServiceTest {
             return null;
         }).when(txTemplate).executeWithoutResult(any());
 
-        checkoutService.initiateCheckout("buyer@test.com");
+        checkoutService.initiateCheckout("buyer@test.com", null);
 
         // 2 * 30.00 + 1 * 40.00 = 100.00
         verify(orderRepository).save(argThat(order ->
@@ -227,7 +237,7 @@ class CheckoutServiceTest {
             return null;
         }).when(txTemplate).executeWithoutResult(any());
 
-        Map<String, String> result = checkoutService.initiateCheckout("buyer@test.com");
+        Map<String, String> result = checkoutService.initiateCheckout("buyer@test.com", null);
 
         verify(stripeGateway).createSession(any(), any());
         assertThat(result.get("sessionId")).isEqualTo("cs_live_abc123");
@@ -259,7 +269,7 @@ class CheckoutServiceTest {
             return null;
         }).when(txTemplate).executeWithoutResult(any());
 
-        checkoutService.initiateCheckout("buyer@test.com");
+        checkoutService.initiateCheckout("buyer@test.com", null);
 
         verify(orderRepository).save(argThat(order ->
                 order.getItemsSnapshot() != null
@@ -281,7 +291,7 @@ class CheckoutServiceTest {
         when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
         when(cartItemRepository.findByCartId(10L)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com"))
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Cart is empty");
     }
@@ -298,7 +308,7 @@ class CheckoutServiceTest {
         when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
         when(cartItemRepository.findByCartId(10L)).thenReturn(List.of(testCartItem));
 
-        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com"))
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com", null))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Checkout failed");
     }
@@ -458,5 +468,67 @@ class CheckoutServiceTest {
 
         verify(resaleService).markSold(500L);
         verify(cartItemRepository, never()).deleteByCartId(any());
+    }
+
+    // ---- Phase 8: fulfillment ----
+
+    @Test
+    void initiateCheckout_shipRequest_addsFeeAndSetsFields() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
+        when(cartItemRepository.findByCartId(10L)).thenReturn(List.of(testCartItem));
+        when(fulfillmentService.resolve(any())).thenReturn(new FulfillmentService.ResolvedFulfillment(
+                FulfillmentMethod.SHIP, null, ShippingCarrier.UPS, new BigDecimal("12.99")));
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>)
+                    inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
+        checkoutService.initiateCheckout("buyer@test.com",
+                new CheckoutRequest(FulfillmentMethod.SHIP, null, ShippingCarrier.UPS));
+
+        // testCartItem = 1 * 59.99; + 12.99 shipping = 72.98
+        verify(orderRepository).save(argThat(order ->
+                order.getFulfillmentMethod() == FulfillmentMethod.SHIP
+                        && order.getShippingCarrier() == ShippingCarrier.UPS
+                        && order.getShippingFee().compareTo(new BigDecimal("12.99")) == 0
+                        && order.getPickupLocationId() == null
+                        && order.getTotalAmount().compareTo(new BigDecimal("72.98")) == 0));
+    }
+
+    @Test
+    void initiateCheckout_pickupRequest_zeroFeeAndSetsLocation() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
+        when(cartItemRepository.findByCartId(10L)).thenReturn(List.of(testCartItem));
+        when(fulfillmentService.resolve(any())).thenReturn(new FulfillmentService.ResolvedFulfillment(
+                FulfillmentMethod.PICKUP, 1L, null, BigDecimal.ZERO));
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>)
+                    inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
+        checkoutService.initiateCheckout("buyer@test.com",
+                new CheckoutRequest(FulfillmentMethod.PICKUP, 1L, null));
+
+        verify(orderRepository).save(argThat(order ->
+                order.getFulfillmentMethod() == FulfillmentMethod.PICKUP
+                        && order.getShippingCarrier() == null
+                        && order.getShippingFee().compareTo(BigDecimal.ZERO) == 0
+                        && order.getPickupLocationId() == 1L
+                        && order.getTotalAmount().compareTo(new BigDecimal("59.99")) == 0));
+    }
+
+    @Test
+    void initiateCheckout_invalidFulfillment_propagatesIllegalArgument() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(fulfillmentService.resolve(any()))
+                .thenThrow(new IllegalArgumentException("A shipping carrier is required for shipped orders"));
+
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com",
+                new CheckoutRequest(FulfillmentMethod.SHIP, null, null)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
