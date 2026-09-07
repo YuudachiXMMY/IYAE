@@ -108,6 +108,16 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
 
   const sizeLabels = tagsFromString(sizesRaw);
 
+  // Sizes that carry entered measurements but are no longer in the sizes list.
+  // Their rows are filtered out on submit; surface a heads-up so the drop isn't silent.
+  const droppedMeasuredSizes = Object.entries(measures)
+    .filter(
+      ([label, row]) =>
+        !sizeLabels.includes(label) &&
+        (row.chestCm || row.waistCm || row.hipsCm || row.lengthCm),
+    )
+    .map(([label]) => label);
+
   const updateMeasure = useCallback(
     (label: string, field: keyof MeasureRow, value: string) => {
       setMeasures((prev) => ({
@@ -307,14 +317,20 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
               placeholder="XS, S, M, L, XL (comma-separated)"
               disabled={submitting}
             />
+            {droppedMeasuredSizes.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Removing a size drops its size-chart measurements on save
+                ({droppedMeasuredSizes.join(", ")}).
+              </p>
+            )}
           </div>
 
           {/* Per-size measurements (optional) */}
           {sizeLabels.length > 0 && (
             <div className="space-y-2" role="group" aria-labelledby="pf-measure-label">
-              <Label id="pf-measure-label">Size measurements (cm, optional)</Label>
+              <Label id="pf-measure-label">Size chart (cm, optional)</Label>
               <p className="text-xs text-muted-foreground">
-                Chest · Waist · Hips · Length. Powers cross-brand “your recommended size”; leave blank to skip.
+                Chest · Waist · Hips · Length — powers your recommended size on the product page. Leave blank to skip.
               </p>
               <div className="space-y-2">
                 {sizeLabels.map((label) => {

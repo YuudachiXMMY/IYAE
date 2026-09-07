@@ -11,6 +11,7 @@ import com.iyae.entity.enums.Role;
 import com.iyae.repository.BodyProfileRepository;
 import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.ProductRepository;
+import com.iyae.repository.ProductSizeMeasurementRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,7 @@ class SizeRecommendationServiceTest {
     @Mock DesignerProfileRepository designerProfileRepository;
     @Mock BodyProfileRepository bodyProfileRepository;
     @Mock UserRepository userRepository;
+    @Mock ProductSizeMeasurementRepository productSizeMeasurementRepository;
 
     @Spy ObjectMapper objectMapper = new ObjectMapper();
 
@@ -449,6 +451,86 @@ class SizeRecommendationServiceTest {
 
         assertThat(result.recommendedSize()).isEqualTo("M");
         assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+    }
+
+    // ---- Tier-1 fallback: authored product_size_measurements rows (Seam B) ----
+
+    // Phase 4/5 unification: when size_chart JSON is absent, the recommender derives its Tier-1
+    // chart from the designer's normalized product_size_measurements rows so MEASUREMENT_CHART
+    // fires from authored measurements.
+    @Test
+    void recommend_noSizeChartJson_usesMeasurementRows_returnsMeasurementChartBasis() {
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", null);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user)
+                .chestCm(92.0).waistCm(76.0).hipsCm(96.0)
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(List.of(
+                size("S", 84.0, 68.0, 88.0),
+                size("M", 92.0, 76.0, 96.0),
+                size("L", 100.0, 84.0, 104.0)));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+        assertThat(result.confidence()).isGreaterThan(0.0);
+        assertThat(result.availableSizes()).containsExactly("S", "M", "L");
+    }
+
+    // The size_chart JSON blob wins when present: the measurement rows are never consulted (so
+    // findByProductId is left unstubbed) and the JSON answer stands even when the rows disagree.
+    @Test
+    void recommend_sizeChartJsonPresent_takesPrecedenceOverRows() {
+        String sizeChart = "["
+                + "{\"size\":\"S\",\"chestCm\":84,\"waistCm\":68,\"hipsCm\":88},"
+                + "{\"size\":\"M\",\"chestCm\":92,\"waistCm\":76,\"hipsCm\":96},"
+                + "{\"size\":\"L\",\"chestCm\":100,\"waistCm\":84,\"hipsCm\":104}"
+                + "]";
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", sizeChart);
+        // Body matches JSON "M"; had the (unconsulted) rows below driven the match it would be "L".
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user)
+                .chestCm(90.0).waistCm(75.0).hipsCm(95.0)
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("MEASUREMENT_CHART");
+    }
+
+    // Rows exist but carry no comparable dims (all-null) — chartFromMeasurements yields an empty
+    // chart, so Tier-1 does not fire and the recommender degrades to self-reported.
+    @Test
+    void recommend_measurementRowsAllNull_fallsThroughToSelfReportedOrNone() {
+        Product product = product("tops", "[\"S\",\"M\",\"L\"]", null);
+        BodyProfile profile = BodyProfile.builder()
+                .id(5L).user(user)
+                .chestCm(90.0).waistCm(75.0).hipsCm(95.0)
+                .topSize("M")
+                .build();
+
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(userRepository.findByEmail("buyer@example.com")).thenReturn(Optional.of(user));
+        when(bodyProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(productSizeMeasurementRepository.findByProductId(100L)).thenReturn(List.of(
+                size("S", null, null, null),
+                size("M", null, null, null)));
+
+        SizeRecommendationResponse result = service.recommend(100L, "buyer@example.com");
+
+        assertThat(result.basis()).isNotEqualTo("MEASUREMENT_CHART");
+        assertThat(result.recommendedSize()).isEqualTo("M");
+        assertThat(result.basis()).isEqualTo("SELF_REPORTED");
     }
 
     // ---- pure pickBestFit (cm-measurement normalization, Marketplace) ----
