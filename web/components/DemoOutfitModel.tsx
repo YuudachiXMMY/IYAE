@@ -107,9 +107,13 @@ export default function DemoOutfitModel() {
           <OrbitControls makeDefault enablePan enableZoom enableRotate />
         </Canvas>
 
-        {/* Overlay label */}
+        {/* Overlay label — announced to assistive tech (fallback state, normal DOM). */}
         <div className="pointer-events-none absolute bottom-4 left-0 right-0 flex justify-center">
-          <span className="rounded-full bg-muted/80 px-3 py-1 text-xs text-muted-foreground backdrop-blur-sm">
+          <span
+            role="status"
+            aria-live="polite"
+            className="rounded-full bg-muted/80 px-3 py-1 text-xs text-muted-foreground backdrop-blur-sm"
+          >
             No 3D model available — demo mannequin
           </span>
         </div>

@@ -138,7 +138,11 @@ export default function CheckoutPage() {
           </div>
 
           {error && (
-            <div className="mb-6 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div
+              id="checkout-error"
+              role="alert"
+              className="mb-6 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
               {error}
             </div>
           )}
