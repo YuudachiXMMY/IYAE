@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/products/*/recommended-size").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/promotions/featured").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/resale/listings", "/api/resale/listings/*").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/users/profile/**").permitAll()
                 .requestMatchers("/assets/**", "/uploads/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/stripe").permitAll()

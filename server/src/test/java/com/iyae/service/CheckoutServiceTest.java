@@ -62,6 +62,9 @@ class CheckoutServiceTest {
     @Mock
     AnalyticsService analyticsService;
 
+    @Mock
+    ResaleService resaleService;
+
     @InjectMocks
     CheckoutService checkoutService;
 
@@ -397,5 +400,63 @@ class CheckoutServiceTest {
         checkoutService.handleWebhook("{}", "sig_valid");
 
         verify(orderRepository, never()).save(any());
+    }
+
+    // ---- resale buy-now path ----
+
+    @Test
+    void initiateResaleCheckout_stubPath_createsResaleOrderAndMarksSold() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(resaleService.reserve(500L, "buyer@test.com")).thenReturn(
+                new ResaleService.ReservedListing(500L, 100L, "Test Dress",
+                        new BigDecimal("32.00"), "CAD", "M",
+                        com.iyae.entity.enums.ResaleCondition.EXCELLENT));
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>)
+                    inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
+        Map<String, String> result = checkoutService.initiateResaleCheckout("buyer@test.com", 500L);
+
+        assertThat(result).containsKey("sessionId");
+        assertThat(result.get("url")).contains("/checkout/success");
+        verify(orderRepository).save(argThat(order ->
+                order.getResaleListingId() != null
+                        && order.getResaleListingId() == 500L
+                        && order.getStatus() == OrderStatus.PAID
+                        && order.getTotalAmount().compareTo(new BigDecimal("32.00")) == 0));
+        verify(resaleService).markSold(500L);
+    }
+
+    @Test
+    void handleWebhook_resaleOrder_marksListingSoldAndSkipsCartClear() throws Exception {
+        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeWebhookSecret");
+        f.setAccessible(true);
+        f.set(checkoutService, "whsec_test_secret");
+
+        Session mockSession = mock(Session.class);
+        when(mockSession.getId()).thenReturn("cs_live_resale");
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.of(mockSession));
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("checkout.session.completed");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+        when(stripeGateway.constructEvent(any(), any(), any())).thenReturn(mockEvent);
+
+        Order resaleOrder = Order.builder()
+                .id(77L)
+                .user(testUser)
+                .status(OrderStatus.PENDING)
+                .stripeSessionId("cs_live_resale")
+                .paymentStatus("PENDING")
+                .resaleListingId(500L)
+                .build();
+        when(orderRepository.findByStripeSessionId("cs_live_resale")).thenReturn(Optional.of(resaleOrder));
+
+        checkoutService.handleWebhook("{}", "sig_valid");
+
+        verify(resaleService).markSold(500L);
+        verify(cartItemRepository, never()).deleteByCartId(any());
     }
 }

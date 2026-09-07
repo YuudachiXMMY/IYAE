@@ -104,6 +104,9 @@ class IyaeApplicationTests {
     CohortAssignmentRepository cohortAssignmentRepository;
 
     @MockBean
+    ResaleListingRepository resaleListingRepository;
+
+    @MockBean
     DataSeeder dataSeeder;
 
     @MockBean
