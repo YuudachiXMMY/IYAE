@@ -190,6 +190,64 @@ export const sizing = {
     api.get<SizeRecommendationResponse>(`/api/products/${productId}/recommended-size`, { signal }),
 };
 
+// ── Resale / Circular / Trade-in (Phase 7) ──────────────────────────────────────
+
+export type ResaleCondition = "NEW_WITH_TAGS" | "EXCELLENT" | "GOOD" | "FAIR";
+export type ResaleStatus = "DRAFT" | "LISTED" | "RESERVED" | "SOLD" | "REMOVED";
+
+export interface ResaleListing {
+  id: number;
+  productId: number;
+  productName: string;
+  productMedia: string[];
+  sellerUsername: string | null;
+  sizeLabel: string;
+  condition: ResaleCondition;
+  askingPrice: number;
+  currency: string;
+  status: ResaleStatus;
+  sellerNote: string | null;
+  media: string[];
+  createdAt: string;
+}
+
+export interface ResaleEligibleItem {
+  productId: number;
+  productName: string;
+  sizeLabel: string;
+  productMedia: string[];
+  orderId: number;
+}
+
+export interface CreateResaleListingPayload {
+  productId: number;
+  sizeLabel: string;
+  condition: ResaleCondition;
+  askingPrice: number;
+  sellerNote?: string;
+  media?: string[];
+}
+
+/**
+ * Typed client for the resale (pre-loved) API. Browse/get are public; the rest require auth.
+ * `checkout` returns the Stripe (or stub) URL to redirect the browser to.
+ */
+export const resale = {
+  browse: (page = 0, size = 20, signal?: AbortSignal) =>
+    api.get<Paged<ResaleListing>>(`/api/resale/listings?page=${page}&size=${size}`, { signal }),
+  get: (id: number, signal?: AbortSignal) =>
+    api.get<ResaleListing>(`/api/resale/listings/${id}`, { signal }),
+  eligibleItems: (signal?: AbortSignal) =>
+    api.get<ResaleEligibleItem[]>("/api/resale/eligible-items", { signal }),
+  myListings: (signal?: AbortSignal) =>
+    api.get<ResaleListing[]>("/api/resale/my-listings", { signal }),
+  create: (payload: CreateResaleListingPayload) =>
+    api.post<ResaleListing>("/api/resale/listings", payload),
+  remove: (id: number) => api.delete<void>(`/api/resale/listings/${id}`),
+  checkout: (id: number) =>
+    api.post<{ sessionId: string; url: string }>(`/api/resale/listings/${id}/checkout`),
+};
+
 export interface RiggingStatusResponse {
   status: "PENDING" | "RUNNING" | "READY" | "FAILED" | "NONE";
   riggedGlbUrl: string | null;

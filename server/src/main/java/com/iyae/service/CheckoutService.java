@@ -45,6 +45,7 @@ public class CheckoutService {
     private final StripeCheckoutGateway stripeGateway;
     private final ObjectMapper objectMapper;
     private final AnalyticsService analyticsService;
+    private final ResaleService resaleService;
 
     @Value("${STRIPE_SECRET_KEY:}")
     private String stripeSecretKey;
@@ -171,11 +172,109 @@ public class CheckoutService {
                 analyticsService.record(order.getUser().getId(), EventType.ORDER_PAID, null,
                         order.getId(), null, null);
 
-                cartRepository.findByUserId(order.getUser().getId()).ifPresent(cart -> {
-                    cartItemRepository.deleteByCartId(cart.getId());
-                    log.info("Cart cleared for user {} after successful payment", order.getUser().getId());
-                });
+                if (order.getResaleListingId() != null) {
+                    // Resale order: mark the pre-loved listing SOLD; there is no cart to clear.
+                    resaleService.markSold(order.getResaleListingId());
+                } else {
+                    cartRepository.findByUserId(order.getUser().getId()).ifPresent(cart -> {
+                        cartItemRepository.deleteByCartId(cart.getId());
+                        log.info("Cart cleared for user {} after successful payment", order.getUser().getId());
+                    });
+                }
             });
+        }
+    }
+
+    /**
+     * Buy-now checkout for a single pre-loved resale listing (Phase 7). Reuses the Stripe gateway +
+     * Order + webhook, but never touches the shared cart. Reserves the listing first so a unique
+     * unit can't be double-sold; releases the reservation if session creation fails.
+     */
+    public Map<String, String> initiateResaleCheckout(String email, Long listingId) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
+        ResaleService.ReservedListing snap = resaleService.reserve(listingId, email);
+        try {
+            String snapshot = buildResaleSnapshot(snap);
+            if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
+                return stubResaleCheckout(user, snap, snapshot);
+            }
+            String label = snap.productName() + " (pre-loved, " + snap.condition() + ")";
+            SessionCreateParams.LineItem lineItem = SessionCreateParams.LineItem.builder()
+                    .setQuantity(1L)
+                    .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
+                            .setCurrency("cad")
+                            .setUnitAmount(snap.askingPrice()
+                                    .multiply(BigDecimal.valueOf(100))
+                                    .setScale(0, RoundingMode.HALF_UP)
+                                    .longValue())
+                            .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                    .setName(label)
+                                    .build())
+                            .build())
+                    .build();
+            SessionCreateParams params = SessionCreateParams.builder()
+                    .setMode(SessionCreateParams.Mode.PAYMENT)
+                    .setSuccessUrl(frontendBaseUrl + "/checkout/success?session_id={CHECKOUT_SESSION_ID}")
+                    .setCancelUrl(frontendBaseUrl + "/resale/" + listingId)
+                    .addAllLineItem(List.of(lineItem))
+                    .putMetadata("userId", String.valueOf(user.getId()))
+                    .build();
+            Session session = stripeGateway.createSession(params, stripeSecretKey);
+            Order order = Order.builder()
+                    .user(user)
+                    .status(OrderStatus.PENDING)
+                    .totalAmount(snap.askingPrice())
+                    .stripeSessionId(session.getId())
+                    .paymentStatus("PENDING")
+                    .itemsSnapshot(snapshot)
+                    .resaleListingId(listingId)
+                    .build();
+            txTemplate.executeWithoutResult(status -> orderRepository.save(order));
+            analyticsService.record(user.getId(), EventType.CHECKOUT_INITIATED, snap.productId(),
+                    order.getId(), snap.sizeLabel(), "resale");
+            return Map.of("sessionId", session.getId(), "url", session.getUrl());
+        } catch (StripeException ex) {
+            resaleService.release(listingId);
+            log.error("Stripe resale session creation failed for listing {}", listingId, ex);
+            throw new RuntimeException("Stripe checkout failed. Please try again.", ex);
+        } catch (RuntimeException ex) {
+            resaleService.release(listingId);
+            throw ex;
+        }
+    }
+
+    private Map<String, String> stubResaleCheckout(User user, ResaleService.ReservedListing snap, String snapshot) {
+        String sessionId = "cs_test_" + UUID.randomUUID();
+        Order order = Order.builder()
+                .user(user)
+                .status(OrderStatus.PAID)
+                .totalAmount(snap.askingPrice())
+                .stripeSessionId(sessionId)
+                .paymentStatus("STUB")
+                .itemsSnapshot(snapshot)
+                .resaleListingId(snap.listingId())
+                .build();
+        txTemplate.executeWithoutResult(status -> orderRepository.save(order));
+        resaleService.markSold(snap.listingId());
+        log.info("STRIPE_SECRET_KEY not configured — created stub resale order {} for listing {}",
+                order.getId(), snap.listingId());
+        // Stub resale orders are immediately PAID — emit both funnel events for dev/analytics parity.
+        analyticsService.record(user.getId(), EventType.CHECKOUT_INITIATED, snap.productId(),
+                order.getId(), snap.sizeLabel(), "resale");
+        analyticsService.record(user.getId(), EventType.ORDER_PAID, snap.productId(),
+                order.getId(), snap.sizeLabel(), "resale");
+        return Map.of("sessionId", sessionId, "url", "/checkout/success?session_id=" + sessionId);
+    }
+
+    private String buildResaleSnapshot(ResaleService.ReservedListing snap) {
+        List<ItemSnapshot> snapshots = List.of(new ItemSnapshot(
+                snap.productId(), snap.productName(), 1, snap.askingPrice().toPlainString(), snap.sizeLabel()));
+        try {
+            return objectMapper.writeValueAsString(snapshots);
+        } catch (JsonProcessingException ex) {
+            log.warn("Failed to serialize resale snapshot", ex);
+            return "[]";
         }
     }
 

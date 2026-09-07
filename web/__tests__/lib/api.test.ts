@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { api, auth, admin, avatar, sizing, ApiError, posts, follows, adminReports } from '@/lib/api'
+import { api, auth, admin, avatar, sizing, ApiError, posts, follows, adminReports, resale } from '@/lib/api'
 import type { RegisterRequest, UpdateProfileRequest, UserResponse, ProfileVisibility, AvatarMode, SizeRecommendationResponse } from '@/lib/api'
 
 describe('api', () => {
@@ -334,6 +334,42 @@ describe('api', () => {
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('/api/admin/reports/1/resolve?status=RESOLVED&removePost=true')
       expect(init.method).toBe('PUT')
+    })
+  })
+
+  describe('resale', () => {
+    it('resale.browse GETs the listings feed with paging', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, last: true }))
+      await resale.browse(0, 20)
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/resale/listings?page=0&size=20')
+      expect(init.method).toBe('GET')
+    })
+
+    it('resale.create POSTs the payload', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: 1 }))
+      await resale.create({ productId: 100, sizeLabel: 'M', condition: 'EXCELLENT', askingPrice: 32 })
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/resale/listings')
+      expect(init.method).toBe('POST')
+      expect(init.body).toBe(JSON.stringify({ productId: 100, sizeLabel: 'M', condition: 'EXCELLENT', askingPrice: 32 }))
+    })
+
+    it('resale.checkout POSTs to the listing checkout endpoint', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ sessionId: 'cs_test_x', url: '/checkout/success?session_id=cs_test_x' }))
+      const res = await resale.checkout(5)
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/resale/listings/5/checkout')
+      expect(init.method).toBe('POST')
+      expect(res.url).toContain('/checkout/success')
+    })
+
+    it('resale.remove DELETEs the listing', async () => {
+      mockFetch.mockResolvedValue(makeResponse({}, 204))
+      await resale.remove(9)
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/resale/listings/9')
+      expect(init.method).toBe('DELETE')
     })
   })
 })

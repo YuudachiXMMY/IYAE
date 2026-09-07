@@ -136,6 +136,7 @@ export function NavBar({ className }: NavBarProps) {
           {user ? (
             <>
               <NavLink href="/products">Products</NavLink>
+              <NavLink href="/resale">Pre-loved</NavLink>
               <NavLink href="/community">Community</NavLink>
               <NavLink href="/style-lab">Style Lab</NavLink>
               {/* <NavLink href="/orders">Orders</NavLink> */}
@@ -148,7 +149,10 @@ export function NavBar({ className }: NavBarProps) {
               {isAdmin && <NavLink href="/admin">Admin</NavLink>}
             </>
           ) : (
-            <NavLink href="/products">Browse</NavLink>
+            <>
+              <NavLink href="/products">Browse</NavLink>
+              <NavLink href="/resale">Pre-loved</NavLink>
+            </>
           )}
         </div>
 
@@ -355,6 +359,12 @@ export function NavBar({ className }: NavBarProps) {
                       onClick={() => setMobileOpen(false)}
                     >
                       Products
+                    </NavLink>
+                    <NavLink
+                      href="/resale"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Pre-loved
                     </NavLink>
                     <NavLink
                       href="/cart"

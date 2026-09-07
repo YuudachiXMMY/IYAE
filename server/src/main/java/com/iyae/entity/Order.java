@@ -46,6 +46,10 @@ public class Order {
     @Builder.Default
     private String paymentStatus = "PENDING";
 
+    /** Set for a resale (pre-loved) purchase order; links to the resale_listings row (Phase 7). */
+    @Column(name = "resale_listing_id")
+    private Long resaleListingId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

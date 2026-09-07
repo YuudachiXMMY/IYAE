@@ -2,6 +2,7 @@ package com.iyae.config;
 
 import com.iyae.service.AvatarService;
 import com.iyae.service.GenerationService;
+import com.iyae.service.ResaleService;
 import com.iyae.service.RiggingService;
 import com.iyae.service.WeatherService;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class SchedulerConfig {
     private final AvatarService avatarService;
     private final RiggingService riggingService;
     private final WeatherService weatherService;
+    private final ResaleService resaleService;
 
     /**
      * Multi-threaded scheduler so a slow task — notably {@link #refreshWeatherCache()},
@@ -64,6 +66,20 @@ public class SchedulerConfig {
             riggingService.processReadyTasks();
         } catch (Exception e) {
             log.error("Error processing ready rigging tasks: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Returns pre-loved resale listings stuck in RESERVED (a checkout was started but never paid)
+     * back to LISTED after the reservation TTL, so an abandoned buy-now can't strand a unique unit.
+     * Runs every 5 minutes; first run 30s after boot.
+     */
+    @Scheduled(fixedDelay = 300000, initialDelay = 30000)
+    public void releaseStaleResaleReservations() {
+        try {
+            resaleService.releaseStaleReservations();
+        } catch (Exception e) {
+            log.error("Error releasing stale resale reservations: {}", e.getMessage());
         }
     }
 
