@@ -28,6 +28,11 @@ interface Order {
   currency: string;
   createdAt: string;
   items: OrderItem[];
+  fulfillmentMethod?: "SHIP" | "PICKUP";
+  shippingCarrier?: string | null;
+  shippingFee?: number;
+  pickupLocationId?: number | null;
+  pickupLocationName?: string | null;
 }
 
 // ── Status helpers ────────────────────────────────────────────────────────────
@@ -205,6 +210,32 @@ export default function OrderDetailPage() {
                 Order Status
               </h2>
               <StatusTimeline status={order.status} />
+            </div>
+
+            {/* Fulfillment */}
+            <div className="rounded-card bg-card p-6 shadow-soft">
+              <h2 className="mb-4 font-display text-xl font-semibold text-foreground">
+                {order.fulfillmentMethod === "PICKUP" ? "Pickup" : "Shipping"}
+              </h2>
+              {order.fulfillmentMethod === "PICKUP" ? (
+                <div className="flex flex-col gap-1 text-sm">
+                  <p className="font-medium text-foreground">
+                    {order.pickupLocationName ?? "In-store pickup"}
+                  </p>
+                  <p className="text-muted-foreground">Free · we&apos;ll email you when it&apos;s ready.</p>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-foreground">
+                    {order.shippingCarrier ?? "Standard shipping"}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {order.shippingFee && order.shippingFee > 0
+                      ? new Intl.NumberFormat("en-CA", { style: "currency", currency: order.currency || "CAD" }).format(order.shippingFee)
+                      : "Free"}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Items */}

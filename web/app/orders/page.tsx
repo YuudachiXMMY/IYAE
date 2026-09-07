@@ -26,6 +26,8 @@ interface Order {
   currency: string;
   createdAt: string;
   items: OrderItem[];
+  fulfillmentMethod?: "SHIP" | "PICKUP";
+  pickupLocationName?: string | null;
 }
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
@@ -73,6 +75,11 @@ function OrderRow({ order }: { order: Order }) {
             {order.items.map((i) => i.name).join(", ")}
           </p>
         )}
+        <p className="text-xs text-muted-foreground">
+          {order.fulfillmentMethod === "PICKUP"
+            ? `Pickup${order.pickupLocationName ? ` · ${order.pickupLocationName}` : ""}`
+            : "Shipping"}
+        </p>
       </div>
       <div className="flex flex-shrink-0 flex-col items-end gap-1">
         <p className="text-sm font-semibold text-foreground">{formattedTotal}</p>
