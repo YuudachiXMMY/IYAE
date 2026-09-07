@@ -19,12 +19,17 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        "brand-pill":
+          "bg-foreground text-background rounded-button hover:bg-foreground/90 uppercase tracking-[0.12px] font-semibold",
+        "outline-pill":
+          "bg-background text-foreground border border-border rounded-button hover:bg-muted uppercase tracking-[0.12px] font-semibold",
       },
       size: {
         default: "h-9 px-4 py-2",
         sm: "h-8 rounded-md px-3 text-xs",
         lg: "h-10 rounded-md px-8",
         icon: "h-9 w-9",
+        pill: "h-12 px-6 rounded-button text-[13px]",
       },
     },
     defaultVariants: {

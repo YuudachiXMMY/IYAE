@@ -2,13 +2,14 @@
 
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { NavBar } from "@/components/NavBar";
-import { PageShell } from "@/components/PageShell";
-import { SearchFilterBar } from "@/components/SearchFilterBar";
-import { ProductList } from "@/components/ProductList";
+import { Search } from "lucide-react";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
+import { SectionKicker } from "@/components/design-system/SectionKicker";
+import { EditorialHeading } from "@/components/design-system/EditorialHeading";
+import { ProductCard } from "@/components/design-system/ProductCard";
+import { SearchFilterBar, type ShopFilter } from "@/components/SearchFilterBar";
 import { Button } from "@/components/ui/button";
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
+import { useDebounce } from "@/lib/hooks/useDebounce";
 import { api } from "@/lib/api";
 import type { Product } from "@/components/ProductListItem";
 
@@ -21,6 +22,13 @@ interface ProductPage {
   last: boolean;
 }
 
+function formatPrice(price: number, currency: string): string {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: currency || "CAD",
+  }).format(price);
+}
+
 function ProductsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -30,8 +38,14 @@ function ProductsPageContent() {
   const currentSort = searchParams.get("sort") ?? "createdAt,desc";
   const currentQ = searchParams.get("q") ?? "";
   const currentLocalOnly = searchParams.get("localOnly") === "true";
+  const currentView = searchParams.get("view") ?? "";
 
-  const [data, setData] = useState<ProductPage | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [meta, setMeta] = useState<{
+    totalElements: number;
+    totalPages: number;
+    last: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProducts = useCallback(async () => {
@@ -49,9 +63,20 @@ function ProductsPageContent() {
       const result = await api.get<ProductPage>(
         `/api/products?${params.toString()}`,
       );
-      setData(result);
+      setMeta({
+        totalElements: result.totalElements,
+        totalPages: result.totalPages,
+        last: result.last,
+      });
+      // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
+      setProducts((prev) =>
+        currentPage === 0 ? result.content : [...prev, ...result.content],
+      );
     } catch {
-      setData(null);
+      if (currentPage === 0) {
+        setProducts([]);
+        setMeta(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -61,138 +86,196 @@ function ProductsPageContent() {
     void fetchProducts();
   }, [fetchProducts]);
 
-  function updateParams(updates: Record<string, string>) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value) {
-        next.set(key, value);
-      } else {
-        next.delete(key);
+  const updateParams = useCallback(
+    (updates: Record<string, string>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) {
+          next.set(key, value);
+        } else {
+          next.delete(key);
+        }
       }
-    }
-    if (!("page" in updates)) {
-      next.set("page", "0");
-    }
-    router.push(`/products?${next.toString()}`, { scroll: false });
-  }
-
-  const handleSearch = useCallback(
-    (q: string) => updateParams({ q }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams],
+      if (!("page" in updates)) {
+        next.set("page", "0");
+      }
+      router.push(`/products?${next.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
   );
 
-  const handleCategory = useCallback(
-    (category: string) => updateParams({ category }),
+  // --- Search (debounced, mirrors previous SearchFilterBar behaviour) ---
+  const [rawQuery, setRawQuery] = useState(currentQ);
+  const debouncedQuery = useDebounce(rawQuery, 300);
+
+  useEffect(() => {
+    if (debouncedQuery !== currentQ) {
+      updateParams({ q: debouncedQuery });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams],
+  }, [debouncedQuery]);
+
+  // --- Filter pills → existing filter state ---
+  const activeFilter: ShopFilter = currentLocalOnly
+    ? "local"
+    : currentCategory === "Accessories"
+      ? "accessories"
+      : currentCategory
+        ? "clothing"
+        : currentView === "newIn"
+          ? "newIn"
+          : "forYou";
+
+  const handleFilter = useCallback(
+    (filter: ShopFilter) => {
+      switch (filter) {
+        case "forYou":
+          updateParams({ category: "", localOnly: "", view: "" });
+          break;
+        case "newIn":
+          updateParams({
+            category: "",
+            localOnly: "",
+            view: "newIn",
+            sort: "createdAt,desc",
+          });
+          break;
+        case "local":
+          updateParams({
+            localOnly: currentLocalOnly ? "" : "true",
+            category: "",
+            view: "",
+          });
+          break;
+        case "clothing":
+          updateParams({ category: "Clothing", localOnly: "", view: "" });
+          break;
+        case "accessories":
+          updateParams({ category: "Accessories", localOnly: "", view: "" });
+          break;
+      }
+    },
+    [updateParams, currentLocalOnly],
   );
 
   const handleSort = useCallback(
     (sort: string) => updateParams({ sort }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams],
+    [updateParams],
   );
 
-  const handleLocal = useCallback(
-    (next: boolean) => updateParams({ localOnly: next ? "true" : "" }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams],
+  const loadMore = useCallback(
+    () => updateParams({ page: String(currentPage + 1) }),
+    [updateParams, currentPage],
   );
 
-  const totalPages = data?.totalPages ?? 0;
-  const products = data?.content ?? [];
+  const count = meta?.totalElements ?? 0;
+  const initialLoading = loading && products.length === 0;
 
   return (
     <>
-      <NavBar />
-      <PageShell>
-        {/* Header */}
-        <div className="mb-10">
-          <h1 className="font-display text-5xl md:text-6xl font-semibold tracking-tight leading-none text-foreground">
-            Discover
-          </h1>
-          <p className="mt-3 text-base text-muted-foreground">
-            Curated pieces from independent designers
-          </p>
-          {data && (
-            <p className="mt-2 text-sm tabular-nums text-muted-foreground/60">
-              {data.totalElements} pieces
-            </p>
+      <SiteHeader variant="app" />
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl px-6 pb-20 pt-12 lg:px-12">
+          {/* Editorial header + search */}
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-xl">
+              <SectionKicker>SHOP</SectionKicker>
+              <EditorialHeading as="h1" className="mt-3">
+                Pieces, considered for you.
+              </EditorialHeading>
+            </div>
+
+            <div className="w-full sm:max-w-xs">
+              <label htmlFor="shop-search" className="sr-only">
+                Search pieces
+              </label>
+              <div className="flex items-center gap-2 border-b border-foreground py-2">
+                <Search
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className="shrink-0 text-muted-foreground"
+                />
+                <input
+                  id="shop-search"
+                  type="search"
+                  value={rawQuery}
+                  onChange={(e) => setRawQuery(e.target.value)}
+                  placeholder="Search designers, pieces, colours…"
+                  aria-label="Search pieces"
+                  className="w-full border-0 bg-transparent p-0 text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Filter row */}
+          <SearchFilterBar
+            activeFilter={activeFilter}
+            onFilter={handleFilter}
+            sort={currentSort}
+            onSort={handleSort}
+            count={count}
+            className="mt-10"
+          />
+
+          {/* Product grid */}
+          {initialLoading ? (
+            <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i}>
+                  <div className="aspect-[276/300] w-full animate-pulse rounded-[2px] bg-muted" />
+                  <div className="mt-2 h-4 w-3/4 animate-pulse rounded bg-muted" />
+                  <div className="mt-1 h-3 w-1/3 animate-pulse rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          ) : products.length === 0 ? (
+            <div className="mt-10 flex flex-col items-center justify-center py-24 text-center">
+              <EditorialHeading as="h2" className="text-[24px]">
+                No pieces found
+              </EditorialHeading>
+              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                Try adjusting your search or filters to discover something new.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3 xl:grid-cols-4">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  name={product.name}
+                  price={formatPrice(product.price, product.currency)}
+                  imageUrl={product.media?.[0]}
+                  href={`/products/${product.id}`}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Recommendation line + LOAD MORE */}
+          {!initialLoading && products.length > 0 && (
+            <div className="mt-14">
+              <p className="text-brand text-[12px]">
+                Recommended because you liked structured silhouettes
+              </p>
+              <div className="mt-4 border-t border-border" />
+              {!(meta?.last ?? true) && (
+                <div className="mt-8 flex justify-center">
+                  <Button
+                    variant="outline-pill"
+                    size="pill"
+                    onClick={loadMore}
+                    disabled={loading}
+                  >
+                    {loading ? "LOADING…" : "LOAD MORE"}
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </div>
-
-        {/* Filters */}
-        <SearchFilterBar
-          onSearch={handleSearch}
-          onCategory={handleCategory}
-          onSort={handleSort}
-          onLocal={handleLocal}
-          localActive={currentLocalOnly}
-          className="mb-8"
-        />
-
-        {/* Product grid */}
-        <ProductList products={products} loading={loading} />
-
-        {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <div className="mt-16 flex items-center justify-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 rounded-full p-0"
-              disabled={currentPage <= 0}
-              onClick={() =>
-                updateParams({ page: String(currentPage - 1) })
-              }
-            >
-              <CaretLeft size={16} weight="bold" />
-            </Button>
-
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-              const pageNum =
-                totalPages <= 5
-                  ? i
-                  : currentPage < 3
-                    ? i
-                    : currentPage > totalPages - 4
-                      ? totalPages - 5 + i
-                      : currentPage - 2 + i;
-              return (
-                <Button
-                  key={pageNum}
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-9 w-9 rounded-full p-0 text-sm font-medium tabular-nums transition-colors",
-                    pageNum === currentPage
-                      ? "bg-foreground text-background hover:bg-foreground/90"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() =>
-                    updateParams({ page: String(pageNum) })
-                  }
-                >
-                  {pageNum + 1}
-                </Button>
-              );
-            })}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 rounded-full p-0"
-              disabled={data?.last ?? true}
-              onClick={() =>
-                updateParams({ page: String(currentPage + 1) })
-              }
-            >
-              <CaretRight size={16} weight="bold" />
-            </Button>
-          </div>
-        )}
-      </PageShell>
+      </main>
     </>
   );
 }
@@ -202,17 +285,19 @@ export default function ProductsPage() {
     <Suspense
       fallback={
         <>
-          <NavBar />
-          <PageShell>
-            <div className="animate-pulse space-y-4">
-              <div className="h-8 w-48 bg-muted rounded" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="h-72 bg-muted rounded-2xl" />
-                ))}
+          <SiteHeader variant="app" />
+          <main className="min-h-screen bg-background">
+            <div className="mx-auto max-w-7xl px-6 pb-20 pt-12 lg:px-12">
+              <div className="animate-pulse space-y-4">
+                <div className="h-8 w-48 rounded bg-muted" />
+                <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3 xl:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="aspect-[276/300] rounded-[2px] bg-muted" />
+                  ))}
+                </div>
               </div>
             </div>
-          </PageShell>
+          </main>
         </>
       }
     >

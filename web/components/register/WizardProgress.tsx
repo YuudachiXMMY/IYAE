@@ -1,46 +1,65 @@
 "use client";
 
-const STEP_LABELS = ["Basics", "Style", "Colors", "Body", "Avatar", "Complete"];
+/**
+ * Display groups map the underlying 6 wizard steps onto the 3 labels shown in
+ * the Figma stepper header:
+ *   01 ACCOUNT          -> step 0 (Basics)
+ *   02 STYLE PROFILE    -> steps 1-2 (Style, Colors)
+ *   03 MEASUREMENTS     -> steps 3-5 (Measurements, Avatar, Complete)
+ */
+const DISPLAY_GROUPS = [
+  { num: "01", label: "ACCOUNT" },
+  { num: "02", label: "STYLE PROFILE" },
+  { num: "03", label: "MEASUREMENTS" },
+] as const;
+
+function activeGroup(currentStep: number): number {
+  if (currentStep <= 0) return 0;
+  if (currentStep <= 2) return 1;
+  return 2;
+}
 
 interface WizardProgressProps {
   currentStep: number;
   totalSteps: number;
 }
 
-export function WizardProgress({ currentStep, totalSteps }: WizardProgressProps) {
+export function WizardProgress({ currentStep }: WizardProgressProps) {
+  const active = activeGroup(currentStep);
+
   return (
-    <div className="w-full mb-8">
-      <div className="flex items-center justify-between relative">
-        <div className="absolute left-0 right-0 top-4 h-0.5 bg-border z-0" />
-        <div
-          className="absolute left-0 top-4 h-0.5 bg-brand z-0 transition-all duration-300"
-          style={{ width: `${(currentStep / (totalSteps - 1)) * 100}%` }}
-        />
-        {STEP_LABELS.slice(0, totalSteps).map((label, index) => {
-          const isDone = index < currentStep;
-          const isCurrent = index === currentStep;
+    <div className="mb-10 w-full">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {DISPLAY_GROUPS.map((group, index) => {
+          const isActive = index === active;
           return (
-            <div key={label} className="flex flex-col items-center z-10">
-              <div
-                className={[
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium border-2 transition-all duration-200",
-                  isDone
-                    ? "bg-brand border-brand text-primary-foreground"
-                    : isCurrent
-                    ? "bg-card border-brand text-brand"
-                    : "bg-card border-border text-muted-foreground",
-                ].join(" ")}
-              >
-                {isDone ? "✓" : index + 1}
+            <div key={group.num} className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <span
+                  className={[
+                    "font-display text-[18px] leading-none",
+                    isActive ? "text-brand" : "text-muted-foreground",
+                  ].join(" ")}
+                >
+                  {group.num}
+                </span>
+                {isActive && (
+                  <span
+                    aria-hidden="true"
+                    className="h-px w-8 bg-brand"
+                  />
+                )}
+                <span
+                  className={[
+                    "font-body text-[11px] uppercase tracking-[0.12px]",
+                    isActive
+                      ? "font-semibold text-brand"
+                      : "text-muted-foreground",
+                  ].join(" ")}
+                >
+                  {group.label}
+                </span>
               </div>
-              <span
-                className={[
-                  "mt-1.5 text-xs hidden sm:block",
-                  isCurrent ? "text-brand font-medium" : isDone ? "text-muted-foreground" : "text-muted-foreground",
-                ].join(" ")}
-              >
-                {label}
-              </span>
             </div>
           );
         })}

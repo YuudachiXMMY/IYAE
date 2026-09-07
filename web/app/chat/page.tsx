@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { ApiError, chat, type ChatMessage, type ChatSession } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useAvatar } from "@/lib/hooks/useAvatar";
@@ -20,6 +21,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
+import { SectionKicker } from "@/components/design-system/SectionKicker";
+import { EditorialHeading } from "@/components/design-system/EditorialHeading";
+import { DarkPanel } from "@/components/design-system/DarkPanel";
+import { UnderlineField } from "@/components/design-system/UnderlineField";
+import { AbstractForm } from "@/components/design-system/AbstractForm";
+import { BRAND } from "@/lib/brand";
 
 // Types (ChatSession, ChatMessage) are imported from "@/lib/api".
 
@@ -118,6 +126,20 @@ function SparkleIcon({ size = 16, className = "" }: { size?: number; className?:
   );
 }
 
+// ── Garment swatch mini-card (fitting room panel) ───────────────────────────
+
+function GarmentSwatch({ kicker, label }: { kicker: string; label: string }) {
+  return (
+    <div className="rounded-[12px] bg-background/10 p-3">
+      <AbstractForm tint={40} rounded="rounded-[8px]" className="h-16 w-full" />
+      <p className="mt-3 font-body text-[10px] uppercase tracking-[0.12px] text-background/60">
+        {kicker}
+      </p>
+      <p className="text-[13px] text-background">{label}</p>
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -137,12 +159,22 @@ export default function ChatPage() {
   const [currentSuggestions, setCurrentSuggestions] = useState<string[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Occasion-form fields (Figma "WHAT'S THE OCCASION?" card). These compose a
+  // prompt fed into the existing chat/generation flow via "CREATE MY EDIT".
+  const [occasion, setOccasion] = useState("");
+  const [mood, setMood] = useState("");
+
   // Fetched once here and shared by both header chips (mobile + desktop) so the
   // page issues a single /api/chat/weather request regardless of how many chips mount.
   const weather = useWeather();
+  const weatherDisplay =
+    weather?.available && weather.temperatureC != null
+      ? `${weather.condition ?? "Clear"}, ${Math.round(weather.temperatureC)}°C`
+      : "";
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatSectionRef = useRef<HTMLDivElement>(null);
 
   // ── Scroll to bottom ──────────────────────────────────────────────────────
   const scrollToBottom = useCallback(() => {
@@ -290,6 +322,38 @@ export default function ChatPage() {
     }
   }, [input, activeSessionId, isSending, isCreatingSession, sendMessageToSession, handleQuickStart]);
 
+  // ── CREATE MY EDIT: compose a prompt from the occasion form + weather and
+  //    feed it into the same chat/generation flow the input uses. ───────────
+  const handleCreateEdit = useCallback(async () => {
+    if (isSending || isCreatingSession) return;
+
+    const parts: string[] = [];
+    if (occasion.trim()) parts.push(`I'm getting dressed for ${occasion.trim()}`);
+    if (mood.trim()) parts.push(`I want to feel ${mood.trim()}`);
+    if (weatherDisplay) parts.push(`The weather is ${weatherDisplay}`);
+    const prompt = parts.length
+      ? `${parts.join(". ")}. Create an outfit edit for me.`
+      : "Create an outfit edit for me.";
+
+    // Reveal the conversation panel so the streamed reply is in view.
+    chatSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+
+    if (activeSessionId) {
+      await sendMessageToSession(prompt);
+    } else {
+      await handleQuickStart(prompt);
+    }
+  }, [
+    occasion,
+    mood,
+    weatherDisplay,
+    isSending,
+    isCreatingSession,
+    activeSessionId,
+    sendMessageToSession,
+    handleQuickStart,
+  ]);
+
   // ── Enter to send (Shift+Enter = newline) ─────────────────────────────────
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -340,250 +404,357 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex">
-        {isLoadingSessions ? (
-          <aside className="flex h-full w-72 flex-col border-r border-border/60 bg-card/40 p-4 gap-3">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </aside>
-        ) : (
-          sidebarContent
-        )}
-      </div>
+    <div className="min-h-screen bg-background">
+      <SiteHeader variant="app" />
 
-      {/* Main chat area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-border/60 bg-card/60 backdrop-blur-sm px-4 py-3 md:hidden">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Open sidebar">
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
+      <main className="mx-auto max-w-7xl px-6 py-10 lg:px-12 lg:py-16">
+        {/* ── Figma composite: occasion form + virtual fitting room ──────── */}
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
+          {/* Left column — occasion form */}
+          <div>
+            <SectionKicker>AI STYLIST</SectionKicker>
+            <EditorialHeading as="h1" className="mt-3">
+              Dress for the feeling.
+            </EditorialHeading>
+            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">
+              Tell {BRAND.name} where you&apos;re going and how you want to feel.
+            </p>
+
+            <div className="mt-8 rounded-[12px] border border-border p-6">
+              <SectionKicker>What&apos;s the occasion?</SectionKicker>
+              <div className="mt-6 flex flex-col gap-6">
+                <UnderlineField
+                  label="Occasion"
+                  id="occasion-field"
+                  value={occasion}
+                  onChange={(e) => setOccasion(e.target.value)}
+                  placeholder="Dinner party, gallery opening…"
+                  autoComplete="off"
+                />
+                <UnderlineField
+                  label="Mood"
+                  id="mood-field"
+                  value={mood}
+                  onChange={(e) => setMood(e.target.value)}
+                  placeholder="Confident, relaxed, bold…"
+                  autoComplete="off"
+                />
+                <UnderlineField
+                  label="Weather"
+                  id="weather-field"
+                  value={weatherDisplay}
+                  readOnly
+                  placeholder="Based on your location"
+                />
+              </div>
+
+              <Button
+                variant="brand-pill"
+                size="pill"
+                className="mt-8 w-full"
+                onClick={handleCreateEdit}
+                disabled={isSending || isCreatingSession}
+              >
+                {isSending || isCreatingSession ? "Creating…" : "Create my edit"}
               </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0">
-              <SheetHeader className="sr-only">
-                <SheetTitle>Chat sessions</SheetTitle>
-              </SheetHeader>
-              {sidebarContent}
-            </SheetContent>
-          </Sheet>
-          <div className="flex items-center gap-2">
-            <SparkleIcon size={16} className="text-brand" />
-            <span className="font-display text-lg font-semibold text-foreground">
-              AI Stylist
-            </span>
+            </div>
           </div>
-          <div className="ml-auto">
-            <ChatWeatherChip weather={weather} />
-          </div>
-        </div>
 
-        {/* Desktop header — weather chip */}
-        <div className="hidden md:flex items-center justify-end border-b border-border/60 bg-card/40 px-4 py-2">
-          <ChatWeatherChip weather={weather} />
-        </div>
+          {/* Right column — virtual fitting room */}
+          <DarkPanel className="flex flex-col rounded-[16px] p-8 lg:p-10">
+            <p className="font-body text-[12px] uppercase tracking-[0.12px] text-background/60">
+              Virtual Fitting Room
+            </p>
+            <p className="mt-2 font-display text-[32px] leading-tight text-background lg:text-[40px]">
+              Look 01
+            </p>
 
-        {/* Messages area */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Welcome state — no session selected */}
-          {!activeSessionId && !isLoadingSessions && (
-            <div className="flex h-full flex-col items-center justify-center px-6">
-              <div className="max-w-lg w-full text-center">
-                <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10">
-                  <SparkleIcon size={24} className="text-brand" />
-                </div>
-
-                <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                  Your AI stylist
-                </h1>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground max-w-sm mx-auto">
-                  Tell me what you&apos;re dressing for, your mood, or a vibe
-                  you&apos;re going for — I&apos;ll pull together the perfect look.
-                </p>
-
-                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {PROMPT_STARTERS.map((starter) => (
-                    <button
-                      key={starter.label}
-                      onClick={() => handleQuickStart(starter.prompt)}
-                      disabled={isCreatingSession || isSending}
-                      className="group flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-brand/30 hover:shadow-soft disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-brand/10 group-hover:text-brand">
-                        {starter.icon}
-                      </span>
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium text-foreground">
-                          {starter.label}
-                        </span>
-                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground line-clamp-2">
-                          {starter.prompt}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-8 flex flex-col gap-4 text-left">
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
-                      Occasion
-                    </span>
-                    <SuggestionChips
-                      suggestions={OCCASION_CHIPS}
-                      onSelect={(o) => handleQuickStart(`Occasion: ${o}.`)}
-                      disabled={isCreatingSession || isSending}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
-                      Mood
-                    </span>
-                    <SuggestionChips
-                      suggestions={MOOD_CHIPS}
-                      onSelect={(m) => handleQuickStart(`Mood: ${m}.`)}
-                      disabled={isCreatingSession || isSending}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground/60">
-                  <div className="h-px flex-1 bg-border" />
-                  <span>or type your own question below</span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
+            <div className="mt-8 flex flex-1 items-stretch gap-5">
+              {/* Central avatar silhouette placeholder */}
+              <div className="relative flex flex-1 items-center justify-center">
+                <AbstractForm
+                  tint={70}
+                  rounded="rounded-[9999px]"
+                  className="h-[340px] w-[190px]"
+                />
+              </div>
+              {/* Garment swatch mini-cards */}
+              <div className="flex w-[150px] flex-col justify-center gap-4">
+                <GarmentSwatch kicker="Blazer" label="Soft Tailoring" />
+                <GarmentSwatch kicker="Trouser" label="Fluid Wide Leg" />
               </div>
             </div>
-          )}
 
-          {/* Messages loading skeleton */}
-          {isLoadingMessages && (
-            <div className="flex flex-col gap-4 max-w-2xl mx-auto px-4 py-8">
-              <div className="flex items-start gap-3">
-                <Skeleton className="h-7 w-7 shrink-0 rounded-lg" />
-                <Skeleton className="h-14 w-56 rounded-2xl rounded-tl-md" />
-              </div>
-              <div className="flex justify-end">
-                <Skeleton className="h-10 w-44 rounded-2xl rounded-tr-md" />
-              </div>
-              <div className="flex items-start gap-3">
-                <Skeleton className="h-7 w-7 shrink-0 rounded-lg" />
-                <Skeleton className="h-20 w-64 rounded-2xl rounded-tl-md" />
-              </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild variant="outline-pill" size="pill">
+                <Link href="/try-on">Try on</Link>
+              </Button>
+              <Button asChild variant="outline-pill" size="pill">
+                <Link href="/looks">Save look</Link>
+              </Button>
             </div>
-          )}
 
-          {/* Message bubbles */}
-          {!isLoadingMessages && activeSessionId && (
-            <div role="log" aria-live="polite" aria-label="Chat messages" className="flex flex-col gap-4 max-w-2xl mx-auto px-4 py-8">
-              {messages.length === 0 && !isTyping && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Send a message to start the conversation.
-                  </p>
-                </div>
-              )}
-              {messages.map((message, index) => (
-                <div
-                  key={message.id}
-                  className="animate-stagger-in"
-                  style={{ animationDelay: `${Math.min(index * 50, 300)}ms` }}
-                >
-                  <ChatMessageBubble message={message} avatarUrl={avatarUrl} />
-                </div>
-              ))}
-              {isTyping && (
-                <div className="flex items-start gap-3 animate-stagger-in">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand/10">
-                    <SparkleIcon size={14} className="text-brand" />
-                  </div>
-                  <div className="rounded-2xl rounded-tl-md bg-card border border-border/60 shadow-soft">
-                    <TypingIndicator />
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+            <p className="mt-6 text-[12px] leading-relaxed text-background/60">
+              Fit preview uses your saved measurements. Your body data stays
+              private.
+            </p>
+          </DarkPanel>
         </div>
 
-        {/* Error banner */}
-        {error && (
-          <div className="mx-4 mb-2 rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            {error}
-          </div>
-        )}
+        {/* ── Existing chat conversation (preserved logic) ───────────────── */}
+        <section ref={chatSectionRef} className="mt-14 lg:mt-16">
+          <SectionKicker>The Conversation</SectionKicker>
+          <EditorialHeading as="h2" className="mt-3 text-[26px] sm:text-[32px] lg:text-[36px]">
+            Chat with your stylist
+          </EditorialHeading>
 
-        {/* Input area — visible on welcome screen and active sessions */}
-        {!isLoadingSessions && (
-          <div className="border-t border-border/60 bg-card/60 backdrop-blur-sm px-4 py-3">
-            <div className="mx-auto max-w-2xl">
-              {isCompleted ? (
-                <div className="flex flex-col items-center gap-3 py-2">
-                  <p className="text-sm text-muted-foreground">
-                    This conversation has ended.
-                  </p>
-                  <Button
-                    onClick={handleNewChat}
-                    disabled={isCreatingSession}
-                    className="rounded-full bg-brand hover:bg-brand-hover text-primary-foreground"
-                  >
-                    {isCreatingSession ? "Creating..." : "Start new chat"}
-                  </Button>
-                </div>
+          <div className="mt-6 flex h-[78vh] min-h-[560px] overflow-hidden rounded-[16px] border border-border bg-background">
+            {/* Desktop sidebar */}
+            <div className="hidden md:flex">
+              {isLoadingSessions ? (
+                <aside className="flex h-full w-72 flex-col gap-3 border-r border-border/60 bg-card/40 p-4">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </aside>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {currentSuggestions.length > 0 && (
-                    <SuggestionChips
-                      suggestions={currentSuggestions}
-                      onSelect={handleSuggestionSelect}
-                      disabled={isSending || isTyping}
-                    />
-                  )}
-                  <div className="flex items-end gap-2">
-                    <Textarea
-                      ref={textareaRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Describe what you're dressing for..."
-                      className="min-h-[44px] max-h-32 flex-1 resize-none rounded-xl border-border/60 bg-background text-sm focus-visible:ring-brand/30"
-                      rows={1}
-                      disabled={isSending}
-                    />
-                    <Button
-                      onClick={handleSend}
-                      disabled={!input.trim() || isSending || isCreatingSession}
-                      size="icon"
-                      className="h-11 w-11 shrink-0 rounded-xl bg-brand hover:bg-brand-hover text-primary-foreground transition-all duration-200 hover:scale-105 active:scale-95"
-                      aria-label="Send message"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14" />
-                        <path d="m12 5 7 7-7 7" />
+                sidebarContent
+              )}
+            </div>
+
+            {/* Main chat area */}
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {/* Mobile top bar */}
+              <div className="flex items-center gap-3 border-b border-border/60 bg-card/60 px-4 py-3 backdrop-blur-sm md:hidden">
+                <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Open sidebar">
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
                       </svg>
                     </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-72 p-0">
+                    <SheetHeader className="sr-only">
+                      <SheetTitle>Chat sessions</SheetTitle>
+                    </SheetHeader>
+                    {sidebarContent}
+                  </SheetContent>
+                </Sheet>
+                <div className="flex items-center gap-2">
+                  <SparkleIcon size={16} className="text-brand" />
+                  <span className="font-display text-lg font-semibold text-foreground">
+                    AI Stylist
+                  </span>
+                </div>
+                <div className="ml-auto">
+                  <ChatWeatherChip weather={weather} />
+                </div>
+              </div>
+
+              {/* Desktop header — weather chip */}
+              <div className="hidden items-center justify-end border-b border-border/60 bg-card/40 px-4 py-2 md:flex">
+                <ChatWeatherChip weather={weather} />
+              </div>
+
+              {/* Messages area */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Welcome state — no session selected */}
+                {!activeSessionId && !isLoadingSessions && (
+                  <div className="flex h-full flex-col items-center justify-center px-6 py-10">
+                    <div className="w-full max-w-lg text-center">
+                      <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10">
+                        <SparkleIcon size={24} className="text-brand" />
+                      </div>
+
+                      <h3 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                        Your AI stylist
+                      </h3>
+                      <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
+                        Tell me what you&apos;re dressing for, your mood, or a vibe
+                        you&apos;re going for — I&apos;ll pull together the perfect look.
+                      </p>
+
+                      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {PROMPT_STARTERS.map((starter) => (
+                          <button
+                            key={starter.label}
+                            onClick={() => handleQuickStart(starter.prompt)}
+                            disabled={isCreatingSession || isSending}
+                            className="group flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 hover:border-brand/30 hover:shadow-soft disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-brand/10 group-hover:text-brand">
+                              {starter.icon}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="text-sm font-medium text-foreground">
+                                {starter.label}
+                              </span>
+                              <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                {starter.prompt}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-8 flex flex-col gap-4 text-left">
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                            Occasion
+                          </span>
+                          <SuggestionChips
+                            suggestions={OCCASION_CHIPS}
+                            onSelect={(o) => handleQuickStart(`Occasion: ${o}.`)}
+                            disabled={isCreatingSession || isSending}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                            Mood
+                          </span>
+                          <SuggestionChips
+                            suggestions={MOOD_CHIPS}
+                            onSelect={(m) => handleQuickStart(`Mood: ${m}.`)}
+                            disabled={isCreatingSession || isSending}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground/60">
+                        <div className="h-px flex-1 bg-border" />
+                        <span>or type your own question below</span>
+                        <div className="h-px flex-1 bg-border" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Messages loading skeleton */}
+                {isLoadingMessages && (
+                  <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-8">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-7 w-7 shrink-0 rounded-lg" />
+                      <Skeleton className="h-14 w-56 rounded-2xl rounded-tl-md" />
+                    </div>
+                    <div className="flex justify-end">
+                      <Skeleton className="h-10 w-44 rounded-2xl rounded-tr-md" />
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-7 w-7 shrink-0 rounded-lg" />
+                      <Skeleton className="h-20 w-64 rounded-2xl rounded-tl-md" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Message bubbles */}
+                {!isLoadingMessages && activeSessionId && (
+                  <div role="log" aria-live="polite" aria-label="Chat messages" className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-8">
+                    {messages.length === 0 && !isTyping && (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          Send a message to start the conversation.
+                        </p>
+                      </div>
+                    )}
+                    {messages.map((message, index) => (
+                      <div
+                        key={message.id}
+                        className="animate-stagger-in"
+                        style={{ animationDelay: `${Math.min(index * 50, 300)}ms` }}
+                      >
+                        <ChatMessageBubble message={message} avatarUrl={avatarUrl} />
+                      </div>
+                    ))}
+                    {isTyping && (
+                      <div className="flex items-start gap-3 animate-stagger-in">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+                          <SparkleIcon size={14} className="text-brand" />
+                        </div>
+                        <div className="rounded-2xl rounded-tl-md border border-border/60 bg-card shadow-soft">
+                          <TypingIndicator />
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Error banner */}
+              {error && (
+                <div className="mx-4 mb-2 flex items-center gap-2 rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              {/* Input area — visible on welcome screen and active sessions */}
+              {!isLoadingSessions && (
+                <div className="border-t border-border/60 bg-card/60 px-4 py-3 backdrop-blur-sm">
+                  <div className="mx-auto max-w-2xl">
+                    {isCompleted ? (
+                      <div className="flex flex-col items-center gap-3 py-2">
+                        <p className="text-sm text-muted-foreground">
+                          This conversation has ended.
+                        </p>
+                        <Button
+                          onClick={handleNewChat}
+                          disabled={isCreatingSession}
+                          className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
+                        >
+                          {isCreatingSession ? "Creating..." : "Start new chat"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {currentSuggestions.length > 0 && (
+                          <SuggestionChips
+                            suggestions={currentSuggestions}
+                            onSelect={handleSuggestionSelect}
+                            disabled={isSending || isTyping}
+                          />
+                        )}
+                        <div className="flex items-end gap-2">
+                          <Textarea
+                            ref={textareaRef}
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Describe what you're dressing for..."
+                            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border-border/60 bg-background text-sm focus-visible:ring-brand/30"
+                            rows={1}
+                            disabled={isSending}
+                          />
+                          <Button
+                            onClick={handleSend}
+                            disabled={!input.trim() || isSending || isCreatingSession}
+                            size="icon"
+                            className="h-11 w-11 shrink-0 rounded-xl bg-brand text-primary-foreground transition-all duration-200 hover:scale-105 hover:bg-brand-hover active:scale-95"
+                            aria-label="Send message"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M5 12h14" />
+                              <path d="m12 5 7 7-7 7" />
+                            </svg>
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           </div>
-        )}
-      </div>
+        </section>
+      </main>
     </div>
   );
 }

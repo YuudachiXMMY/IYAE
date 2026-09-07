@@ -6,9 +6,8 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, type RegisterRequest } from "@/lib/api";
 import { useRedirectIfAuthenticated } from "@/lib/hooks/useRedirectIfAuthenticated";
-import { BRAND } from "@/lib/brand";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { WizardProgress } from "@/components/register/WizardProgress";
 import { StepBasics } from "@/components/register/StepBasics";
 import { StepStylePrefs } from "@/components/register/StepStylePrefs";
@@ -22,6 +21,22 @@ const TOTAL_STEPS = 6;
 const DEFAULT_FORM: Partial<RegisterRequest> = {
   role: "BUYER",
 };
+
+// Primary-CTA label per step (steps map onto the 3 display groups in the header).
+const CTA_LABEL = [
+  "CONTINUE",
+  "BUILD MY PROFILE",
+  "CONTINUE",
+  "CONTINUE",
+  "CONTINUE",
+];
+
+// Display group (1-based, out of 3) for the "N of 3" progress caption.
+function displayGroup(step: number): number {
+  if (step <= 0) return 1;
+  if (step <= 2) return 2;
+  return 3;
+}
 
 export default function RegisterPage() {
   const [currentStep, setCurrentStep] = useState(0);
@@ -94,86 +109,87 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-start justify-center px-4 py-12">
-      <div className="w-full max-w-lg">
-        <div className="text-center mb-8">
-          <h1 className="font-display text-4xl text-foreground">Join {BRAND.name}</h1>
-          <p className="text-muted-foreground mt-2 text-sm">Create your style profile</p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <SiteHeader />
 
+      <main className="mx-auto w-full max-w-4xl px-6 py-12 lg:px-8">
         <WizardProgress currentStep={currentStep} totalSteps={TOTAL_STEPS} />
 
-        <Card className="shadow-soft rounded-card bg-card">
-          <CardContent className="p-6 sm:p-8">
-            {currentStep === 0 && <StepBasics data={formData} onChange={handleChange} />}
-            {currentStep === 1 && <StepStylePrefs data={formData} onChange={handleChange} />}
-            {currentStep === 2 && <StepColors data={formData} onChange={handleChange} />}
-            {currentStep === 3 && <StepMeasurements data={formData} onChange={handleChange} />}
-            {currentStep === 4 && <StepAvatar data={formData} onChange={handleChange} />}
-            {currentStep === 5 && (
-              <StepComplete
-                data={formData}
-                onSubmit={handleSubmit}
-                isLoading={isLoading}
-                error={error}
-              />
-            )}
+        <div className="rounded-card bg-card p-6 shadow-soft sm:p-10">
+          {currentStep === 0 && <StepBasics data={formData} onChange={handleChange} />}
+          {currentStep === 1 && <StepStylePrefs data={formData} onChange={handleChange} />}
+          {currentStep === 2 && <StepColors data={formData} onChange={handleChange} />}
+          {currentStep === 3 && <StepMeasurements data={formData} onChange={handleChange} />}
+          {currentStep === 4 && <StepAvatar data={formData} onChange={handleChange} />}
+          {currentStep === 5 && (
+            <StepComplete
+              data={formData}
+              onSubmit={handleSubmit}
+              isLoading={isLoading}
+              error={error}
+            />
+          )}
 
-            {!isLastStep && (
-              <div className="mt-8 flex items-center justify-between gap-3">
+          {!isLastStep && (
+            <div className="mt-10 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={handleBack}
                   disabled={currentStep === 0}
-                  className="rounded-full text-muted-foreground"
+                  className="rounded-button text-muted-foreground"
                 >
                   Back
                 </Button>
+                <span className="font-body text-[12px] uppercase tracking-[0.12px] text-muted-foreground">
+                  {displayGroup(currentStep)} of 3
+                </span>
+              </div>
 
-                <div className="flex items-center gap-2">
-                  {showCompleteLater && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleSubmit}
-                      disabled={isLoading}
-                      className="rounded-full text-muted-foreground border-border"
-                    >
-                      {isLoading ? "Saving..." : "Complete Later"}
-                    </Button>
-                  )}
+              <div className="flex items-center gap-3">
+                {showCompleteLater && (
                   <Button
                     type="button"
-                    onClick={handleNext}
-                    disabled={!canAdvance()}
-                    className="rounded-full bg-brand hover:bg-brand-hover text-primary-foreground"
+                    variant="outline-pill"
+                    size="pill"
+                    onClick={handleSubmit}
+                    disabled={isLoading}
                   >
-                    Next
+                    {isLoading ? "SAVING…" : "COMPLETE LATER"}
                   </Button>
-                </div>
+                )}
+                <Button
+                  type="button"
+                  variant="brand-pill"
+                  size="pill"
+                  onClick={handleNext}
+                  disabled={!canAdvance()}
+                >
+                  {CTA_LABEL[currentStep] ?? "CONTINUE"}
+                </Button>
               </div>
-            )}
+            </div>
+          )}
 
-            {error && !isLastStep && (
-              <div
-                id="register-error"
-                role="alert"
-                className="mt-4 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive"
-              >
-                {error}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {error && !isLastStep && (
+            <div
+              id="register-error"
+              role="alert"
+              className="mt-4 rounded-card border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              {error}
+            </div>
+          )}
+        </div>
 
-        <p className="mt-6 text-center text-sm text-muted-foreground">
+        <p className="mt-8 text-center font-body text-[13px] text-muted-foreground">
           Already have an account?{" "}
           <Link href="/login" className="text-brand hover:underline">
             Sign in
           </Link>
         </p>
-      </div>
+      </main>
     </div>
   );
 }
