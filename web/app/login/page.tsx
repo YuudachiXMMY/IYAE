@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
 import { useRedirectIfAuthenticated } from "@/lib/hooks/useRedirectIfAuthenticated";
 import { BRAND } from "@/lib/brand";
+import { DarkPanel } from "@/components/design-system/DarkPanel";
+import { EditorialHeading } from "@/components/design-system/EditorialHeading";
+import { SectionKicker } from "@/components/design-system/SectionKicker";
+import { UnderlineField } from "@/components/design-system/UnderlineField";
+import { AbstractForm } from "@/components/design-system/AbstractForm";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -56,63 +58,111 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <Card className="w-full max-w-md shadow-soft rounded-card">
-        <CardHeader className="text-center">
-          <CardTitle className="font-display text-3xl">Welcome Back</CardTitle>
-          <CardDescription>Sign in to your {BRAND.name} account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Left editorial panel (desktop only) */}
+      <DarkPanel className="relative hidden overflow-hidden p-12 lg:flex lg:flex-col lg:justify-center xl:p-20">
+        <AbstractForm
+          tint={48}
+          className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 motion-safe:animate-[editorial-float_12s_ease-in-out_infinite]"
+        />
+        <AbstractForm
+          tint={70}
+          rounded="rounded-[80px]"
+          className="pointer-events-none absolute -bottom-24 -left-10 h-80 w-80 motion-safe:animate-[editorial-drift_16s_ease-in-out_infinite]"
+        />
+        <div className="relative z-10 max-w-md">
+          <EditorialHeading as="h1" className="text-background">
+            Come back to your form.
+          </EditorialHeading>
+          <p className="mt-6 font-body text-[15px] leading-relaxed text-background/70">
+            Your wardrobe, recommendations and saved edits are waiting.
+          </p>
+        </div>
+      </DarkPanel>
+
+      {/* Right form column */}
+      <div className="flex items-center justify-center bg-background px-6 py-16 sm:px-10">
+        <div className="w-full max-w-sm">
+          <SectionKicker>SIGN IN</SectionKicker>
+          <EditorialHeading as="h1" className="mt-3">
+            Welcome back.
+          </EditorialHeading>
+
+          <form onSubmit={handleSubmit} className="mt-10 space-y-6">
             {error && (
-              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="rounded-card bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
+
+            <UnderlineField
+              label="Email address"
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+
+            <div>
+              <UnderlineField
+                label="Password"
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
               />
-              <div className="text-right">
-                <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">
+              <div className="mt-2 text-right">
+                <Link
+                  href="/forgot-password"
+                  className="text-[12px] text-brand hover:underline"
+                >
                   Forgot password?
                 </Link>
               </div>
             </div>
+
             <Button
               type="submit"
-              className="w-full rounded-full bg-brand hover:bg-brand-hover"
+              variant="brand-pill"
+              size="pill"
+              className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? "SIGNING IN…" : "SIGN IN"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
+
+          {/* Divider */}
+          <div className="my-8 flex items-center gap-4">
+            <span className="h-px flex-1 bg-border" />
+            <span className="font-body text-[11px] uppercase tracking-[0.12px] text-muted-foreground">
+              or continue with
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="outline-pill" size="pill" className="flex-1">
+              GOOGLE
+            </Button>
+            <Button variant="outline-pill" size="pill" className="flex-1">
+              APPLE
+            </Button>
+          </div>
+
+          <p className="mt-8 text-center font-body text-[13px] text-muted-foreground">
+            New to {BRAND.name}?{" "}
             <Link href="/register" className="text-brand hover:underline">
-              Create one
+              Create an account
             </Link>
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

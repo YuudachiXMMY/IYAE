@@ -16,10 +16,7 @@ import {
   type SocialPost,
   type CommunityTab,
 } from "@/lib/community-feed";
-import {
-  SOCIAL_PROFILES,
-  findSocialProfile,
-} from "@/lib/social-graph";
+import { findSocialProfile } from "@/lib/social-graph";
 import {
   posts as postsApi,
   follows as followsApi,
@@ -28,20 +25,24 @@ import {
 import { BRAND } from "@/lib/brand";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { CreateFashionPostDialog } from "@/components/profile/CreateFashionPostDialog";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
+import { SectionKicker } from "@/components/design-system/SectionKicker";
+import { EditorialHeading } from "@/components/design-system/EditorialHeading";
+import { FilterPill } from "@/components/design-system/FilterPill";
+import { AbstractForm } from "@/components/design-system/AbstractForm";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Link from "next/link";
 import {
+  ArrowUpRight,
   BadgeCheck,
   Bookmark,
   Compass,
   Heart,
   HeartHandshake,
   MapPin,
-  MessageCircleMore,
+  MessageCircle,
   Repeat2,
-  Search,
-  Share2,
   Sparkles,
 } from "lucide-react";
 import { cn, humanizeNumber } from "@/lib/utils";
@@ -117,6 +118,9 @@ const EMPTY_STATE: Record<
   },
 };
 
+// Very-low burgundy tint over the card surface — the FORME editorial card fill.
+const CARD_TINT = "color-mix(in srgb, var(--color-brand) 5%, var(--color-card))";
+
 interface PostCardProps {
   post: SocialPost;
   state: { followedUsernames: string[]; posts: SocialPost[] };
@@ -138,52 +142,49 @@ function PostCard({
 }: PostCardProps) {
   const isFollowing = state.followedUsernames.includes(post.creatorUsername);
   const profile = findSocialProfile(post.creatorUsername);
+  const commentTotal = post.commentCount ?? post.comments.length;
+  // "location · occasion" — real profile location + the post's first tag.
+  const subline = [profile?.location, post.tags[0]].filter(Boolean).join(" · ");
 
   return (
     <article
-      className="animate-stagger-in rounded-[2.4rem] bg-card/75 backdrop-blur-xl shadow-heavy overflow-hidden transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5"
-      style={{ animationDelay: `${index * 80}ms` }}
+      className="animate-stagger-in flex flex-col rounded-[28px] border border-border/60 p-4 shadow-soft transition-transform duration-300 hover:-translate-y-0.5"
+      style={{ backgroundColor: CARD_TINT, animationDelay: `${index * 60}ms` }}
     >
-      {/* Header: avatar + name + follow */}
-      <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+      {/* Header: avatar chip + name + location · occasion */}
+      <div className="flex items-center gap-3">
         <div
-          className="h-10 w-10 rounded-full shrink-0"
-          style={{
-            background: profile
-              ? `linear-gradient(135deg, ${profile.avatarTone[0]}, ${profile.avatarTone[1]})`
-              : "var(--color-muted)",
-          }}
+          aria-hidden="true"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-[13px] font-semibold text-background"
         >
-          <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-white">
-            {post.creatorName.charAt(0)}
-          </div>
+          {post.creatorName.charAt(0)}
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <Link
               href={post.ownedByCurrentUser ? "/dashboard" : `/profile/${post.creatorUsername}`}
-              className="font-semibold text-sm text-foreground hover:text-foreground"
+              className="truncate font-body text-sm font-semibold text-foreground hover:text-brand"
             >
-              @{post.creatorUsername}
+              {post.creatorName}
             </Link>
             {profile?.isVerified && (
-              <BadgeCheck size={14} className="text-primary shrink-0" aria-label="Verified" role="img" />
+              <BadgeCheck size={14} className="shrink-0 text-brand" aria-label="Verified" role="img" />
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {post.creatorName}
-          </p>
+          {subline && (
+            <p className="truncate text-xs text-muted-foreground">{subline}</p>
+          )}
         </div>
 
         {!post.ownedByCurrentUser && (
           <button
             onClick={() => onToggleFollow(post)}
             className={cn(
-              "rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-all duration-200",
+              "rounded-chip px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12px] transition-colors",
               isFollowing
-                ? "border border-border text-muted-foreground hover:border-foreground/30"
-                : "bg-foreground text-background hover:opacity-80 active:scale-[0.97]"
+                ? "border border-border text-muted-foreground hover:border-foreground/40"
+                : "bg-foreground text-background hover:bg-foreground/90"
             )}
           >
             {isFollowing ? "Following" : "Follow"}
@@ -191,155 +192,137 @@ function PostCard({
         )}
       </div>
 
-      {/* Image area */}
-      <PostMedia src={post.image} alt={`Post by @${post.creatorUsername}`} />
+      {/* Image area — white rounded inner frame (AbstractForm placeholder when no media) */}
+      <div className="mt-4 rounded-[24px] bg-background p-2">
+        {post.image ? (
+          <PostMedia
+            src={post.image}
+            alt={`Post by ${post.creatorName}`}
+            className="rounded-[18px]"
+          />
+        ) : (
+          <AbstractForm tint={20} rounded="rounded-[18px]" className="aspect-[4/5] w-full" />
+        )}
+      </div>
 
-      {/* Action buttons */}
-      <div className="px-5 py-3 flex items-center gap-1">
+      {/* Engagement row */}
+      <div className="mt-4 flex items-center gap-4">
         <button
           onClick={() => onToggleLike(post)}
+          aria-label="Like"
           className={cn(
-            "p-2 rounded-full transition-all duration-200",
+            "flex items-center gap-1.5 text-sm transition-colors",
             post.likedByCurrentUser
-              ? "scale-110 bg-brand/10 text-brand"
-              : "text-muted-foreground hover:text-brand active:scale-95"
+              ? "text-brand"
+              : "text-muted-foreground hover:text-brand"
           )}
         >
-          <Heart
-            size={18}
-            fill={post.likedByCurrentUser ? "currentColor" : "none"}
-          />
+          <Heart size={18} fill={post.likedByCurrentUser ? "currentColor" : "none"} />
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>
+            {humanizeNumber(post.likeCount)}
+          </span>
         </button>
         <button
           onClick={() => onOpenDetail(post)}
-          className="p-2 rounded-full text-muted-foreground hover:text-foreground active:scale-95 transition-all duration-200"
+          aria-label="Comments"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          <MessageCircleMore size={18} />
+          <MessageCircle size={18} />
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>
+            {humanizeNumber(commentTotal)}
+          </span>
         </button>
-        <button
-          onClick={() => onPostUpdate(toggleSave(post))}
-          className={cn(
-            "p-2 rounded-full transition-all duration-200",
-            post.savedByCurrentUser
-              ? "scale-110 bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground active:scale-95"
-          )}
-        >
-          <Bookmark
-            size={18}
-            fill={post.savedByCurrentUser ? "currentColor" : "none"}
-          />
-        </button>
-        <button
-          onClick={() => onPostUpdate(toggleRepost(post))}
-          className={cn(
-            "p-2 rounded-full transition-all duration-200",
-            post.repostedByCurrentUser
-              ? "scale-110 bg-primary/10 text-primary"
-              : "text-muted-foreground hover:text-foreground active:scale-95"
-          )}
-        >
-          <Repeat2 size={18} />
-        </button>
-        <button
-          onClick={() => toast.message("Post copied for sharing")}
-          className="p-2 rounded-full text-muted-foreground hover:text-foreground active:scale-95 transition-all duration-200 ml-auto"
-        >
-          <Share2 size={18} />
-        </button>
+
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={() => onPostUpdate(toggleSave(post))}
+            aria-label="Save"
+            className={cn(
+              "rounded-full p-1.5 transition-colors",
+              post.savedByCurrentUser
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Bookmark size={17} fill={post.savedByCurrentUser ? "currentColor" : "none"} />
+          </button>
+          <button
+            onClick={() => onPostUpdate(toggleRepost(post))}
+            aria-label="Repost"
+            className={cn(
+              "rounded-full p-1.5 transition-colors",
+              post.repostedByCurrentUser
+                ? "text-brand"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Repeat2 size={17} />
+          </button>
+          <button
+            onClick={() => toast.message("Post copied for sharing")}
+            aria-label="Share"
+            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowUpRight size={17} />
+          </button>
+        </div>
       </div>
 
-      {/* Like count + caption */}
-      <div className="px-5 pb-4">
-        <p className="text-sm font-semibold text-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {humanizeNumber(post.likeCount)} likes
-        </p>
-        <p className="text-sm text-foreground mt-1 leading-relaxed">
-          <Link
-            href={post.ownedByCurrentUser ? "/dashboard" : `/profile/${post.creatorUsername}`}
-            className="font-semibold hover:text-foreground"
-          >
-            @{post.creatorUsername}
-          </Link>{" "}
-          {post.caption}
-        </p>
+      {/* Caption */}
+      <p className="mt-3 text-sm leading-relaxed text-foreground">
+        <Link
+          href={post.ownedByCurrentUser ? "/dashboard" : `/profile/${post.creatorUsername}`}
+          className="font-semibold hover:text-brand"
+        >
+          @{post.creatorUsername}
+        </Link>{" "}
+        {post.caption}
+      </p>
 
-        <p className="text-xs text-muted-foreground mt-2">
-          {formatPostedAt(post.postedAt)}
-        </p>
+      <p className="mt-2 text-xs text-muted-foreground">{formatPostedAt(post.postedAt)}</p>
 
-        {post.comments.length > 0 ? (
-          <>
-            <p className="text-sm text-muted-foreground mt-1.5 line-clamp-1">
-              <span className="font-semibold text-foreground">@{post.comments[0].authorHandle}</span>{" "}
-              {post.comments[0].copy}
-            </p>
-            {post.comments.length > 1 && (
-              <button
-                onClick={() => onOpenDetail(post)}
-                className="text-xs text-muted-foreground mt-1 hover:text-foreground transition-colors"
-              >
-                View all {post.comments.length} comments
-              </button>
-            )}
-          </>
-        ) : (post.commentCount ?? 0) > 0 ? (
-          <button
-            onClick={() => onOpenDetail(post)}
-            className="text-xs text-muted-foreground mt-2 hover:text-foreground transition-colors"
-          >
-            View all {post.commentCount} comments
-          </button>
-        ) : (
-          <button
-            onClick={() => onOpenDetail(post)}
-            className="text-xs text-muted-foreground mt-2 hover:text-foreground transition-colors"
-          >
-            Add a comment...
-          </button>
-        )}
+      {commentTotal > 0 ? (
+        <button
+          onClick={() => onOpenDetail(post)}
+          className="mt-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          View all {commentTotal} comments
+        </button>
+      ) : (
+        <button
+          onClick={() => onOpenDetail(post)}
+          className="mt-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Add a comment...
+        </button>
+      )}
 
-        {post.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {post.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {post.productLinks.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {post.productLinks.map((pl) => (
-              <Link
-                key={pl.id}
-                href={pl.href}
-                className="rounded-full bg-primary/10 px-3 py-1 text-xs uppercase text-primary hover:bg-primary/15 transition-colors"
-              >
-                {pl.label}
-              </Link>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2 mt-4">
-          <Link
-            href={buildOutfitGeneratorHref(post, "shop")}
-            className="flex-1 rounded-full border border-border py-2 text-center text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:border-foreground/20 hover:text-foreground active:scale-[0.98] transition-all duration-200"
-          >
-            Shop This Look
-          </Link>
-          <Link
-            href={buildOutfitGeneratorHref(post, "similar")}
-            className="flex-1 rounded-full bg-foreground py-2 text-center text-xs font-semibold uppercase tracking-[0.16em] text-background hover:opacity-80 active:scale-[0.98] transition-all duration-200"
-          >
-            Generate Similar
-          </Link>
+      {post.tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {post.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-chip bg-muted px-2.5 py-0.5 text-[10px] uppercase tracking-[0.12px] text-muted-foreground"
+            >
+              {tag}
+            </span>
+          ))}
         </div>
+      )}
+
+      <div className="mt-auto flex gap-2 pt-4">
+        <Link
+          href={buildOutfitGeneratorHref(post, "shop")}
+          className="flex-1 rounded-button border border-border py-2 text-center text-[11px] font-semibold uppercase tracking-[0.12px] text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+        >
+          Shop This Look
+        </Link>
+        <Link
+          href={buildOutfitGeneratorHref(post, "similar")}
+          className="flex-1 rounded-button bg-foreground py-2 text-center text-[11px] font-semibold uppercase tracking-[0.12px] text-background transition-colors hover:bg-foreground/90"
+        >
+          Generate Similar
+        </Link>
       </div>
     </article>
   );
@@ -353,7 +336,6 @@ export default function CommunityPage() {
   } | null>(null);
   const [activeTab, setActiveTab] = useState<CommunityTab>("discover");
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
-  const [creatorSearch, setCreatorSearch] = useState("");
 
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [feedRefreshKey, setFeedRefreshKey] = useState(0);
@@ -433,11 +415,6 @@ export default function CommunityPage() {
       .catch(() => handlePostUpdate(post)); // revert to the pre-toggle state
   }
 
-  // Demo follow (sidebar creators have no server id) — local graph only.
-  function handleFollowDemo(username: string) {
-    setState((prev) => (prev ? toggleFollow(prev, username) : prev));
-  }
-
   // Real follow for server-backed post authors; optimistic local mirror + revert on failure.
   function handleToggleFollowReal(post: SocialPost) {
     const username = post.creatorUsername;
@@ -464,121 +441,70 @@ export default function CommunityPage() {
   // Server feeds render REAL posts; on error/unauth they fall back to the local demo layer.
   const filteredPosts = isServerFeed(activeTab) ? feedPosts ?? localPosts : localPosts;
 
-  const filteredCreators = SOCIAL_PROFILES.filter(
-    (p) =>
-      !creatorSearch ||
-      p.displayName.toLowerCase().includes(creatorSearch.toLowerCase()) ||
-      p.username.includes(creatorSearch.toLowerCase())
-  );
-
   const emptyConfig = EMPTY_STATE[activeTab];
   const EmptyIcon = emptyConfig.icon;
 
   return (
     <>
-      <NavBar />
-      <div
-        className="min-h-screen"
-        style={{
-          background: `
-            linear-gradient(180deg, var(--gradient-page-start) 0%, var(--gradient-page-mid) 50%, var(--gradient-page-end) 100%),
-            radial-gradient(circle at top left, rgba(167,118,255,0.12), transparent 26%),
-            radial-gradient(circle at bottom right, rgba(255,176,122,0.16), transparent 30%)
-          `,
-        }}
-      >
-        <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
-          {/* Header — editorial, no redundancy */}
-          <h1 className="font-display text-4xl sm:text-5xl tracking-[-0.04em] text-foreground">
-            {BRAND.name} Community
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1 mb-4">
-            Discover looks, follow creators, and find your next outfit.
-          </p>
+      <SiteHeader variant="app" />
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl px-6 pb-20 pt-12 lg:px-12">
+          {/* Editorial header */}
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <div className="max-w-xl">
+              <SectionKicker>COMMUNITY</SectionKicker>
+              <EditorialHeading as="h1" className="mt-3">
+                Style, in real life.
+              </EditorialHeading>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Looks from people dressing for themselves.
+              </p>
+            </div>
 
-          {user && (
-            <button
-              onClick={() => setCreatePostOpen(true)}
-              className="mb-6 inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-background hover:opacity-80 active:scale-[0.98] transition-all duration-200"
-            >
-              <Share2 size={14} /> Share a Look
-            </button>
-          )}
+            {user && (
+              <Button
+                variant="brand-pill"
+                size="pill"
+                onClick={() => setCreatePostOpen(true)}
+                className="shrink-0"
+              >
+                Share a Look
+              </Button>
+            )}
+          </div>
 
-          {/* Tab bar */}
-          <div className="rounded-[2.4rem] bg-card/80 backdrop-blur-xl p-1.5 flex gap-1 shadow-heavy mb-8">
+          {/* Filter tabs */}
+          <div className="mt-8 flex flex-wrap gap-2">
             {TABS.map((tab) => (
-              <button
+              <FilterPill
                 key={tab.key}
+                active={activeTab === tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  "flex-1 rounded-full px-4 py-2.5 text-xs font-medium tracking-wide transition-all duration-200",
-                  activeTab === tab.key
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
               >
                 {tab.label}
-              </button>
+              </FilterPill>
             ))}
           </div>
-        </div>
 
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 pb-16">
-          {/* Mobile creator strip — visible below xl, Stories-style */}
-          <div className="xl:hidden mb-8 -mx-4 sm:-mx-6">
-            <h3 className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-4 sm:px-6 mb-3">
-              Suggested creators
-            </h3>
-            <div className="flex gap-4 overflow-x-auto px-4 sm:px-6 pb-2">
-              {SOCIAL_PROFILES.map((profile) => (
-                <button
-                  key={profile.username}
-                  onClick={() => handleFollowDemo(profile.username)}
-                  className="flex flex-col items-center gap-1.5 shrink-0 group"
-                >
-                  <div
-                    className={cn(
-                      "h-16 w-16 rounded-full shrink-0 ring-2 ring-offset-2 ring-offset-background transition-all duration-200",
-                      state?.followedUsernames.includes(profile.username)
-                        ? "ring-primary"
-                        : "ring-transparent group-hover:ring-muted-foreground/30"
-                    )}
-                    style={{
-                      background: `linear-gradient(135deg, ${profile.avatarTone[0]}, ${profile.avatarTone[1]})`,
-                    }}
-                  >
-                    <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
-                      {profile.displayName.charAt(0)}
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[64px]">
-                    {profile.displayName.split(" ")[0]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid gap-8 xl:grid-cols-[1fr_360px]">
-            {/* Left: Post Feed */}
-            <div className="space-y-6">
-              {filteredPosts.length === 0 ? (
-                feedLoading ? (
-                  <div className="rounded-[2.4rem] bg-card/75 backdrop-blur-xl shadow-heavy py-20 text-center">
-                    <p className="text-sm text-muted-foreground">Loading feed…</p>
-                  </div>
-                ) : (
-                  <div className="rounded-[2.4rem] bg-card/75 backdrop-blur-xl shadow-heavy py-20 text-center">
-                    <EmptyIcon size={32} className="mx-auto text-muted-foreground/50 mb-4" strokeWidth={1.5} />
-                    <p className="text-foreground font-medium">{emptyConfig.title}</p>
-                    <p className="mt-1.5 text-sm text-muted-foreground max-w-xs mx-auto">
-                      {emptyConfig.description}
-                    </p>
-                  </div>
-                )
+          {/* Feed */}
+          <div className="mt-10">
+            {filteredPosts.length === 0 ? (
+              feedLoading ? (
+                <div className="rounded-[28px] border border-border/60 py-20 text-center">
+                  <p className="text-sm text-muted-foreground">Loading feed…</p>
+                </div>
               ) : (
-                filteredPosts.map((post, index) => (
+                <div className="rounded-[28px] border border-border/60 py-20 text-center">
+                  <EmptyIcon size={32} className="mx-auto mb-4 text-muted-foreground/50" strokeWidth={1.5} />
+                  <p className="font-medium text-foreground">{emptyConfig.title}</p>
+                  <p className="mx-auto mt-1.5 max-w-xs text-sm text-muted-foreground">
+                    {emptyConfig.description}
+                  </p>
+                </div>
+              )
+            ) : (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {filteredPosts.map((post, index) => (
                   <PostCard
                     key={post.id}
                     post={post}
@@ -589,85 +515,17 @@ export default function CommunityPage() {
                     onToggleFollow={handleToggleFollowReal}
                     onOpenDetail={handleOpenDetail}
                   />
-                ))
-              )}
-            </div>
-
-            {/* Right: Discover Creators sidebar */}
-            <aside className="hidden xl:block">
-              <div className="sticky top-24 rounded-[2.4rem] bg-card/75 backdrop-blur-xl p-5 shadow-heavy">
-                <h3 className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-4">
-                  Discover creators
-                </h3>
-
-                <div className="relative mb-4">
-                  <Search
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <input
-                    value={creatorSearch}
-                    onChange={(e) => setCreatorSearch(e.target.value)}
-                    placeholder="Search creators..."
-                    className="w-full rounded-full border border-border bg-card/85 pl-9 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring/50 transition-shadow duration-200"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  {filteredCreators.slice(0, 5).map((profile) => (
-                    <div
-                      key={profile.username}
-                      className="flex items-center gap-3"
-                    >
-                      <div
-                        className="h-10 w-10 rounded-full shrink-0"
-                        style={{
-                          background: `linear-gradient(135deg, ${profile.avatarTone[0]}, ${profile.avatarTone[1]})`,
-                        }}
-                      >
-                        <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-white">
-                          {profile.displayName.charAt(0)}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm font-medium text-foreground truncate">
-                            {profile.displayName}
-                          </span>
-                          {profile.isVerified && (
-                            <BadgeCheck
-                              size={12}
-                              className="text-primary shrink-0"
-                              aria-label="Verified"
-                              role="img"
-                            />
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          @{profile.username}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleFollowDemo(profile.username)}
-                        className={cn(
-                          "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-all duration-200 shrink-0",
-                          state?.followedUsernames.includes(profile.username)
-                            ? "border border-border text-muted-foreground hover:border-foreground/30"
-                            : "bg-foreground text-background hover:opacity-80 active:scale-[0.97]"
-                        )}
-                      >
-                        {state?.followedUsernames.includes(profile.username)
-                          ? "Following"
-                          : "Follow"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                ))}
               </div>
-            </aside>
+            )}
           </div>
+
+          {/* Footer note */}
+          <p className="mt-16 text-center text-xs text-muted-foreground">
+            {BRAND.name} is a judgment-free space. Celebrate style; never bodies.
+          </p>
         </div>
-      </div>
+      </main>
 
       {selectedPost && (
         <PostDetailDialog

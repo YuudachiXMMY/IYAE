@@ -3,41 +3,77 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SearchFilterBar } from '@/components/SearchFilterBar'
 
-// Stub the category fetch so the component mounts without a real network call.
-vi.mock('@/lib/api', () => ({
-  api: { get: vi.fn().mockResolvedValue([]) },
-}))
-
-describe('SearchFilterBar — Local designers toggle', () => {
+describe('SearchFilterBar — shop filter row', () => {
   const noop = () => {}
 
-  it('renders the toggle when onLocal is provided', () => {
+  it('renders all five filter pills', () => {
     render(
-      <SearchFilterBar onSearch={noop} onCategory={noop} onSort={noop} onLocal={noop} />,
+      <SearchFilterBar
+        activeFilter="forYou"
+        onFilter={noop}
+        sort="createdAt,desc"
+        onSort={noop}
+        count={12}
+      />,
     )
-    expect(screen.getByLabelText('Show only local designers')).toBeInTheDocument()
+    for (const label of [
+      'For You',
+      'New In',
+      'Local Designers',
+      'Clothing',
+      'Accessories',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
   })
 
-  it('does not render the toggle when onLocal is omitted', () => {
-    render(<SearchFilterBar onSearch={noop} onCategory={noop} onSort={noop} />)
-    expect(screen.queryByLabelText('Show only local designers')).toBeNull()
+  it('marks the active pill with aria-pressed', () => {
+    render(
+      <SearchFilterBar
+        activeFilter="local"
+        onFilter={noop}
+        sort="createdAt,desc"
+        onSort={noop}
+        count={0}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: 'Local Designers' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'For You' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 
-  it('emits onLocal(true) when toggled on', async () => {
-    const onLocal = vi.fn()
+  it('emits onFilter with the pill key when clicked', async () => {
+    const onFilter = vi.fn()
     const user = userEvent.setup()
     render(
       <SearchFilterBar
-        onSearch={noop}
-        onCategory={noop}
+        activeFilter="forYou"
+        onFilter={onFilter}
+        sort="createdAt,desc"
         onSort={noop}
-        onLocal={onLocal}
-        localActive={false}
+        count={0}
       />,
     )
 
-    await user.click(screen.getByLabelText('Show only local designers'))
+    await user.click(screen.getByRole('button', { name: 'Local Designers' }))
 
-    expect(onLocal).toHaveBeenCalledWith(true)
+    expect(onFilter).toHaveBeenCalledWith('local')
+  })
+
+  it('renders the piece count', () => {
+    render(
+      <SearchFilterBar
+        activeFilter="forYou"
+        onFilter={noop}
+        sort="createdAt,desc"
+        onSort={noop}
+        count={42}
+      />,
+    )
+    expect(screen.getByText('42 pieces')).toBeInTheDocument()
   })
 })
