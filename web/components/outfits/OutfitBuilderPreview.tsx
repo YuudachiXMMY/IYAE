@@ -10,7 +10,11 @@ import { SLOTS, type SlotMap } from "@/lib/outfit-slots";
 const AvatarViewer = dynamic(() => import("@/components/AvatarViewer"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center bg-muted">
+    <div
+      role="status"
+      aria-busy="true"
+      className="flex h-full items-center justify-center bg-muted"
+    >
       <div className="flex flex-col items-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
         <p className="text-xs text-muted-foreground">Loading 3D model…</p>
@@ -67,7 +71,10 @@ export function OutfitBuilderPreview({ slots, avatarUrl }: OutfitBuilderPreviewP
       <div className="relative h-[500px] w-full rounded-card bg-card shadow-soft overflow-hidden">
         <ViewerErrorBoundary
           fallback={
-            <div className="flex h-full items-center justify-center bg-muted">
+            <div
+              role="status"
+              className="flex h-full items-center justify-center bg-muted"
+            >
               <p className="text-sm text-muted-foreground">3D preview unavailable</p>
             </div>
           }

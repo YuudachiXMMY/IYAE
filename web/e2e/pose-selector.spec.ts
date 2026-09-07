@@ -52,6 +52,26 @@ test.describe('Pose Selector', () => {
     await expect(page.getByRole('button', { name: 'Relaxed' })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  test('arrow keys move focus and selection (APG roving-tabindex)', async ({ page }) => {
+    test.setTimeout(30000);
+    await navigateToOutfitWithViewer(page);
+    await expect(page.getByRole('button', { name: 'A-Pose' })).toBeVisible({ timeout: 15000 });
+
+    const aPose = page.getByRole('button', { name: 'A-Pose' });
+    const relaxed = page.getByRole('button', { name: 'Relaxed' });
+
+    // Focus the first pose, then ArrowRight moves focus AND selection to the next.
+    await aPose.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(relaxed).toBeFocused();
+    await expect(relaxed).toHaveAttribute('aria-pressed', 'true');
+
+    // ArrowLeft moves back; clamps at the first pose.
+    await page.keyboard.press('ArrowLeft');
+    await expect(aPose).toBeFocused();
+    await expect(aPose).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test('pose change produces different canvas screenshot', async ({ page }) => {
     test.setTimeout(30000);
     await navigateToOutfitWithViewer(page);
