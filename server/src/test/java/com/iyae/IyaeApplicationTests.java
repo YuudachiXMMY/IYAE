@@ -107,6 +107,9 @@ class IyaeApplicationTests {
     ResaleListingRepository resaleListingRepository;
 
     @MockBean
+    PickupLocationRepository pickupLocationRepository;
+
+    @MockBean
     DataSeeder dataSeeder;
 
     @MockBean

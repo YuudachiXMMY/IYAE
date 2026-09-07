@@ -14,6 +14,7 @@ import {
   XROrigin,
 } from "@react-three/xr";
 import * as THREE from "three";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
 interface ARViewerProps {
   glbUrls: string[];
@@ -146,7 +147,10 @@ function PreviewScene({ glbUrls }: { glbUrls: string[] }) {
 // XR session not supported message
 function XRNotSupported() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl bg-card px-6 py-5 text-center shadow-lg">
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-3 rounded-2xl bg-card px-6 py-5 text-center shadow-lg"
+    >
       <p className="text-sm font-semibold text-foreground">
         WebXR Not Supported
       </p>
@@ -161,6 +165,7 @@ function XRNotSupported() {
 const xrStore = createXRStore();
 
 export default function ARViewer({ glbUrls, onExit }: ARViewerProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [arActive, setArActive] = useState(false);
   const [placed, setPlaced] = useState(false);
   const [placementMatrix, setPlacementMatrix] =
@@ -195,6 +200,11 @@ export default function ARViewer({ glbUrls, onExit }: ARViewerProps) {
     onExit?.();
   };
 
+  // Trap keyboard focus within the fullscreen overlay while mounted, cycle Tab within
+  // its controls, exit on Escape, and restore focus to the trigger on unmount
+  // (WAI-ARIA dialog-modal pattern). The overlay is `fixed inset-0`, so mounted == open.
+  useFocusTrap(true, overlayRef, handleExitAR);
+
   const handleReplace = () => {
     setPlaced(false);
     setPlacementMatrix(null);
@@ -204,19 +214,38 @@ export default function ARViewer({ glbUrls, onExit }: ARViewerProps) {
     latestHitMatrix.current = m.clone();
   }, []);
 
-  // Tap on canvas to place model at latest hit-test position
-  const handleCanvasClick = () => {
+  // Place the model at the latest hit-test position. Shared by the tap-on-canvas path
+  // and the keyboard "Place model" button so placement has a keyboard route (WCAG 2.1.1).
+  const handlePlace = () => {
     if (!arActive || placed || !latestHitMatrix.current) return;
     setPlacementMatrix(latestHitMatrix.current.clone());
     setPlaced(true);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div
+      ref={overlayRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Augmented reality try-on"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 bg-black"
+    >
+      {/* Screen-reader-only live region announcing AR state / errors (mirrors AvatarViewer). */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {xrError
+          ? xrError
+          : arActive
+            ? placed
+              ? "Model placed. Use Reposition to move it, or Exit AR to leave."
+              : "AR session active. Point at a flat surface, then select Place model."
+            : "3D preview ready. Select Enter AR to place this item in your space."}
+      </span>
+
       {/* 3D Canvas — hosts both the XR session and the preview */}
       <Canvas
         camera={{ position: [0, 1.2, 2], fov: 70 }}
-        onClick={handleCanvasClick}
+        onClick={handlePlace}
         gl={{ alpha: true, antialias: true }}
       >
         <XR store={xrStore}>
@@ -270,9 +299,18 @@ export default function ARViewer({ glbUrls, onExit }: ARViewerProps) {
         )}
 
         {arActive && !placed && (
-          <p className="rounded-full bg-black/50 px-4 py-1.5 text-xs text-white/70 backdrop-blur-sm">
-            Point at a flat surface, then tap to place
-          </p>
+          <>
+            <p className="rounded-full bg-black/50 px-4 py-1.5 text-xs text-white/70 backdrop-blur-sm">
+              Point at a flat surface, then tap or select Place model
+            </p>
+            <button
+              onClick={handlePlace}
+              type="button"
+              className="rounded-full bg-brand px-5 py-2 text-xs font-semibold text-primary-foreground shadow-lg backdrop-blur-sm transition hover:bg-brand-hover active:scale-95"
+            >
+              Place model
+            </button>
+          </>
         )}
 
         {arActive && placed && (

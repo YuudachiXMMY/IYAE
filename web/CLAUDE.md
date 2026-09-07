@@ -61,7 +61,7 @@ lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, 
 middleware.ts                    --> CSP headers + Permissions-Policy (camera on AR routes only)
 public/assets/                   --> Static assets (product placeholder SVG)
 public/models/                   --> 3D model files (demo-outfit.glb for DemoOutfitModel, default-avatar.glb for guest avatar, poses/ directory for pose animation GLBs)
-__tests__/                       --> Vitest test suite (17 files, 230 cases, jsdom environment)
+__tests__/                       --> Vitest test suite (18 files, 234 cases, jsdom environment)
 e2e/                             --> Playwright E2E specs
 ```
 
@@ -139,7 +139,7 @@ e2e/                             --> Playwright E2E specs
 |-----------|---------|
 | NavBar | Top navigation with auth-aware menu, Community/Style Lab/Orders links, mobile hamburger Sheet |
 | PageShell | Consistent page layout wrapper |
-| ProductForm | Product creation/editing (designer) |
+| ProductForm | Product creation/editing (designer); the per-size "Size chart (cm)" grid writes `product_size_measurements`, which now drives the PDP `MEASUREMENT_CHART` recommended-size hint via `SizeRecommendationService` |
 | ProductList / ProductListItem | Product catalog display |
 | SearchFilterBar | Catalog search, dynamic category filtering (fetches from `/api/products/categories` via AbortController), and sort |
 | ChatSidebar | Session list for AI chat |
@@ -354,7 +354,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Test directory**: `__tests__/` (not `__tests__` inside `app/` or `lib/`)
 - **Pattern**: `__tests__/**/*.test.{ts,tsx}`
 - **Lint**: ESLint via `npm run lint`
-- **Current state**: 17 test files, 230 test cases
+- **Current state**: 18 test files, 234 test cases
 
 ### Test Inventory
 
@@ -363,6 +363,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `__tests__/lib/api.test.ts` | 15 | API client: GET/POST/PUT/DELETE methods, JWT auto-injection from localStorage, no-token case, error handling (ApiError with status/message, fallback message), auth.register POST, auth.updateProfile PUT, auth.me GET, avatar.getStatus GET, avatar.delete DELETE, sizing.getRecommendedSize GET, exported type structure validation |
 | `__tests__/lib/auth-context.test.tsx` | 12 | AuthContext: useAuth outside provider throws, initial state (no token/hydrate from token/clear expired token), login (success/invalid credentials), register (success/with full profile data including preferences and measurements), logout (clears token+demo cart), refreshUser (updates user data/no-op without token) |
 | `__tests__/components/SizeSelector.test.tsx` | 5 | SizeSelector: renders size buttons, selection state toggle, aria-pressed attribute, disabled state, empty sizes returns null |
+| `__tests__/components/ProductForm.test.tsx` | 4 | ProductForm size chart: grid renders one row per entered size (hidden until sizes exist), submit builds `measurements[]` with parsed numbers, all-blank size row dropped, `mode="edit"` pre-fills grid from `initialData.measurements` (mocks Radix Select as native `<select>`) |
 | `__tests__/components/RecommendedSizeHint.test.tsx` | 5 | RecommendedSizeHint: renders recommended size, renders nothing when basis is NONE, SELF_REPORTED caption, MEASUREMENT_CHART basis, available sizes handling |
 | `__tests__/lib/cart-context.test.tsx` | 10 | CartContext: useCart outside provider throws, demo items (load from localStorage/add/remove/update quantity/zero quantity removes/with size selection), totalCount (server+demo), server items (fetch on auth/404 handling) |
 | `__tests__/lib/community-feed.test.ts` | 65 | Community feed: toggleLike/Save/Repost (toggle + immutability), addComment (prepend + structure + immutability), addReply (target comment + isolation + immutability), toggleCommentLike (target + isolation), requestDelete (lifecycle state + timestamp + immutability), pruneDeletedPosts (within 30 days/past 30 days/active kept/no timestamp), getFeedByTab (for-you/following/saved/reposted filtering + excludes non-active), isPostActive (active/pending_delete/archived/undefined), buildOutfitGeneratorHref (shop/similar URLs, event/style/seedProductIds params, defaults), toggleFollow (add/remove/immutability), updatePostInState (replace matching/leave others/immutability), loadCommunityState (initial write/default follows/existing state/user post generation), saveCommunityState (write + overwrite), createPost/archivePost/restorePost |
@@ -396,7 +397,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 ### Untested Areas (coverage gaps)
 
 - All page components (33 routes)
-- All app-specific components (most -- FittingHelper now tested)
+- All app-specific components (most -- FittingHelper, SizeSelector, RecommendedSizeHint, ProductForm now tested)
 - Custom hooks (useARSupport, useCommunityState, useAvatarStatus, useReveal, useRiggingStatus, usePoseAnimation -- useRequireAuth, useDebounce, useGenerationStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated now tested)
 - 3D/AR components (AvatarViewer, ARViewer, SmartARViewer, ModelViewer, DemoOutfitModel)
 - Community/profile lib modules (social-graph.ts, profile-options.ts, demo-looks.ts, email-templates.ts, brand.ts -- profile-surface.ts, profile-dashboard.ts, community-feed.ts now tested; middleware now tested)
@@ -486,3 +487,4 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | 2026-09-05 | Phase 4 Virtual Fitting web: RecommendedSizeHint component + PDP recommended-size (pre-select); AvatarViewer `previewImageUrl` instant 2D fallback; OutfitCard inline chat try-on (lazy dynamic ssr:false); one-tap avatar/body delete UI (ProfileSettingsDialog + avatar page); api.ts `avatar`/`sizing` helpers; tests 222->230 (+RecommendedSizeHint 5, +api 3) |
 | 2026-09-05 | PR #8 follow-up: two-step delete confirm now moves focus to Cancel + wraps the Cancel/Confirm pair in `aria-live="polite"` (M10, ProfileSettingsDialog + avatar page); avatar page disables the Delete trigger while generating (L5); ProfileSettingsDialog.test.tsx grown with delete-flow, failure-toast, focus, and aria-live cases (M11) |
 | 2026-09-06 | PR #8 post-merge hardening: PDP pre-select validates `recommendedSize ∈ product.sizes` before selecting (M5); `useAvatarStatus` threads an `AbortSignal` and aborts its status fetch/poll on unmount (M6); `AvatarStatus` canonical type moved into `lib/api.ts`, re-exported from the hook (M8); ProfileSettingsDialog gates its Delete trigger while an avatar is generating + adds `aria-expanded` (M7/L8); delete-failure toasts surface `ApiError.message` (L6). Added `useAvatarStatus.test.ts` (3, abort-on-unmount) |
+| 2026-09-06 | Phase 4 size-chart authoring (PR-C/F1-F3): `ProductForm` per-size grid relabeled "Size chart (cm, optional)" with "powers your recommended size" helper + a heads-up when clearing a size drops its measurements. Designer measurements now reach the PDP `MEASUREMENT_CHART` hint (recommender fallback landed in PR-B). Added `ProductForm.test.tsx` (4); tests 17->18 files / 230->234 cases |

@@ -11,6 +11,7 @@ from providers.stub_generator import StubGenerator
 from providers.tripo_generator import TripoGenerator
 from providers.smplx_stub_provider import SmplxStubProvider
 from providers.stub_rigging_provider import StubRiggingProvider
+from providers.fit_accuracy import validate_fit_accuracy
 from validator import (
     validate_glb,
     validate_glb_geometry,
@@ -187,6 +188,11 @@ def run():
                     meta_validation = validate_metadata(output)
                     if not meta_validation["valid"]:
                         raise RuntimeError(f"Metadata validation failed: {meta_validation['errors']}")
+
+                    # Non-fatal fit-accuracy check: WARN only (generation still
+                    # completes). Stub avatars emit no fit_accuracy -> no warnings.
+                    for w in validate_fit_accuracy(output):
+                        logger.warning("avatar task %s fit-accuracy: %s", task_id, w)
 
                     avatar_queue.complete_task(task_id, output)
                     logger.info(f"Avatar task {task_id} completed successfully")

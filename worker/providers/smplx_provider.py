@@ -5,6 +5,10 @@ import os
 import time
 
 from providers.a_pose import get_a_pose_body_pose
+# Shared single source of truth for the fit-accuracy threshold. Imported for
+# documentation/reuse; the emitted ``fit_accuracy`` block below is unchanged in
+# shape. The worker avatar path validates the emitted block against this constant.
+from providers.fit_accuracy import FIT_ACCURACY_MAX_HEIGHT_ERROR_CM
 
 logger = logging.getLogger(__name__)
 

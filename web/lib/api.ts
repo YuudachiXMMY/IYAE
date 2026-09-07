@@ -190,6 +190,38 @@ export const sizing = {
     api.get<SizeRecommendationResponse>(`/api/products/${productId}/recommended-size`, { signal }),
 };
 
+// ── Fulfillment: Toronto pickup + multi-carrier shipping (Phase 8) ───────────────
+
+export type FulfillmentMethod = "SHIP" | "PICKUP";
+
+export interface PickupLocation {
+  id: number;
+  name: string;
+  addressLine: string;
+  city: string;
+  instructions: string | null;
+}
+
+export interface ShippingOption {
+  carrier: string;
+  displayName: string;
+  fee: number;
+}
+
+export interface CheckoutRequestBody {
+  fulfillmentMethod: FulfillmentMethod;
+  pickupLocationId?: number | null;
+  shippingCarrier?: string | null;
+}
+
+/** Public reference reads for the checkout fulfillment selector. */
+export const fulfillment = {
+  pickupLocations: (signal?: AbortSignal) =>
+    api.get<PickupLocation[]>("/api/fulfillment/pickup-locations", { signal }),
+  shippingOptions: (signal?: AbortSignal) =>
+    api.get<ShippingOption[]>("/api/fulfillment/shipping-options", { signal }),
+};
+
 // ── Resale / Circular / Trade-in (Phase 7) ──────────────────────────────────────
 
 export type ResaleCondition = "NEW_WITH_TAGS" | "EXCELLENT" | "GOOD" | "FAIR";

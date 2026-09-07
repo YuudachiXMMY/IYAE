@@ -47,7 +47,12 @@ export function SmartARViewer({
   const effectiveGlbUrls = riggedGlbUrl ? [riggedGlbUrl] : (glbUrls || []);
 
   if (loading) {
-    return <Skeleton className="h-[500px] w-full rounded-card" />;
+    return (
+      <div role="status" aria-busy="true" className="h-[500px] w-full">
+        <Skeleton className="h-full w-full rounded-card" />
+        <span className="sr-only">Loading 3D preview</span>
+      </div>
+    );
   }
 
   // WebXR — Android Chrome 79+ / Meta Quest Browser

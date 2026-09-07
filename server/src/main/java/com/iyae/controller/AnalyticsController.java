@@ -38,8 +38,11 @@ public class AnalyticsController {
     }
 
     /**
-     * Cohort-sliced KPI summary. Gated to elevated roles in {@code SecurityConfig}
-     * (interim: DESIGNER; move to ADMIN once the Phase-5 role lands).
+     * Cohort-sliced KPI summary. ADMIN-only: the {@code /api/admin/**} rule in
+     * {@code SecurityConfig} maps this path to {@code hasRole("ADMIN")}, so a
+     * DESIGNER or BUYER token is rejected with 403. No method-level
+     * {@code @PreAuthorize} is added — the URL rule is authoritative and
+     * double-gating would risk a 500-vs-403 mismatch.
      */
     @GetMapping("/api/admin/kpis")
     public ResponseEntity<KpiSummaryResponse> kpis() {
