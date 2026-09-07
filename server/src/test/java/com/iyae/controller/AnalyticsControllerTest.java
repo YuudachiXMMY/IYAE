@@ -95,7 +95,14 @@ class AnalyticsControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "buyer@example.com")
+    @WithMockUser(username = "designer@example.com", roles = "DESIGNER")
+    void kpis_asDesigner_returns403() throws Exception {
+        mockMvc.perform(get("/api/admin/kpis"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "buyer@example.com", roles = "BUYER")
     void kpis_asBuyer_returns403() throws Exception {
         mockMvc.perform(get("/api/admin/kpis"))
                 .andExpect(status().isForbidden());

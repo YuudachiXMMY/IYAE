@@ -156,7 +156,11 @@ export default function RegisterPage() {
             )}
 
             {error && !isLastStep && (
-              <div className="mt-4 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+              <div
+                id="register-error"
+                role="alert"
+                className="mt-4 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive"
+              >
                 {error}
               </div>
             )}
