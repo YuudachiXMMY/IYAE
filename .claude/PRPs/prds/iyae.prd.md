@@ -161,7 +161,7 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 |---|-------|-------------|--------|----------|---------|----------|
 | 1 | Rebrand & Foundation | Package rename, fresh DB relaunch, atomic asset-path/DB/domain cutover, CAD single-currency fix, BrandConfig, email consolidation, SSL re-issue, delete dead config | impl landed & verified (server 338/338 · web tsc+vitest+build · worker py_compile); 2 Java centralizations (BrandConfig DI, email Option-A) deferred as literal swaps | - | - | [plan](../plans/rebrand-and-foundation.plan.md) · [report](../reports/rebrand-and-foundation-report.md) |
 | 2 | Design System + Core Reskin | IYAE `@theme` tokens, shadcn regen, reskin 30+ core routes + rebuild `home/` from Figma (landing, auth, onboarding, profile, shop/PDP/cart/checkout) | in-progress | with 9 | 1 | [plan](../plans/design-system-and-core-reskin.plan.md) |
-| 3 | AI Stylist + Inline Suggestions | Human-centered voice via AIProvider prompts; occasion/mood/weather → outfit; render inline/on avatar | pending | with 4, 5 | 2 | - |
+| 3 | AI Stylist + Inline Suggestions | Human-centered voice via AIProvider prompts; occasion/mood/weather → outfit; render inline/on avatar | complete (shipped 83a09db + PR#9 fixes; server 41/41 + web 7/7 re-verified) | with 4, 5 | 2 | [report](../reports/ai-stylist-inline-suggestions-report.md) |
 | 4 | Virtual Fitting (Full 3D) + Fit/Size | SMPL-X + weight-transfer kept & hardened; instant 2D preview + async high-fidelity; recommended size; inline embed; validation fixes; privacy controls | in-progress | with 3, 5 | 2 | [plan](../plans/virtual-fitting-3d-fit-size.plan.md) |
 | 5 | Marketplace + Local Designers + ADMIN | Local Designers filter, designer studio/upload, asset-light no-inventory, measurement normalization to SMPL-X, ADMIN role + moderation | pending | with 3, 4 | 2 | - |
 | 6 | Community | Following/Discover/Toronto/Body-confidence feeds; posts/likes/comments; Share a Look; real social-proof counts; moderation | in-progress | with 7 | 5 | [plan](../plans/community.plan.md) |
@@ -183,9 +183,10 @@ The **relaunch is the MVP**: IYAE-branded, fully reskinned, CAD, on a fresh data
 - **Open question (Brand constants)**: The exact burgundy/serif/tracking are Figma-only (no export in repo). The initial reskin shipped a PROVISIONAL editorial-burgundy palette in `web/app/globals.css` — primary/brand `#7a2e3a` (hover `#5e1f2b`, dark `#c15563`), status success `#2f7d5b` / warning `#b8791f` / info `#2563eb`, serif = Cormorant Garamond with `--tracking-display: -0.015em`. Token **names are stable**; **values need owner sign-off against Figma** (swap in `globals.css` only).
 
 **Phase 3: AI Stylist + Inline Suggestions**
+- **Status**: ✅ complete — shipped in `83a09db` (`feat(phase3): weather-aware AI stylist voice + inline avatar try-on`) and hardened via PR #9 (`1538e6f`, `a47a291`), all on `main`. See report `.claude/PRPs/reports/ai-stylist-inline-suggestions-report.md`. Re-verified this session: server 41/41 (ChatService/Weather/Outfit/ChatController) + web 7/7 (weather + chat-api).
 - **Goal**: A trustworthy, human-centered stylist that returns few, decisive, context-aware picks rendered inline.
 - **Scope**: New prompt voice; occasion/mood/weather inputs; `[GENERATE_OUTFIT]`/`[SUGGESTIONS]`; render on avatar.
-- **Success signal**: Suggestions render on the user's avatar; picks reference real catalog pieces + Toronto weather.
+- **Success signal**: Suggestions render on the user's avatar; picks reference real catalog pieces + Toronto weather. **Met on `/chat`** (`OutfitCard` → `AvatarViewer`). Known follow-ups (non-blocking): the floating widget still renders text-only (discards `outfit`); no Vitest component tests for `OutfitCard`/`ChatMessageBubble` (E2E-only).
 
 **Phase 4: Virtual Fitting (Full 3D) + Fit/Size**
 - **Status**: 🚧 in-progress — see plan `.claude/PRPs/plans/completed/virtual-fitting-3d-fit-size.plan.md` and report `.claude/PRPs/reports/virtual-fitting-3d-fit-size-report.md` (worker hardening + recommended-size + one-tap delete + 2D preview + inline chat try-on landed on `worktree-iyae-phase4-prp-plan`).
