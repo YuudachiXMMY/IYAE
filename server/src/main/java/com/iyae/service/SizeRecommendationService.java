@@ -10,6 +10,7 @@ import com.iyae.entity.enums.SizeRecommendationBasis;
 import com.iyae.repository.BodyProfileRepository;
 import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.ProductRepository;
+import com.iyae.repository.ProductSizeMeasurementRepository;
 import com.iyae.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,7 +58,12 @@ public class SizeRecommendationService {
     private static final List<String> CHART_DIMS =
             List.of("chestCm", "waistCm", "hipsCm", "inseamCm");
 
-    /** Defensive cap on parsed size-chart entries (no designer authoring UI exists yet). */
+    /**
+     * Defensive cap on size-chart entries parsed from the {@code size_chart} JSON blob. Designer
+     * authoring now reaches Tier 1 through the normalized {@code product_size_measurements} rows
+     * (bounded at write time by the product's declared sizes), so this cap only guards the
+     * write-less JSON column against an oversized externally-seeded value.
+     */
     private static final int MAX_CHART_ENTRIES = 50;
 
     /** Reference per-dimension deviation (cm) used to normalize chart confidence. */
@@ -74,6 +80,7 @@ public class SizeRecommendationService {
     private final DesignerProfileRepository designerProfileRepository;
     private final BodyProfileRepository bodyProfileRepository;
     private final UserRepository userRepository;
+    private final ProductSizeMeasurementRepository productSizeMeasurementRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -107,8 +114,14 @@ public class SizeRecommendationService {
                     null, SizeRecommendationBasis.NONE.name(), 0.0, availableSizes);
         }
 
-        // Tier 1: measurement chart
+        // Tier 1: measurement chart. The authored size_chart JSON blob wins when present; when it
+        // is absent, fall back to the designer's normalized product_size_measurements rows (Seam B,
+        // written by the studio ProductForm). This makes authored per-size measurements drive a
+        // MEASUREMENT_CHART recommendation without a JSON write path or migration.
         List<SizeChartEntry> chart = parseSizeChart(product.getSizeChart());
+        if (chart.isEmpty()) {
+            chart = chartFromMeasurements(product.getId());
+        }
         if (!chart.isEmpty()) {
             SizeRecommendationResponse chartRec = recommendFromChart(chart, profile, availableSizes);
             if (chartRec != null) {
@@ -339,9 +352,11 @@ public class SizeRecommendationService {
         }
         try {
             // NOTE (M4): readTree fully materializes the JSON before MAX_CHART_ENTRIES
-            // bounds the loop below. Not attacker-reachable today (no write path/DTO
-            // field for size_chart). TODO(size-chart-authoring): enforce array length
-            // and total size at write time when authoring lands.
+            // bounds the loop below. The designer authoring UI writes normalized
+            // product_size_measurements rows (Seam B), consumed via chartFromMeasurements();
+            // this size_chart JSON column has no client/DTO write path, so the cap here
+            // stays a defensive bound on any externally-seeded blob rather than a
+            // write-time check.
             JsonNode root = objectMapper.readTree(json);
             if (!root.isArray()) {
                 return List.of();
@@ -371,6 +386,36 @@ public class SizeRecommendationService {
             log.warn("Failed to parse size chart JSON: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Derive Tier-1 chart entries from the product's normalized {@code product_size_measurements}
+     * rows (Seam B). Used as a fallback when {@code products.size_chart} JSON is null/blank so the
+     * shipped designer measurement UI drives a {@code MEASUREMENT_CHART} recommendation.
+     *
+     * <p>The match deliberately covers only the three shared dims (chest/waist/hips). Seam B's
+     * {@code length_cm} is a garment length, NOT an inseam, so it is NOT mapped onto the chart's
+     * {@code inseamCm} — mapping it would skew the RMS fit score. Rows with all-null comparable
+     * dims are skipped (no comparable signal), mirroring the write-time all-null skip in
+     * {@code ProductService.replaceMeasurements}.
+     */
+    private List<SizeChartEntry> chartFromMeasurements(Long productId) {
+        List<ProductSizeMeasurement> rows = productSizeMeasurementRepository.findByProductId(productId);
+        List<SizeChartEntry> entries = new ArrayList<>();
+        for (ProductSizeMeasurement row : rows) {
+            if (row.getSizeLabel() == null || row.getSizeLabel().isBlank()) {
+                continue;
+            }
+            Map<String, Double> dims = new LinkedHashMap<>();
+            if (row.getChestCm() != null) dims.put("chestCm", row.getChestCm());
+            if (row.getWaistCm() != null) dims.put("waistCm", row.getWaistCm());
+            if (row.getHipsCm() != null) dims.put("hipsCm", row.getHipsCm());
+            if (dims.isEmpty()) {
+                continue; // all-null comparable dims — no signal to match on
+            }
+            entries.add(new SizeChartEntry(row.getSizeLabel(), dims));
+        }
+        return entries;
     }
 
     private record SizeChartEntry(String size, Map<String, Double> dims) {}

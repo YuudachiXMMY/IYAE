@@ -45,6 +45,7 @@ providers/
   canonical_skeleton.py      --> SMPL-X 55-joint skeleton + slot bone subsets
   mesh_preflight.py          --> Topology preflight checks (non-manifold, degenerate, loose)
   a_pose.py                  --> A-pose body_pose vector (63-dim, 21 body joints × 3, 30° shoulder rotation) for SMPL-X
+  fit_accuracy.py            --> Dependency-free fit-accuracy scorer + threshold + validate_fit_accuracy (single source of truth)
   scale_normalizer.py        --> Garment-to-avatar scale normalization (slot-aware height/Y-center alignment)
   weight_transfer.py         --> 3-phase weight pipeline (projection, inpainting, normalize)
   skinned_glb_writer.py      --> Skinned GLB file builder (pygltflib)
@@ -73,6 +74,7 @@ tests/
   test_generate_pose_glbs.py     --> Unit tests for pose GLB generation (10 tests)
   test_a_pose.py                 --> Unit tests for A-pose vector generation (5 tests)
   test_scale_normalizer.py       --> Unit tests for scale normalizer (15 tests)
+  test_fit_accuracy.py           --> Ground-truth fit-accuracy validation harness (scorer + validator + betas) (12 tests)
 ```
 
 ## How It Works
@@ -233,6 +235,16 @@ The worker only interacts with `PENDING`, `RUNNING`, `READY`, and `FAILED`. The 
 - `height_error_cm` = `abs(mesh_height_cm - input_heightCm)` where `mesh_height_cm = (bbox_max[1] - bbox_min[1]) * 100`; an observable proxy for how measurement-true the generated body is.
 - `betas_in_range` = whether every shape beta stayed within `[-4.0, 4.0]`. `SmplxProvider.measurements_to_betas()` now clamps each beta to that range and accepts an optional `gender` arg that shifts the population means used for normalization when `gender in ("male", "female")` (`neutral` reproduces the original mapping exactly).
 
+#### Validated metric — `providers/fit_accuracy.py`
+
+`fit_accuracy` is now a **validated** metric, not just an emitted one. `providers/fit_accuracy.py` is a dependency-free module (stdlib only — no torch/smplx/trimesh/numpy) that is the single source of truth for the threshold and the validator:
+
+- `FIT_ACCURACY_MAX_HEIGHT_ERROR_CM = 5.0` — the max acceptable height-reconstruction error (cm). SMPL-X neutral-shape reconstruction from the linear beta map is typically within a few cm at population-typical inputs; 5 cm is a generous, provisional ceiling — tighten once a trained betas regressor (Measurements2SMPL) lands. `smplx_provider.py` imports this constant so there is one source of truth.
+- `score_height_error(bbox_min, bbox_max, input_height_cm) -> float` — free-function form of the provider's height-error computation, shared by the provider and the validation harness.
+- `validate_fit_accuracy(payload) -> list[str]` — returns warning strings (empty = pass, mirroring the `validator.py` return-`[]`-on-pass convention). Returns `[]` when the `fit_accuracy` block is **absent** (the stub provider emits none). Warns when `height_error_cm > FIT_ACCURACY_MAX_HEIGHT_ERROR_CM` (strict `>`; exactly at the threshold passes) or `betas_in_range is False`.
+
+The worker avatar path (`main.py`) runs `validate_fit_accuracy(output)` after `validate_metadata` and logs each warning as a **non-fatal WARN** — generation still completes; the check never fails the task or gates avatar output. `tests/test_fit_accuracy.py` is the ground-truth validation harness (inline population-typical + short/tall/gendered rows): it asserts `measurements_to_betas` stays in `[-4,4]` and produces near-zero betas at each gender's population mean over the ground-truth set, exercises the pure scorer/validator, and includes an optional real-SMPL-X check guarded by `@pytest.mark.skipif(importlib.util.find_spec("smplx") is None)` (skips cleanly when the heavy deps are absent).
+
 ### Rigging Output Payload Schema (v2)
 
 ```json
@@ -338,8 +350,8 @@ Basic existence and non-empty check only.
 ## Test & Quality
 
 - **Framework**: pytest
-- **Test files**: `tests/test_task_queue.py` (7 tests), `tests/test_validator.py` (44 tests), `tests/test_stub_generator.py` (13 tests), `tests/test_meshy_generator.py` (31 tests), `tests/test_avatar_task_queue.py` (4 tests), `tests/test_smplx_provider.py` (62 tests), `tests/test_rigging_task_queue.py` (8 tests), `tests/test_python_rigging_provider.py` (19 tests), `tests/test_weight_transfer.py` (18 tests), `tests/test_mesh_preflight.py` (9 tests), `tests/test_skinned_glb_writer.py` (17 tests), `tests/test_blender_rigging_provider.py` (46 tests), `tests/test_a_pose.py` (5 tests), `tests/test_scale_normalizer.py` (15 tests)
-- **Total tests**: 308
+- **Test files**: `tests/test_task_queue.py` (7 tests), `tests/test_validator.py` (44 tests), `tests/test_stub_generator.py` (13 tests), `tests/test_meshy_generator.py` (31 tests), `tests/test_avatar_task_queue.py` (4 tests), `tests/test_smplx_provider.py` (62 tests), `tests/test_rigging_task_queue.py` (8 tests), `tests/test_python_rigging_provider.py` (19 tests), `tests/test_weight_transfer.py` (18 tests), `tests/test_mesh_preflight.py` (9 tests), `tests/test_skinned_glb_writer.py` (17 tests), `tests/test_blender_rigging_provider.py` (46 tests), `tests/test_a_pose.py` (5 tests), `tests/test_scale_normalizer.py` (15 tests), `tests/test_fit_accuracy.py` (12 tests)
+- **Total tests**: 320
 - **Strategy**: Unit tests with mocked MySQL connections, mocked HTTP requests, and temp files (no integration tests)
 - **Coverage**: Task queue (claim/retry/reclaim), validator (GLB header, USDZ, triangle count, bounding box, NaN/Inf, metadata composition, independent GLB geometry validation, rigged GLB header+skin+bones), StubGenerator (GLB output, payload schema, validator integration), MeshyGenerator (init, generate flow, error handling, payload schema with real GLB-derived triangle_count/bbox, image URL resolution for local/http/data-uri inputs), AvatarTaskQueue (claim/complete/fail/reclaim), SmplxProvider + SmplxStubProvider (generate, measurements-to-betas with clamping + gender-conditioned means, fit_accuracy block, errors, GLB output, gender handling, LFS file detection, model caching, skin metadata), RiggingTaskQueue (claim/complete/fail/reclaim), PythonRiggingProvider (input validation, path resolution, output format, call chain, SMPLX path validation, scale normalization integration), weight transfer (surface matching, inpainting, prune & normalize, pipeline, dense-to-top4), mesh preflight (valid mesh, degenerate faces, loose vertices, non-manifold edges, garment size warnings), skinned GLB writer (joint hierarchy, inverse bind matrices, round-trip GLB, buffer alignment, shape validation, child joint positioning), A-pose vector (length, shoulder values, immutability), scale normalizer (bbox computation, slot ratios, centering, immutability, edge cases); TripoGenerator not tested
 
@@ -377,6 +389,7 @@ Basic existence and non-empty check only.
 | `test_blender_rigging_provider.py` | Multiple test classes | 46 | BlenderRiggingProvider subprocess invocation, script generation, error handling, timeout, output parsing, fallback behavior |
 | `test_a_pose.py` | `TestGetAPoseBodyPose` | 5 | Returns 63 floats (21 body joints × 3), left shoulder Z positive, right shoulder Z negative, only shoulders nonzero, immutability (separate list per call) |
 | `test_scale_normalizer.py` | `TestComputeBbox`, `TestNormalizeGarmentToAvatar` | 15 | Bbox min/max/center/dimensions/single-vertex, scale skip [0.8-1.2]/scale-down/scale-up, slot TOP/BOTTOM/DRESS ratios, Y-centering per slot, XZ-centering, immutability, zero-height garment, unknown slot defaults to DRESS |
+| `test_fit_accuracy.py` | `TestGroundTruthBetas`, `TestScoreHeightError`, `TestValidateFitAccuracy`, `TestRealModelFitAccuracy` | 12 | Ground-truth betas in [-4,4] + near-zero at population mean (neutral/male/female), pure `score_height_error`, `validate_fit_accuracy` pass/warn/threshold-exact/absent-block, optional real-SMPL-X height-error check (skipped when smplx absent) |
 
 ### Running Tests
 
@@ -453,6 +466,8 @@ pytest tests/test_task_queue.py     # Task queue tests only
 | `providers/weight_transfer.py` | 3-phase weight transfer pipeline |
 | `providers/skinned_glb_writer.py` | Skinned GLB file builder (pygltflib) |
 | `providers/a_pose.py` | A-pose body_pose vector for SMPL-X (used by SmplxProvider + PythonRiggingProvider) |
+| `providers/fit_accuracy.py` | Dependency-free fit-accuracy scorer + `FIT_ACCURACY_MAX_HEIGHT_ERROR_CM` + `validate_fit_accuracy` (single source of truth) |
+| `tests/test_fit_accuracy.py` | Ground-truth fit-accuracy validation harness (betas, scorer, validator, optional real-model) |
 | `providers/scale_normalizer.py` | Garment-to-avatar scale normalization (slot height ratios, Y-center offsets) |
 | `scripts/generate_pose_glbs.py` | CLI script: generates 5 pose GLB files to `web/public/models/poses/` |
 | `tests/test_blender_rigging_provider.py` | BlenderRiggingProvider unit tests |
@@ -473,3 +488,4 @@ pytest tests/test_task_queue.py     # Task queue tests only
 | 2026-09-05 | PR #8 follow-up: extracted shared `glb_geometry.compute_glb_geometry_stats` (M7) with mode-aware triangle counting (M6, LINES/POINTS=0, STRIP/FAN=count-2); honest `validate_glb_geometry` docstring/docs (M3, accessor-declared not buffer-verified); wired geometry check into the rigging path (L4); capped Meshy asset downloads at 100 MB (L2, `_enforce_download_cap`). Added `tests/test_glb_geometry.py` (8) + meshy download-cap tests (4) |
 | 2026-09-06 | PR #8 post-merge hardening: clamp negative accessor `count` in `_tris_for_mode` + reject negative aggregate `triangle_count` in `validate_glb_geometry` (H1 — a crafted negative count could otherwise slip a mesh under the upper-bound cap); fail closed when geometry is present but POSITION min/max bounds are omitted (M2); streaming download caps via `stream_to_file_capped` (`iter_content`, aborts mid-body) for Meshy GLB+USDZ (M1) and the previously-uncapped Tripo GLB (M3). Added negative-count + bounds-absent + streaming-cap tests |
 | 2026-09-06 | Code-review fix pass (C1/H1/M2/M3): `write_skinned_glb` now emits POSITION accessor `min`/`max` from the vertices (C1 — the writer's output previously failed `validate_glb_geometry` "bounds absent", rejecting **every** real SMPL-X avatar and python-rigged garment; stubs passed only because they hardcode bounds); Meshy `sanity.glb_size_bytes` reads `os.path.getsize(glb_path)` instead of the already-consumed `glb_resp.content` (H1 — StreamConsumedError crashed every real generation); `compute_glb_geometry_stats` bbox union now propagates NaN instead of silently dropping it via `min()`/`max()` (M2); Meshy Tier-2 trimesh-fallback `has_nan` also detects Inf (M3). +5 tests (skinned-GLB bounds + geometry-validation, glb_geometry NaN-union, meshy consumed-stream + Tier-2 Inf) |
+| 2026-09-06 | Phase 4 PR-A — fit-accuracy validation harness: new dependency-free `providers/fit_accuracy.py` (`FIT_ACCURACY_MAX_HEIGHT_ERROR_CM=5.0`, `score_height_error`, `validate_fit_accuracy`) is the single source of truth for the threshold (imported by `smplx_provider.py`); `main.py` avatar path validates the emitted `fit_accuracy` block as a **non-fatal WARN** (stub avatars emit no block → silent). New `tests/test_fit_accuracy.py` (12) is the ground-truth harness (betas-in-range + near-zero-at-mean over neutral/male/female + short/tall edges; pure scorer/validator; optional real-SMPL-X check skipped when deps absent). Tests 308→320. `measurements_to_betas`/`_raw_betas` unchanged byte-for-byte |
