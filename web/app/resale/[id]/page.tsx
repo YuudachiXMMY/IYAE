@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ export default function ResaleDetailPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         {loading && (
           <div className="grid gap-8 md:grid-cols-2">

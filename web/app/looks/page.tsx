@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Eye, Pencil, Trash2, Sparkles, Plus } from "lucide-react";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -267,7 +267,7 @@ export default function LooksPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         {/* Header */}
         <header className="mb-12 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

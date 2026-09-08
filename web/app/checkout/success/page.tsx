@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ export default function CheckoutSuccessPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-success/10">

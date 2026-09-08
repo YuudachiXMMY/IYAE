@@ -161,7 +161,7 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Sign out lands on the marketing home, matching the global header + NavBar
+  // Sign out lands on the marketing home, matching the global SiteHeader
   // (previously the rail's sign-out left the user on /dashboard, relying on the
   // auth guard to bounce them to /login — an inconsistent destination).
   const handleSignOut = () => {
@@ -367,7 +367,10 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
 export default function DashboardPage() {
   const { user, loading } = useRequireAuth();
 
-  if (loading) {
+  // Show the shell skeleton both while auth hydrates AND during the redirect
+  // tick when there's no user (useRequireAuth is replacing the route). Returning
+  // null in the !user case flashed a blank white screen before /login painted.
+  if (loading || !user) {
     return (
       <div className="flex min-h-screen flex-col">
         <SiteHeader variant="app" />
@@ -399,8 +402,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  if (!user) return null;
 
   return <BuyerProfile user={user} />;
 }

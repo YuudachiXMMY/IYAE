@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductForm, type ProductFormData } from "@/components/ProductForm";
@@ -95,7 +95,7 @@ export default function EditProductPage() {
   if (authLoading || loading) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="mx-auto max-w-2xl space-y-4">
             <Skeleton className="h-8 w-48 rounded-lg" />
@@ -109,7 +109,7 @@ export default function EditProductPage() {
   if (notFound || !product) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <p className="text-lg font-medium text-muted-foreground">Product not found</p>
@@ -140,7 +140,7 @@ export default function EditProductPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="mb-6">
           <button

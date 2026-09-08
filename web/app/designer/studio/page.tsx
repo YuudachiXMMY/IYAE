@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,7 +66,7 @@ export default function DesignerStudioPage() {
   if (loading) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="flex flex-col gap-10">
             <Skeleton className="h-10 w-64" />
@@ -81,7 +81,7 @@ export default function DesignerStudioPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="flex flex-col gap-10">
           <Link

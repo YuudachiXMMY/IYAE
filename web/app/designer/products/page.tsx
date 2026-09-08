@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Plus, Ellipsis, Pencil, Trash2, Package } from "lucide-react";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -119,7 +119,7 @@ export default function DesignerProductsPage() {
   if (authLoading) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="space-y-6">
             <div>
@@ -155,7 +155,7 @@ export default function DesignerProductsPage() {
   if (user && user.role !== "DESIGNER") {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="rounded-card bg-card p-10 shadow-soft max-w-md w-full">
@@ -181,7 +181,7 @@ export default function DesignerProductsPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         {/* ─── Header ─── */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

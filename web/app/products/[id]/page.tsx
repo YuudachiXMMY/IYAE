@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, use, Component } from "react";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -239,7 +239,7 @@ export default function ProductDetailPage({
   if (error) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="py-20 text-center text-muted-foreground">
             <p className="text-lg">{error}</p>
@@ -257,7 +257,7 @@ export default function ProductDetailPage({
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         {productLoading ? (
           <div className="grid gap-10 md:grid-cols-2">

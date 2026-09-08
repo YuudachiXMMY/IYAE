@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useARSupport } from "@/lib/hooks/useARSupport";
 import { useOutfitRiggingStatus } from "@/lib/hooks/useOutfitRiggingStatus";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
@@ -129,7 +129,7 @@ export default function OutfitViewPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Back link */}
         <Link

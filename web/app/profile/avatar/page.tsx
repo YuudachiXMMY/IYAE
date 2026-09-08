@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -239,7 +239,7 @@ export default function AvatarPage() {
   if (authLoading || profileLoading) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="mx-auto max-w-5xl">
             <Skeleton className="mb-6 h-4 w-32" />
@@ -279,7 +279,7 @@ export default function AvatarPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="mx-auto max-w-5xl">
           {/* Breadcrumb */}

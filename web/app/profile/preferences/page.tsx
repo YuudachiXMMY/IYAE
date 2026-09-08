@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -204,7 +204,7 @@ export default function PreferencesPage() {
   if (loading) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="mx-auto max-w-2xl space-y-4">
             <Skeleton className="h-10 w-56" />
@@ -220,7 +220,7 @@ export default function PreferencesPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="mx-auto max-w-2xl">
           <div className="mb-8">

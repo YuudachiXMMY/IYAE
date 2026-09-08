@@ -3,7 +3,7 @@
 // Shows detected device capabilities and platform-specific instructions.
 
 import Link from "next/link";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { useARSupport } from "@/lib/hooks/useARSupport";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -83,7 +83,7 @@ export default function TryOnPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8 text-center">

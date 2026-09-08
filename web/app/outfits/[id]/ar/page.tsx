@@ -6,7 +6,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { api, ApiError, type OutfitItem, type OutfitDetail } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 
@@ -78,7 +78,7 @@ export default function OutfitARPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* Back navigation */}
         <Link

@@ -20,7 +20,7 @@ import {
   type SlotMap,
   EMPTY_SLOTS,
 } from "@/lib/outfit-slots";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OutfitBuilderPreview } from "@/components/outfits/OutfitBuilderPreview";
@@ -103,7 +103,7 @@ export default function NewOutfitPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <div className="mx-auto max-w-7xl px-4 py-8 pb-28 sm:px-6 lg:px-8 lg:pb-8">
         {/* Back link */}
         <Link
