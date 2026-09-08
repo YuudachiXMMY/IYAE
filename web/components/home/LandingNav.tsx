@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth-context";
 import { useProfileSurface } from "@/lib/profile-surface";
+import { ProfileSettingsDialog } from "@/components/profile/ProfileSettingsDialog";
 import { BRAND } from "@/lib/brand";
 
 interface NavAnchorProps {
@@ -89,13 +90,16 @@ function UserAvatar({ name }: { name: string }) {
 }
 
 export function LandingNav() {
-  const { user, logout } = useAuth();
-  const { surface } = useProfileSurface();
+  const { user, logout, refreshUser } = useAuth();
+  const { surface, updateSurface } = useProfileSurface(
+    user ? String(user.id) : undefined
+  );
   const displayName = surface.displayName ?? user?.name ?? null;
   const isDesigner = user?.role === "DESIGNER";
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMouseEnter = useCallback(() => {
@@ -225,11 +229,14 @@ export function LandingNav() {
                           Saved Looks
                         </Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/profile/preferences">
-                          <GearSix size={16} weight="regular" />
-                          Settings
-                        </Link>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setProfileOpen(false);
+                          setSettingsOpen(true);
+                        }}
+                      >
+                        <GearSix size={16} weight="regular" />
+                        Settings
                       </DropdownMenuItem>
                     </DropdownMenuGroup>
                     {isDesigner && (
@@ -347,6 +354,17 @@ export function LandingNav() {
           </div>
         </div>
       </nav>
+
+      {user && (
+        <ProfileSettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          user={user as Parameters<typeof ProfileSettingsDialog>[0]["user"]}
+          surface={surface}
+          onUpdateSurface={updateSurface}
+          onUserRefresh={refreshUser}
+        />
+      )}
     </header>
   );
 }
