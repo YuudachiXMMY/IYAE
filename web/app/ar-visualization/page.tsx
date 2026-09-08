@@ -4,7 +4,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import {
   DeviceMobile,
   Desktop,
@@ -206,7 +206,7 @@ export default function ARVisualizationPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
 
       {/* Page gradient background */}
       <div

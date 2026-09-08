@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useProfileSurface } from "@/lib/profile-surface";
 import { useCommunityState } from "@/lib/hooks/useCommunityState";
 import { getProfileTabPosts } from "@/lib/profile-dashboard";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { DarkPanel } from "@/components/design-system/DarkPanel";
 import { SectionKicker } from "@/components/design-system/SectionKicker";
 import { EditorialHeading } from "@/components/design-system/EditorialHeading";
@@ -54,6 +55,24 @@ function truncate(text: string, max: number): string {
   return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
 }
 
+// ── Section navigation (shared by desktop sidebar + mobile pill strip) ────────
+
+/** Profile sub-sections. Shared so the mobile strip and desktop rail never drift. */
+function buildProfileNav(
+  username: string
+): ReadonlyArray<{ label: string; href: string }> {
+  return [
+    { label: "Overview", href: "/dashboard" },
+    {
+      label: "My Profile",
+      href: username ? `/profile/${username}` : "/profile/preferences",
+    },
+    { label: "Saved Pieces", href: "/looks" },
+    { label: "Orders", href: "/orders" },
+    { label: "Measurements", href: "/profile/body" },
+  ];
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 function ProfileSidebar({
@@ -72,21 +91,14 @@ function ProfileSidebar({
   onSignOut: () => void;
 }) {
   const pathname = usePathname();
-
-  const navItems: ReadonlyArray<{ label: string; href: string }> = [
-    { label: "Overview", href: "/dashboard" },
-    { label: "My Profile", href: username ? `/profile/${username}` : "/profile/preferences" },
-    { label: "Saved Pieces", href: "/looks" },
-    { label: "Orders", href: "/orders" },
-    { label: "Measurements", href: "/profile/body" },
-  ];
+  const navItems = buildProfileNav(username);
 
   return (
     <DarkPanel className="hidden w-[250px] shrink-0 flex-col p-8 md:flex">
       <div>
         <p className="font-display text-2xl leading-tight text-background">{displayName}</p>
         <p className="mt-1 text-[12px] text-background/55">
-          Style profile · {completion}% complete
+          Style profile · <span className="tabular-nums">{completion}%</span> complete
         </p>
       </div>
 
@@ -146,6 +158,16 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
   const { surface, updateSurface } = useProfileSurface(String(user.id));
   const { state } = useCommunityState(user);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Sign out lands on the marketing home, matching the global SiteHeader
+  // (previously the rail's sign-out left the user on /dashboard, relying on the
+  // auth guard to bounce them to /login — an inconsistent destination).
+  const handleSignOut = () => {
+    logout();
+    router.push("/");
+  };
 
   const username = user.username ?? "";
   const displayName =
@@ -164,23 +186,54 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
       }))
     : [];
 
-  return (
-    <div className="flex min-h-screen">
-      <ProfileSidebar
-        displayName={displayName}
-        completion={completion}
-        username={username}
-        isDesigner={user.role === "DESIGNER" || user.role === "ADMIN"}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onSignOut={logout}
-      />
+  const navItems = buildProfileNav(username);
 
-      <main className="flex-1 bg-background px-6 py-10 sm:px-10 lg:px-16">
+  return (
+    <div className="flex min-h-screen flex-col">
+      <SiteHeader variant="app" />
+
+      <div className="flex flex-1">
+        <ProfileSidebar
+          displayName={displayName}
+          completion={completion}
+          username={username}
+          isDesigner={user.role === "DESIGNER" || user.role === "ADMIN"}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onSignOut={handleSignOut}
+        />
+
+        <main className="flex-1 bg-background px-6 py-10 sm:px-10 lg:px-16">
+        {/* Mobile section nav — the desktop rail is hidden below md, so without
+            this a phone user can only reach the shop-wide links in the header. */}
+        <nav
+          aria-label="Profile sections"
+          className="-mx-6 mb-8 flex gap-2 overflow-x-auto px-6 pb-1 md:hidden"
+        >
+          {navItems.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors",
+                  active
+                    ? "bg-brand text-primary-foreground"
+                    : "border border-border text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
         {/* Header row */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <SectionKicker>MY {BRAND.name}</SectionKicker>
-            <EditorialHeading className="mt-2">
+            <EditorialHeading className="mt-2 [text-wrap:balance]">
               A profile that evolves with you.
             </EditorialHeading>
           </div>
@@ -234,11 +287,11 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
             <div className="mt-6">
               <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.12px] text-muted-foreground">
                 <span>Style profile</span>
-                <span>{completion}% complete</span>
+                <span className="tabular-nums">{completion}% complete</span>
               </div>
               <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-brand transition-all"
+                  className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out motion-reduce:transition-none"
                   style={{ width: `${completion}%` }}
                 />
               </div>
@@ -254,7 +307,7 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
               Structure is having a moment — lean into a sharp shoulder and let
               everything else stay quiet.
             </p>
-            <p className="mt-4 text-[13px] leading-relaxed text-background/70">
+            <p className="mt-4 text-[13px] leading-relaxed text-background/70 [text-wrap:pretty]">
               Based on the pieces you&apos;ve saved, try pairing a tailored
               blazer with fluid trousers for an effortless, considered edit.
             </p>
@@ -294,7 +347,8 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
             </p>
           )}
         </div>
-      </main>
+        </main>
+      </div>
 
       <ProfileSettingsDialog
         open={settingsOpen}
@@ -313,37 +367,41 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
 export default function DashboardPage() {
   const { user, loading } = useRequireAuth();
 
-  if (loading) {
+  // Show the shell skeleton both while auth hydrates AND during the redirect
+  // tick when there's no user (useRequireAuth is replacing the route). Returning
+  // null in the !user case flashed a blank white screen before /login painted.
+  if (loading || !user) {
     return (
-      <div className="flex min-h-screen">
-        <div className="hidden w-[250px] shrink-0 bg-foreground p-8 md:block">
-          <Skeleton className="h-6 w-32 bg-background/10" />
-          <Skeleton className="mt-3 h-3 w-40 bg-background/10" />
-          <div className="mt-10 flex flex-col gap-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-9 w-full rounded-full bg-background/10" />
-            ))}
+      <div className="flex min-h-screen flex-col">
+        <SiteHeader variant="app" />
+        <div className="flex flex-1">
+          <div className="hidden w-[250px] shrink-0 bg-foreground p-8 md:block">
+            <Skeleton className="h-6 w-32 bg-background/10" />
+            <Skeleton className="mt-3 h-3 w-40 bg-background/10" />
+            <div className="mt-10 flex flex-col gap-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-9 w-full rounded-full bg-background/10" />
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="flex-1 px-6 py-10 sm:px-10 lg:px-16">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="mt-3 h-12 w-96 max-w-full" />
-          <div className="mt-10 grid gap-6 lg:grid-cols-2">
-            <Skeleton className="h-56 rounded-[12px]" />
-            <Skeleton className="h-56 rounded-[12px]" />
-          </div>
-          <Skeleton className="mt-14 h-10 w-48" />
-          <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="aspect-[276/300] rounded-[2px]" />
-            ))}
+          <div className="flex-1 px-6 py-10 sm:px-10 lg:px-16">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="mt-3 h-12 w-96 max-w-full" />
+            <div className="mt-10 grid gap-6 lg:grid-cols-2">
+              <Skeleton className="h-56 rounded-[12px]" />
+              <Skeleton className="h-56 rounded-[12px]" />
+            </div>
+            <Skeleton className="mt-14 h-10 w-48" />
+            <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="aspect-[276/300] rounded-[2px]" />
+              ))}
+            </div>
           </div>
         </div>
       </div>
     );
   }
-
-  if (!user) return null;
 
   return <BuyerProfile user={user} />;
 }

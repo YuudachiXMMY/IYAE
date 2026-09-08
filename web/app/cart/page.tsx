@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { useCart, type CartItem, type DemoCartItem } from "@/lib/cart-context";
@@ -223,7 +223,7 @@ export default function CartPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <h1 className="mb-8 font-display text-4xl font-semibold text-foreground">
           Your Cart

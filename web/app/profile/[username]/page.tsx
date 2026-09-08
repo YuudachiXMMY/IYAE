@@ -14,7 +14,7 @@ import {
 } from "@/lib/community-feed";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { useAuth } from "@/lib/auth-context";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { cn } from "@/lib/utils";
 import { api, follows } from "@/lib/api";
 import { BRAND } from "@/lib/brand";
@@ -164,7 +164,7 @@ export default function ProfilePage() {
   if (profileNotFound) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <p className="text-lg font-medium text-foreground mb-2">Profile not found</p>
@@ -179,7 +179,7 @@ export default function ProfilePage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <div
         className="min-h-screen"
         style={{

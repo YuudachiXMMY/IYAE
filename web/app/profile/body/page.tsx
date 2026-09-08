@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -213,7 +213,7 @@ export default function BodyProfilePage() {
   if (authLoading || fetchLoading) {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="mx-auto max-w-lg space-y-4">
             <Skeleton className="h-10 w-48" />
@@ -228,7 +228,7 @@ export default function BodyProfilePage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="mx-auto max-w-lg">
           <div className="mb-8">

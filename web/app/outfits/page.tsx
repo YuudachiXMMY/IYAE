@@ -6,7 +6,7 @@ import Image from "next/image";
 import { api, ApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -264,7 +264,7 @@ export default function OutfitsPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         {/* Header */}
         <header className="mb-12 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

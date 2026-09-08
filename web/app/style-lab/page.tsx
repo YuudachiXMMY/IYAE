@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import {
   ArrowRight,
   Sparkle,
@@ -225,7 +225,7 @@ export default function StyleLabPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <main className="min-h-screen pt-20 pb-24">
         {/* ─── Header ──────────────────────────────────────────────────── */}
         <section className="max-w-6xl mx-auto px-6 lg:px-8 pt-8 pb-12">

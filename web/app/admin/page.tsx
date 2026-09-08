@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -502,7 +502,7 @@ export default function AdminPage() {
   if (loading || !user || user.role !== "ADMIN") {
     return (
       <>
-        <NavBar />
+        <SiteHeader variant="app" />
         <PageShell>
           <div className="h-40 animate-pulse rounded-card bg-muted" />
         </PageShell>
@@ -512,7 +512,7 @@ export default function AdminPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="mb-8">
           <h1 className="font-display text-4xl font-semibold text-foreground md:text-5xl">

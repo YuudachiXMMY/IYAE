@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { NavBar } from "@/components/NavBar";
+import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { ProductForm, type ProductFormData } from "@/components/ProductForm";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
@@ -53,7 +53,7 @@ export default function NewProductPage() {
 
   return (
     <>
-      <NavBar />
+      <SiteHeader variant="app" />
       <PageShell>
         <div className="mb-6">
           <button
