@@ -14,8 +14,14 @@ import AxeBuilder from '@axe-core/playwright';
 
 const BLOCKING_IMPACTS = ['serious', 'critical'];
 
-async function expectNoSeriousA11yViolations(page: Page, label: string) {
-  const results = await new AxeBuilder({ page }).analyze();
+async function expectNoSeriousA11yViolations(
+  page: Page,
+  label: string,
+  opts?: { include?: string }
+) {
+  const builder = new AxeBuilder({ page });
+  if (opts?.include) builder.include(opts.include);
+  const results = await builder.analyze();
   const blocking = results.violations.filter((v) =>
     BLOCKING_IMPACTS.includes(v.impact ?? '')
   );
@@ -72,6 +78,21 @@ test.describe('Accessibility (axe) — public routes', () => {
       .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => {});
     await expectNoSeriousA11yViolations(page, 'product-detail');
+  });
+
+  // Destructive error banner must be AA-legible. The banner uses the global
+  // `text-destructive` on `bg-destructive/10` pattern (27 files); an invalid
+  // login is the deterministic, unauth way to render it. Scoped to the banner
+  // so unrelated /login markup can't mask or trip this contrast check.
+  test('login error banner /login (invalid credentials)', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill('nobody@iyae.ca');
+    await page.getByLabel('Password').fill('definitely-wrong');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.locator('#login-error').waitFor({ state: 'visible', timeout: 15000 });
+    await expectNoSeriousA11yViolations(page, 'login-error-banner', {
+      include: '#login-error',
+    });
   });
 });
 
