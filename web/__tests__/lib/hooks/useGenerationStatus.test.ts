@@ -11,7 +11,7 @@ vi.mock('@/lib/api', () => ({
   },
   ApiError: class ApiError extends Error {
     status: number
-    constructor(message: string, status: number) {
+    constructor(status: number, message: string) {
       super(message)
       this.status = status
     }
@@ -94,7 +94,7 @@ describe('useGenerationStatus', () => {
   it('sets actionError when retry fails with ApiError', async () => {
     const { ApiError } = await import('@/lib/api')
     mockApiGet.mockResolvedValue(makeStatus({ status: 'FAILED' }))
-    mockApiPost.mockRejectedValue(new ApiError('Retry failed', 500))
+    mockApiPost.mockRejectedValue(new ApiError(500, 'Retry failed'))
 
     const { result } = renderHook(() => useGenerationStatus(42))
     await act(async () => {})
@@ -123,7 +123,7 @@ describe('useGenerationStatus', () => {
   it('clears actionError via clearActionError', async () => {
     const { ApiError } = await import('@/lib/api')
     mockApiGet.mockResolvedValue(makeStatus({ status: 'FAILED' }))
-    mockApiPost.mockRejectedValue(new ApiError('Retry failed', 500))
+    mockApiPost.mockRejectedValue(new ApiError(500, 'Retry failed'))
 
     const { result } = renderHook(() => useGenerationStatus(42))
     await act(async () => {})

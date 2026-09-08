@@ -447,7 +447,7 @@ class AuthServiceTest {
 
         when(secureTokenService.hashToken(rawToken)).thenReturn(hash);
         when(passwordResetTokenRepository.findByTokenHash(hash)).thenReturn(Optional.of(resetToken));
-        when(passwordResetTokenRepository.consumeToken(hash)).thenReturn(1);
+        when(passwordResetTokenRepository.consumeToken(anyString(), any(Instant.class))).thenReturn(1);
         when(passwordEncoder.encode("newPassword123")).thenReturn("$2a$10$newencoded");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
         when(passwordResetTokenRepository.findByUserAndUsedAtIsNull(testUser))

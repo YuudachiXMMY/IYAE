@@ -26,8 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * decoys that must never appear.
  *
  * <p>The slice scans only {@link PostRepository} and {@link FollowRepository} (mirroring
- * {@link ProductSpecificationsDataJpaTest}) to dodge the pre-existing broken
- * {@code PasswordResetTokenRepository.consumeToken} query that Hibernate 6.6 rejects at bootstrap.
+ * {@link ProductSpecificationsDataJpaTest}) so each feed query is validated in isolation. (The
+ * {@code PasswordResetTokenRepository.consumeToken} query that once blocked a full-repo slice has
+ * since been fixed and is covered by {@link PasswordResetTokenRepositoryDataJpaTest}.)
  */
 @DataJpaTest
 @ActiveProfiles("test")
