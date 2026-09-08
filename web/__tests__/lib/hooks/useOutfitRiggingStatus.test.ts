@@ -81,6 +81,9 @@ describe("useOutfitRiggingStatus", () => {
     mockApiGet.mockResolvedValue(makeRiggingPending());
     const items = [makeItem({ productId: 5 })];
     const { result } = renderHook(() => useOutfitRiggingStatus(items));
+
+    // pendingCount reflects server-confirmed PENDING/RUNNING items — let the first poll resolve.
+    await act(async () => {});
     expect(result.current.pendingCount).toBe(1);
   });
 
@@ -222,5 +225,29 @@ describe("useOutfitRiggingStatus", () => {
     await act(async () => {});
 
     expect(result.current.items[0].riggedGlbUrl).toBe("/updated.glb");
+  });
+
+  it("does not loop or re-poll when the caller passes a fresh array of identical content each render", async () => {
+    // Regression: callers legitimately pass an unstable array — e.g. the outfit
+    // viewer's `useOutfitRiggingStatus(outfit?.items ?? [])`, a new [] (or a new
+    // [item] with identical content) on every render. Keying the sync effect on
+    // the array *reference* infinitely looped (setItems → render → new array →
+    // effect → setItems …) and hung. The sync effect is keyed on content instead.
+    mockApiGet.mockResolvedValue(makeRiggingPending());
+    const { result, rerender } = renderHook(() =>
+      // fresh array + fresh item object on every render, same content
+      useOutfitRiggingStatus([makeItem({ productId: 5 })])
+    );
+
+    await act(async () => {});
+    const callsAfterMount = mockApiGet.mock.calls.length;
+
+    rerender();
+    rerender();
+    await act(async () => {});
+
+    // Unchanged content across renders → the sync effect must NOT re-fire the poll.
+    expect(mockApiGet.mock.calls.length).toBe(callsAfterMount);
+    expect(result.current.pendingCount).toBe(1);
   });
 });

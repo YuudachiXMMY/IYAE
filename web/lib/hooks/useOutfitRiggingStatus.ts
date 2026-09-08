@@ -17,10 +17,19 @@ export function useOutfitRiggingStatus(
   const abortRef = useRef<AbortController | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync items when initialItems reference changes (outfit reloaded)
+  // Sync items when the *content* of initialItems changes (outfit reloaded).
+  // Keyed on a content signature — NOT the array reference — because callers
+  // legitimately pass an unstable array (e.g. `outfit?.items ?? []`, which is a
+  // fresh [] every render while the outfit is still loading). Depending on the
+  // raw reference here caused an infinite setItems→render→new-[]→effect loop
+  // (hung the outfit viewer and the unit test).
+  const initialItemsKey = initialItems
+    .map((item) => `${item.productId}:${item.riggedGlbUrl ?? ""}`)
+    .join("|");
   useEffect(() => {
     setItems(initialItems);
-  }, [initialItems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialItemsKey]);
 
   useEffect(() => {
     const candidateItems = items.filter(

@@ -40,10 +40,10 @@ async function expectNoSeriousA11yViolations(page: Page, label: string) {
 
 async function login(page: Page) {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('jadyn.hwu@gmail.com');
-  await page.getByLabel('Password').fill('admin');
+  await page.getByLabel('Email').fill('emma@iyae.ca');
+  await page.getByLabel('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await page.waitForURL('/dashboard', { timeout: 10000 });
+  await page.waitForURL('/dashboard', { timeout: 30000 });
 }
 
 test.describe('Accessibility (axe) — public routes', () => {

@@ -446,7 +446,7 @@ export default function ProductDetailPage({
                 {!user && (
                   <p className="text-xs text-muted-foreground">
                     Browsing as guest —{" "}
-                    <Link href="/login" className="text-brand hover:underline">
+                    <Link href="/login" className="text-brand underline underline-offset-2">
                       sign in
                     </Link>{" "}
                     to save to your cart.
