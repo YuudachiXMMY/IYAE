@@ -27,9 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code root.join("designerProfile")} / {@code cb.isTrue(isLocal)} branch (M3).
  *
  * <p>The slice scans only {@link ProductRepository} (all other repositories are excluded) so no
- * unrelated repository query is validated. This avoids eagerly validating a pre-existing query
- * ({@code PasswordResetTokenRepository.consumeToken}) that Hibernate 6.6 rejects on assignment of
- * {@code CURRENT_TIMESTAMP} to an {@code Instant} path — a latent issue outside this change's scope.
+ * unrelated repository query is validated, keeping this test focused on the catalog predicate. (The
+ * {@code PasswordResetTokenRepository.consumeToken} query that once blocked a full-repo slice has
+ * since been fixed and is covered by {@link PasswordResetTokenRepositoryDataJpaTest}.)
  */
 @DataJpaTest
 @ActiveProfiles("test")

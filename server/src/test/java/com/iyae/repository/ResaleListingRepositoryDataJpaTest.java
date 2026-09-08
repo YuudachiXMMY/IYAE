@@ -27,9 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Exercises the {@link ResaleListingSpecifications#browse} predicate and the atomic
  * {@link ResaleListingRepository#reserve}/{@link ResaleListingRepository#markSold} updates against an
- * embedded database. The single-repository slice ({@code excludeFilters}) is mandatory: a full-repo
- * {@code @DataJpaTest} eagerly validates {@code PasswordResetTokenRepository.consumeToken}, which
- * Hibernate 6.6 rejects (CURRENT_TIMESTAMP -> Instant) — a latent issue outside this change's scope.
+ * embedded database. The single-repository slice ({@code excludeFilters}) keeps this test focused on
+ * {@code ResaleListingRepository}; unrelated repositories are irrelevant to the predicates under test.
+ * (The {@code PasswordResetTokenRepository.consumeToken} query that once blocked a full-repo slice has
+ * since been fixed and is covered by {@link PasswordResetTokenRepositoryDataJpaTest}.)
  */
 @DataJpaTest
 @ActiveProfiles("test")
