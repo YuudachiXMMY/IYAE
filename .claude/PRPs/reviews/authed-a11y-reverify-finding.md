@@ -50,6 +50,12 @@ and a deterministic invalid-login banner case in `web/e2e/a11y.spec.ts`. Web uni
 (31 files / 304 tests). Live docker axe re-verify of the 3 authed routes is the deploy-time
 confirmation (see `.claude/PRPs/reports/phase9-authed-a11y-closeout-report.md`).
 
+**Live re-verify confirmed (2026-09-08):** rebuilt the web container on the fixed `#b91c1c`
+token (stale running container had served pre-fix `#dc2626`) and ran `web/e2e/a11y.spec.ts`
+against the allowlisted :3000 origin — **7/7 axe tests pass, 0 serious/critical** on `/cart`
+`/checkout` `/try-on` + the destructive/invalid-login banner + public routes. Full record:
+`.claude/PRPs/reports/phase9-live-authed-axe-reverify-report.md`.
+
 ## Side observation (orthogonal to a11y)
 
 The error banner only rendered because the fulfillment (delivery options) API returned a

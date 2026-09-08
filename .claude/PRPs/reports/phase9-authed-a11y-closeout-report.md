@@ -72,7 +72,7 @@ Phase 9 to complete.
 - [x] No new tsc/lint errors; no vitest regressions (304 pass)
 - [x] Both AA sign-offs recorded
 - [x] Finding resolved; `web/CLAUDE.md` updated; PRD Phase 9 → complete
-- [~] Live authed axe re-verify — deploy-time confirmation (documented)
+- [x] Live authed axe re-verify — **confirmed 2026-09-08**: 7/7 axe tests pass (0 serious/critical) on rebuilt `#b91c1c` web container across `/cart` `/checkout` `/try-on` + destructive banner. See `phase9-live-authed-axe-reverify-report.md`.
 
 ## Next Steps
 - [ ] On next `docker compose build web`, run `npm run test:e2e -- a11y.spec.ts` (seeded `emma@iyae.ca`) to confirm 0 serious/critical on `/cart` `/checkout` `/try-on` + the invalid-login banner.
