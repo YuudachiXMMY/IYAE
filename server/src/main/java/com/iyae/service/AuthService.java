@@ -281,7 +281,7 @@ public class AuthService {
         }
 
         // Atomically mark token as used to prevent concurrent consumption
-        int updated = passwordResetTokenRepository.consumeToken(hash);
+        int updated = passwordResetTokenRepository.consumeToken(hash, Instant.now());
         if (updated == 0) {
             throw new IllegalArgumentException("Reset link is invalid or has expired");
         }

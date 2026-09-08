@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +18,6 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     List<PasswordResetToken> findByUserAndUsedAtIsNull(User user);
 
     @Modifying
-    @Query("UPDATE PasswordResetToken t SET t.usedAt = CURRENT_TIMESTAMP WHERE t.tokenHash = :hash AND t.usedAt IS NULL AND t.expiresAt > CURRENT_TIMESTAMP")
-    int consumeToken(@Param("hash") String tokenHash);
+    @Query("UPDATE PasswordResetToken t SET t.usedAt = :now WHERE t.tokenHash = :hash AND t.usedAt IS NULL AND t.expiresAt > :now")
+    int consumeToken(@Param("hash") String tokenHash, @Param("now") Instant now);
 }
