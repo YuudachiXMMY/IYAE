@@ -23,7 +23,7 @@
   --color-popover-foreground: #171717;
   --color-accent: #f4f1ee;
   --color-accent-foreground: #171717;
-  --color-destructive: #dc2626;
+  --color-destructive: #b91c1c; /* red-700: WCAG AA (4.5:1) on the bg-destructive/10 error-banner tint — do not lighten below AA */
   --color-destructive-foreground: #ffffff;
 
   /* Status colors — semantic tokens for badges/banners */
