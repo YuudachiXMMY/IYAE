@@ -75,7 +75,25 @@
 | `server/.../AnalyticsServiceTest.java` | +断言(既有用例内) | KPI 漏斗含 `tryOnStarted` 计数 + 空 cohort 归零 |
 | `server/.../AnalyticsControllerTest.java` | +1(`track_tryonStarted_returns202`) | `TRYON_STARTED` 事件接收 + metadata 透传 |
 
+## Runtime Validation Addendum（"采集根因+基线"后续）
+
+用户要求"按 findings 文档运行时采集根因+基线后 flip Phase 0 → complete"。**已采集能采集的,并对结论做对抗性核验;但据实判定不应 flip 到 complete。**
+
+**做了什么**:用仅含 base 依赖的经验探针（trimesh+pygltflib+numpy+pillow,**无 SMPL-X/libigl/Docker**）跑**真实 worker 代码路径**,`validate_material_and_uv` 测量;并用 5-agent 工作流对抗性核验（3 refuter + 漏斗验证 + 诚实性批判,全部 `refuted=false`/high）。
+
+| 项 | 结果 |
+|---|---|
+| 根因（是否丢材质） | ✅ **确认丢材质**:源 GLB 有 material+UV;python + stub 两条生产写出路径输出**均**无 → 前端套 glTF 默认灰白壳 |
+| 因果修正 | `trimesh.load(force="mesh")` 实测**保留** uv/material;丢失在 `_load_garment_glb` 抽取 +`skinned_glb_writer` 不写出 → **B1 须改两处**(PRD 原述"force=mesh 压平丢材质"不精确,已在 findings 修正) |
+| 无纹理占比基线 | ✅ **100%**(结构性,写出端根本不写材质) |
+| 穿模率基线 | ⏳ 延后:需真人视觉 QA 渲染场景,无头环境不可采/不可伪造 |
+| 转化漏斗 | 机制✅端到端可读(单测覆盖);数值基线⏳需部署+真实流量 |
+
+**为何不 flip 到 `complete`**（诚实性批判裁决 `flip_to_complete_honest=false`）:Phase 0 三条 success signal 中"基线数据入库"仅部分满足——3 项数值基线只有"无纹理占比"能在此确定,穿模率与转化漏斗数值需 live/QA 环境。把 Phase 0 标 `complete` 会**过度声称**两项不存在的基线,违反忠实报告。故保持 `in-progress` 并把措辞升级为反映真实进度(根因已实机确认 + 无纹理基线已入库)。两条门控信号(根因明确 + 主指标可测/漏斗可读)**已满足**。
+
+**要真正 flip 到 complete 还差**:① 部署应用后读一次 `GET /api/admin/kpis` 取转化漏斗数值基线;② 一轮真人穿模抽样评分。二者只能在 live/QA 环境做。
+
 ## Next Steps
-- [ ] 运行时:按 `docs/phase0-drape-realism-findings.md` 跑 `docker compose --profile rigging`,采集根因结论 + 三项基线,填表后即可 flip PRD Phase 0 → `complete`
+- [ ] live/QA:采集穿模抽样评分 + 部署后读转化漏斗数值基线 → 齐后方可诚实 flip Phase 0 → `complete`
 - [ ] `/code-review` 审查本次改动
-- [ ] Phase 1(B1 材质恢复 + D1 阴影 + D2 兜底材质)—— B1 落地后可把 `validate_material_and_uv` 升级为硬校验
+- [ ] Phase 1(B1 材质恢复 + D1 阴影 + D2 兜底材质)—— B1 须同时改 `_load_garment_glb`(透传 UV/材质)+ `skinned_glb_writer`(写 TEXCOORD_0/material);落地后把 `validate_material_and_uv` 升级为硬校验回归门
