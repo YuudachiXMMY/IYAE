@@ -145,7 +145,7 @@
 
 | # | Phase | Description | Status | Parallel | Depends | PRP Plan |
 |---|-------|-------------|--------|----------|---------|----------|
-| 0 | 验证与度量地基 | 实机验证"绑定丢材质"根因;搭试穿→加购转化埋点漏斗;建穿模/无纹理占比基线 | pending | - | - | - |
+| 0 | 验证与度量地基 | 实机验证"绑定丢材质"根因;搭试穿→加购转化埋点漏斗;建穿模/无纹理占比基线 | in-progress | - | - | [phase0 plan](../plans/3d-tryon-drape-realism-phase0-validation-metrics.plan.md) |
 | 1 | 感知快赢(MVP) | B1 恢复绑定 UV/材质 + D1 接触阴影 + D2 兜底织物材质 | pending | with 2 | 0 | - |
 | 2 | 质感增强 | C1 打开 Meshy PBR + C2 品类法线/褶皱贴图(依赖 B1 的 UV)+ D3 环境/色调映射 | pending | with 1 | 0, 1(C2 依赖 B1) | - |
 | 3 | 几何防穿模 | A1 igl 有向距离 push-out,替代 FittingHelper 深度欺骗;可选 B3 锚点尺度贴合 | pending | - | 0 | - |
