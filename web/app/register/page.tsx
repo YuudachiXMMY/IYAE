@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError, type RegisterRequest } from "@/lib/api";
+import { resolvePostRegisterRedirect } from "@/lib/auth-config";
 import { useRedirectIfAuthenticated } from "@/lib/hooks/useRedirectIfAuthenticated";
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
@@ -88,8 +89,10 @@ export default function RegisterPage() {
       const optionalFields = Object.fromEntries(
         Object.entries(rest).filter(([, v]) => v !== "")
       );
-      await register({ email, password, role, ...optionalFields } as RegisterRequest);
-      router.push("/dashboard");
+      const registeredUser = await register({ email, password, role, ...optionalFields } as RegisterRequest);
+      // In prod an unverified account is not authenticated on the client (see auth-context);
+      // route it to the verify-email page instead of the dashboard. Dev → "/dashboard" as before.
+      router.push(resolvePostRegisterRedirect(registeredUser));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
