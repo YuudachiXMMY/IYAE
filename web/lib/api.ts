@@ -167,6 +167,9 @@ export const auth = {
   login: (email: string, password: string) => api.post<{ token: string; user: UserResponse }>("/api/auth/login", { email, password }),
   me: () => api.get<UserResponse>("/api/auth/me"),
   updateProfile: (data: UpdateProfileRequest) => api.put<UserResponse>("/api/auth/me", data),
+  // permitAll + rate-limited; returns a generic (enumeration-safe) message — treat any 2xx as success.
+  resendVerification: (email: string) =>
+    api.post<{ message: string }>("/api/auth/resend-verification", { email }),
 };
 
 export const avatar = {

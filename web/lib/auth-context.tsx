@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { api, type RegisterRequest, type UpdateProfileRequest } from "./api";
+import { isVerificationPending } from "./auth-config";
 
 interface User {
   id: number;
@@ -33,7 +34,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterRequest) => Promise<void>;
+  register: (data: RegisterRequest) => Promise<User>;
   updateProfile: (data: UpdateProfileRequest) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -66,10 +67,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
-  const register = useCallback(async (data: RegisterRequest) => {
+  const register = useCallback(async (data: RegisterRequest): Promise<User> => {
     const res = await api.post<{ token: string; user: User }>("/api/auth/register", data);
-    localStorage.setItem("clossette_token", res.token);
-    setUser(res.user);
+    // In prod the server rejects an unverified account's token, so storing it only
+    // triggers a 401 bounce on the first protected call. Skip client auth entirely
+    // and let the register page route to the verify-email page. Dev (gate off) is
+    // unchanged — store the token and set the user as before.
+    if (!isVerificationPending(res.user)) {
+      localStorage.setItem("clossette_token", res.token);
+      setUser(res.user);
+    }
+    return res.user;
   }, []);
 
   const updateProfile = useCallback(async (data: UpdateProfileRequest) => {
