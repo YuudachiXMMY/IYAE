@@ -10,16 +10,17 @@ import { toneForStatus, TONE_CLASS } from "@/lib/status";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface OrderItem {
-  name: string;
+  productId: number;
+  productName: string;
   quantity: number;
-  price?: number;
+  unitPrice: string;
+  selectedSize?: string | null;
 }
 
 interface Order {
   id: number;
   status: string;
-  total: number;
-  currency: string;
+  totalAmount: number;
   createdAt: string;
   items: OrderItem[];
   fulfillmentMethod?: "SHIP" | "PICKUP";
@@ -39,10 +40,12 @@ function OrderRow({ order }: { order: Order }) {
     day: "numeric",
   });
 
+  const items = Array.isArray(order.items) ? order.items : [];
+
   const formattedTotal = new Intl.NumberFormat("en-CA", {
     style: "currency",
-    currency: order.currency || "CAD",
-  }).format(order.total);
+    currency: "CAD",
+  }).format(Number(order.totalAmount));
 
   return (
     <Link
@@ -61,12 +64,12 @@ function OrderRow({ order }: { order: Order }) {
           </span>
         </div>
         <p className="text-xs text-muted-foreground">
-          {formattedDate} &middot; {order.items.length} item
-          {order.items.length !== 1 ? "s" : ""}
+          {formattedDate} &middot; {items.length} item
+          {items.length !== 1 ? "s" : ""}
         </p>
-        {order.items.length > 0 && (
+        {items.length > 0 && (
           <p className="mt-1 truncate text-xs text-muted-foreground">
-            {order.items.map((i) => i.name).join(", ")}
+            {items.map((i) => i.productName).join(", ")}
           </p>
         )}
         <p className="text-xs text-muted-foreground">

@@ -15,17 +15,17 @@ import { toneForStatus, TONE_CLASS } from "@/lib/status";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface OrderItem {
-  name: string;
+  productId: number;
+  productName: string;
   quantity: number;
-  price?: number;
-  currency?: string;
+  unitPrice: string;
+  selectedSize?: string | null;
 }
 
 interface Order {
   id: number;
   status: string;
-  total: number;
-  currency: string;
+  totalAmount: number;
   createdAt: string;
   items: OrderItem[];
   fulfillmentMethod?: "SHIP" | "PICKUP";
@@ -34,6 +34,9 @@ interface Order {
   pickupLocationId?: number | null;
   pickupLocationName?: string | null;
 }
+
+// No currency on the wire — the app is Toronto-based, so default to CAD.
+const CURRENCY = "CAD";
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -231,7 +234,7 @@ export default function OrderDetailPage() {
                   </span>
                   <span className="text-muted-foreground">
                     {order.shippingFee && order.shippingFee > 0
-                      ? new Intl.NumberFormat("en-CA", { style: "currency", currency: order.currency || "CAD" }).format(order.shippingFee)
+                      ? new Intl.NumberFormat("en-CA", { style: "currency", currency: CURRENCY }).format(order.shippingFee)
                       : "Free"}
                   </span>
                 </div>
@@ -243,32 +246,30 @@ export default function OrderDetailPage() {
               <h2 className="mb-4 font-display text-xl font-semibold text-foreground">
                 Items
               </h2>
-              {order.items.length === 0 ? (
+              {(order.items ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">No items recorded.</p>
               ) : (
                 <div className="flex flex-col divide-y divide-border">
-                  {order.items.map((item, idx) => (
+                  {(order.items ?? []).map((item, idx) => (
                     <div
                       key={idx}
                       className="flex items-center justify-between py-3"
                     >
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {item.name}
+                          {item.productName}
+                          {item.selectedSize ? ` · ${item.selectedSize}` : ""}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Qty: {item.quantity}
                         </p>
                       </div>
-                      {item.price !== undefined && (
-                        <p className="text-sm font-semibold text-foreground">
-                          {new Intl.NumberFormat("en-CA", {
-                            style: "currency",
-                            currency:
-                              item.currency || order.currency || "CAD",
-                          }).format(item.price * item.quantity)}
-                        </p>
-                      )}
+                      <p className="text-sm font-semibold text-foreground">
+                        {new Intl.NumberFormat("en-CA", {
+                          style: "currency",
+                          currency: CURRENCY,
+                        }).format(Number(item.unitPrice) * item.quantity)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -279,8 +280,8 @@ export default function OrderDetailPage() {
                 <p className="text-base font-semibold text-foreground">
                   {new Intl.NumberFormat("en-CA", {
                     style: "currency",
-                    currency: order.currency || "CAD",
-                  }).format(order.total)}
+                    currency: CURRENCY,
+                  }).format(Number(order.totalAmount))}
                 </p>
               </div>
             </div>

@@ -135,6 +135,13 @@ export function ProfileSettingsDialog({
   const [deletingData, setDeletingData] = useState(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
 
+  // Per-tab dirty tracking. The [open] effect re-hydrates ALL three tabs, so a
+  // Save must persist every tab the user touched — not just the visible one.
+  // We snapshot each tab's baseline on hydrate and compare against live state.
+  const baselineProfileRef = useRef<string>("");
+  const baselineStyleRef = useRef<string>("");
+  const baselineMeasurementsRef = useRef<string>("");
+
   // Gate the delete trigger while an avatar is generating so a concurrent
   // delete + in-flight generation can't race (M7 — mirrors the avatar page).
   const { status: avatarStatus } = useAvatarStatus();
@@ -173,6 +180,33 @@ export function ProfileSettingsDialog({
     );
     setPriceNote((user.pricePreference as string | undefined) ?? "");
 
+    // Snapshot the profile + style baselines from the same values we just
+    // hydrated (mirrors the live snapshot key order below).
+    baselineProfileRef.current = JSON.stringify({
+      name: user.name ?? "",
+      username: user.username ?? "",
+      bio: surface.bio,
+      avatarDataUrl: surface.avatarDataUrl,
+      bannerDataUrl: surface.bannerDataUrl,
+      profileVisibility: (user.profileVisibility as "PUBLIC" | "PRIVATE") ?? "PUBLIC",
+    });
+    baselineStyleRef.current = JSON.stringify({
+      selectedStyles: user.styleAesthetics ?? [],
+      selectedFits: user.fitPreferences ?? [],
+      favoriteColors: (user.favoriteColors as string[] | undefined) ?? [],
+      avoidedColors: (user.avoidedColors as string[] | undefined) ?? [],
+      outfitGoals: (user.outfitGoals as string[] | undefined) ?? [],
+      budgetRange: (user.budgetRange as string | undefined) ?? "",
+      favoriteBrands: (user.favoriteBrands as string[] | undefined) ?? [],
+      sustainableInterest: (user.sustainableFashionInterest as boolean | undefined) ?? false,
+      priceNote: (user.pricePreference as string | undefined) ?? "",
+    });
+    // Until the async load resolves, treat the (empty) editor as the baseline so
+    // the pending fetch never registers as a user edit.
+    const emptyMeasurements: Record<string, string> = {};
+    for (const { key } of MEASUREMENT_FIELDS) emptyMeasurements[key] = "";
+    baselineMeasurementsRef.current = JSON.stringify(emptyMeasurements);
+
     // Fetch body measurements from the canonical source
     api
       .get<Record<string, unknown>>("/api/body-profile")
@@ -183,6 +217,7 @@ export function ProfileSettingsDialog({
           result[key] = val !== undefined && val !== null ? String(val) : "";
         }
         setMeasurements(result);
+        baselineMeasurementsRef.current = JSON.stringify(result);
       })
       .catch((err) => {
         // 404 means no profile yet — keep empty fields
@@ -194,6 +229,7 @@ export function ProfileSettingsDialog({
           result[key] = "";
         }
         setMeasurements(result);
+        baselineMeasurementsRef.current = JSON.stringify(result);
       });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -302,11 +338,67 @@ export function ProfileSettingsDialog({
     }
   }, [onUserRefresh]);
 
-  const handleActiveTabSave = useCallback(() => {
-    if (activeTab === "edit-profile") return handleSaveProfile();
-    if (activeTab === "style-preferences") return handleSaveStyle();
-    if (activeTab === "body-measurements") return handleSaveMeasurements();
-  }, [activeTab, handleSaveProfile, handleSaveStyle, handleSaveMeasurements]);
+  const handleActiveTabSave = useCallback(async () => {
+    // Compare live state against the baselines captured on open. Key order must
+    // match the baseline snapshots built in the [open] effect. Refs are read
+    // here (an event handler), not during render.
+    const dirtyProfile =
+      JSON.stringify({ name, username, bio, avatarDataUrl, bannerDataUrl, profileVisibility }) !==
+      baselineProfileRef.current;
+    const dirtyStyle =
+      JSON.stringify({
+        selectedStyles,
+        selectedFits,
+        favoriteColors,
+        avoidedColors,
+        outfitGoals,
+        budgetRange,
+        favoriteBrands,
+        sustainableInterest,
+        priceNote,
+      }) !== baselineStyleRef.current;
+    const dirtyMeasurements =
+      JSON.stringify(measurements) !== baselineMeasurementsRef.current;
+
+    const handlers: Array<() => Promise<void>> = [];
+    if (dirtyProfile) handlers.push(handleSaveProfile);
+    if (dirtyStyle) handlers.push(handleSaveStyle);
+    if (dirtyMeasurements) handlers.push(handleSaveMeasurements);
+
+    // Nothing edited across any tab — still honor the click by saving the
+    // active tab (preserves the prior always-save behavior).
+    if (handlers.length === 0) {
+      if (activeTab === "edit-profile") return handleSaveProfile();
+      if (activeTab === "style-preferences") return handleSaveStyle();
+      if (activeTab === "body-measurements") return handleSaveMeasurements();
+      return;
+    }
+
+    for (const handler of handlers) {
+      await handler();
+    }
+  }, [
+    name,
+    username,
+    bio,
+    avatarDataUrl,
+    bannerDataUrl,
+    profileVisibility,
+    selectedStyles,
+    selectedFits,
+    favoriteColors,
+    avoidedColors,
+    outfitGoals,
+    budgetRange,
+    favoriteBrands,
+    sustainableInterest,
+    priceNote,
+    measurements,
+    activeTab,
+    handleSaveProfile,
+    handleSaveStyle,
+    handleSaveMeasurements,
+  ]);
 
   const toggleStyle = useCallback((style: string) => {
     setSelectedStyles((prev) =>
