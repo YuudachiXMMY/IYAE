@@ -100,6 +100,7 @@ class AnalyticsServiceTest {
     void kpisByCohort_computesConversionRate() {
         AnalyticsService service = service(true);
         when(eventRepository.countByCohortAndEventType()).thenReturn(List.of(
+                new Object[]{"control", EventType.TRYON_STARTED, 4L},
                 new Object[]{"control", EventType.CHECKOUT_INITIATED, 2L},
                 new Object[]{"control", EventType.ORDER_PAID, 1L}));
         when(eventRepository.countPaidBySizeBracket()).thenReturn(List.of());
@@ -108,10 +109,12 @@ class AnalyticsServiceTest {
 
         KpiSummaryResponse.CohortKpi control = summary.cohorts().stream()
                 .filter(c -> c.cohort().equals("control")).findFirst().orElseThrow();
+        assertThat(control.tryOnStarted()).isEqualTo(4L);
         assertThat(control.checkoutInitiated()).isEqualTo(2L);
         assertThat(control.ordersPaid()).isEqualTo(1L);
         assertThat(control.conversionRate()).isEqualTo(0.5);
         // Configured cohort with no events still appears with zeroed metrics.
-        assertThat(summary.cohorts()).anyMatch(c -> c.cohort().equals("variant") && c.checkoutInitiated() == 0L);
+        assertThat(summary.cohorts()).anyMatch(c ->
+                c.cohort().equals("variant") && c.tryOnStarted() == 0L && c.checkoutInitiated() == 0L);
     }
 }

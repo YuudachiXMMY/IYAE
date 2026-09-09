@@ -15,6 +15,7 @@ from providers.fit_accuracy import validate_fit_accuracy
 from validator import (
     validate_glb,
     validate_glb_geometry,
+    validate_material_and_uv,
     validate_metadata,
     validate_usdz,
     validate_rigged_glb,
@@ -248,6 +249,19 @@ def run():
                             "VALIDATION_FAILED",
                         )
                         continue
+
+                    # Phase 0 drape-realism baseline: non-blocking audit of whether the
+                    # rigged GLB carries material + UV. Logged (never fails the task) so the
+                    # "untextured garment" ratio is greppable via the MATERIAL_AUDIT prefix
+                    # until B1 restores materials (then this can become a hard check).
+                    material = validate_material_and_uv(absolute_path)
+                    logger.info(
+                        "MATERIAL_AUDIT task=%s garment=%s has_material=%s has_texcoord=%s",
+                        task_id,
+                        garment_asset_id,
+                        material["has_material"],
+                        material["has_texcoord"],
+                    )
 
                     rigging_queue.complete_task(task_id, output)
                     logger.info(f"Rigging task {task_id} completed successfully")

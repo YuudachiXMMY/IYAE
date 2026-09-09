@@ -18,6 +18,7 @@ import { applyAntiPenetrationToScene, applyLayeredAntiPenetrationToScene } from 
 import { usePoseAnimation } from "@/lib/hooks/usePoseAnimation";
 import { PoseSelector } from "./PoseSelector";
 import { POSE_PRESETS } from "@/lib/pose-config";
+import { useTrackEvent } from "@/lib/hooks/useTrackEvent";
 
 const DEFAULT_POSE_ID = POSE_PRESETS.find((p) => p.isDefault)?.id ?? "a-pose";
 
@@ -196,6 +197,10 @@ interface AvatarViewerProps {
   riggedGarmentSlots?: string[];
   /** Optional 2D product still shown as the Suspense fallback while GLBs stream in. */
   previewImageUrl?: string;
+  /** Optional context for the fire-once TRYON_STARTED analytics event. When the
+   *  garment content is ready, this viewer emits a first-party try-on session event
+   *  (see the Phase 0 drape-realism funnel). Absent context still emits with surface "unknown". */
+  trackingContext?: { productId?: number; surface?: string };
 }
 
 export default function AvatarViewer({
@@ -205,6 +210,7 @@ export default function AvatarViewer({
   riggedGarmentUrls,
   riggedGarmentSlots,
   previewImageUrl,
+  trackingContext,
 }: AvatarViewerProps) {
   const hasRigged = Boolean(riggedGarmentUrls?.length);
 
@@ -218,6 +224,21 @@ export default function AvatarViewer({
 
   const hasContent =
     Boolean(avatarUrl) || staticGarments.length > 0 || hasRigged;
+
+  // Phase 0 drape-realism funnel: emit a fire-once TRYON_STARTED event when the
+  // garment content is present. Ref-guarded so a StrictMode double-mount (or re-render)
+  // only reports one session per mount. Mirrors the VIEW ref-guard on the PDP.
+  const track = useTrackEvent();
+  const trackedRef = useRef(false);
+  useEffect(() => {
+    if (!hasContent || trackedRef.current) return;
+    trackedRef.current = true;
+    track({
+      type: "TRYON_STARTED",
+      productId: trackingContext?.productId,
+      metadata: JSON.stringify({ surface: trackingContext?.surface ?? "unknown" }),
+    });
+  }, [hasContent, track, trackingContext]);
 
   if (!hasContent) return null;
 

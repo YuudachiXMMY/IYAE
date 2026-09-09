@@ -3,6 +3,7 @@ package com.iyae.controller;
 import com.iyae.dto.KpiSummaryResponse;
 import com.iyae.dto.TrackEventRequest;
 import com.iyae.entity.User;
+import com.iyae.entity.enums.EventType;
 import com.iyae.entity.enums.Role;
 import com.iyae.repository.UserRepository;
 import com.iyae.service.AnalyticsService;
@@ -58,6 +59,25 @@ class AnalyticsControllerTest {
                 .andExpect(status().isAccepted());
 
         verify(analyticsService).record(eq(1L), any(), eq(5L), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com")
+    void track_tryonStarted_returns202() throws Exception {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(
+                User.builder().id(1L).email("test@example.com").role(Role.BUYER).build()));
+
+        String body = objectMapper.writeValueAsString(
+                new TrackEventRequest("TRYON_STARTED", 5L, null, "{\"surface\":\"pdp\"}"));
+
+        mockMvc.perform(post("/api/events")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isAccepted());
+
+        verify(analyticsService).record(eq(1L), eq(EventType.TRYON_STARTED), eq(5L),
+                isNull(), isNull(), eq("{\"surface\":\"pdp\"}"));
     }
 
     @Test

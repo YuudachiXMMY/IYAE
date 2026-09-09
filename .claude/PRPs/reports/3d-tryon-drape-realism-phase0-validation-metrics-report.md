@@ -1,0 +1,81 @@
+# Implementation Report: 3D 试穿垂坠真实感 — Phase 0(验证与度量地基)
+
+## Summary
+落地了 Phase 0 的**度量地基代码**:扩展既有 analytics 栈新增 `TRYON_STARTED` 事件并接入 `/api/admin/kpis` cohort 漏斗;从 `AvatarViewer` 发射试穿会话事件(经 `SmartARViewer` → PDP 传 `trackingContext`);worker 新增**非阻断**的 `validate_material_and_uv` 审计 + `MATERIAL_AUDIT` 日志,产出"无纹理占比"度量。无新表、无新 Flyway 迁移。运营性的实机根因验证 + 基线数字采集(Task 12)需运行时环境,已在 findings 文档中留出方法论与占位。
+
+## Assessment vs Reality
+
+| Metric | Predicted (Plan) | Actual |
+|---|---|---|
+| Complexity | Medium | Medium(符合) |
+| Confidence | 8/10 | 代码部分 10/10 通过全部校验;运营部分需运行时环境(如计划所料) |
+| Files Changed | ~12 | 11 改 + 1 新建 = 12 |
+
+## Tasks Completed
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 1 | EventType 新增 `TRYON_STARTED` | ✅ Complete | 放在 `VIEW` 后(漏斗顺序);无迁移 |
+| 2 | `CohortKpi` 加 `tryOnStarted` | ✅ Complete | 插在 `views` 后 |
+| 3 | `AnalyticsService.kpisByCohort()` 填充 | ✅ Complete | 复用既有聚合,无新查询 |
+| 4 | AvatarViewer 发射 `TRYON_STARTED` | ✅ Complete | ref 守卫单发 + `trackingContext` prop |
+| 5 | SmartARViewer 转发 `trackingContext` | ✅ Complete | desktop 路径;AR/iOS 路径按计划不覆盖 |
+| 6 | PDP 传入 `trackingContext` | ✅ Complete | `{ productId, surface:"pdp" }` |
+| 7 | worker `validate_material_and_uv`(咨询式) | ✅ Complete | 未接入 `validate_rigged_glb` 失败链 |
+| 8 | main.py 非阻断 `MATERIAL_AUDIT` 日志 | ✅ Complete | 校验通过后、`complete_task` 前 |
+| 9 | worker validator 单测(3 例) | ✅ Complete | 正/负/解析失败 |
+| 10 | `AnalyticsServiceTest` 更新 | ✅ Complete | +tryOn 计数断言 |
+| 11 | `AnalyticsControllerTest` 加用例 | ✅ Complete | `TRYON_STARTED` → 202 |
+| 12 | 实机根因验证 + 基线文档 | ⚠️ Partial | 机制+方法论已落地(`docs/phase0-drape-realism-findings.md`);实机数字需 rigging 容器 + SMPL-X + 部署漏斗,本环境无法运行 |
+
+## Validation Results
+
+| Level | Status | Notes |
+|---|---|---|
+| Static Analysis | ✅ Pass | server `compileJava/compileTestJava` OK;web `tsc --noEmit` 0 错误;新代码文件(AvatarViewer/SmartARViewer)ESLint 0 错误 |
+| Unit Tests | ✅ Pass | server analytics 测试绿;worker validator **51 passed**(含 3 新);web **318 passed / 33 文件** |
+| Build / Regression | ✅ Pass | server **全量测试 BUILD SUCCESSFUL**(零回归);web tsc 全项目类型通过 |
+| Integration | ⚠️ N/A(本环境) | 需运行栈 + docker `--profile rigging` + SMPL-X;见 findings 文档运行步骤 |
+| Edge Cases | ✅ Pass | 未知类型→400、匿名→403、cohort 缺 tryOn→0、GLB 解析失败→非 raise、MagicMock 属性显式置 None |
+
+> 注:未运行 `next build` 打包——web 存在**既有**(与本改动无关)的 `react-hooks/set-state-in-effect` lint 错误(`app/products/[id]/page.tsx:130/165`,`setProductLoading`/`setReviewsLoading`),Next 16 构建会因这些既有 lint 失败,故以 `tsc --noEmit`(全项目类型门)+ 全量 vitest + 针对性 ESLint 作为等价校验。
+
+## Files Changed
+
+| File | Action | Lines |
+|---|---|---|
+| `server/.../entity/enums/EventType.java` | UPDATED | +1 |
+| `server/.../dto/KpiSummaryResponse.java` | UPDATED | +1 |
+| `server/.../service/AnalyticsService.java` | UPDATED | +2/-1 |
+| `server/.../test/.../service/AnalyticsServiceTest.java` | UPDATED | +4/-1 |
+| `server/.../test/.../controller/AnalyticsControllerTest.java` | UPDATED | +20 |
+| `web/components/AvatarViewer.tsx` | UPDATED | +21 |
+| `web/components/SmartARViewer.tsx` | UPDATED | +4 |
+| `web/app/products/[id]/page.tsx` | UPDATED | +1 |
+| `worker/validator.py` | UPDATED | +48 |
+| `worker/main.py` | UPDATED | +14 |
+| `worker/tests/test_validator.py` | UPDATED | +64 |
+| `docs/phase0-drape-realism-findings.md` | CREATED | +~110 |
+
+## Deviations from Plan
+- **Task 12(实机验证/基线)未执行实机部分**:需 rigging 容器 + SMPL-X 模型 + 部署的埋点漏斗,后台环境无法运行。**代码机制全部就绪**(`validate_material_and_uv` 自动确认根因、`MATERIAL_AUDIT` 日志度量占比、`/api/admin/kpis` 漏斗),findings 文档给出运行步骤 + 结论/基线占位表。据此**PRD Phase 0 保持 `in-progress`**(未 flip 到 `complete`),忠实反映"代码已交付、实机数据待采集"。
+- 其余任务(1–11)均**完全按计划实现**,无偏差。
+
+## Issues Encountered
+- **gradle-wrapper.jar 被 gitignore**(worktree 已知问题):改用缓存 `~/.gradle/wrapper/dists/gradle-8.10-bin/.../bin/gradle` 运行。
+- **web 无 node_modules**(fresh worktree):`npm install` 后 tsc/vitest 可用。
+- **worker 无测试依赖**:在 `$CLAUDE_JOB_DIR/tmp` 建 venv 装 `pytest pygltflib trimesh numpy requests` 运行 validator 套件。
+- **MagicMock 陷阱**:`attrs.TEXCOORD_0`/`prim.material` 在裸 MagicMock 上默认非 None → 负例测试显式置 `None`(已在 `_make_material_primitive` 处理并注释)。
+
+## Tests Written
+
+| Test File | Tests | Coverage |
+|---|---|---|
+| `worker/tests/test_validator.py` | +3(`TestValidateMaterialAndUv`) | 缺材质/UV、含材质/UV、解析失败不 raise |
+| `server/.../AnalyticsServiceTest.java` | +断言(既有用例内) | KPI 漏斗含 `tryOnStarted` 计数 + 空 cohort 归零 |
+| `server/.../AnalyticsControllerTest.java` | +1(`track_tryonStarted_returns202`) | `TRYON_STARTED` 事件接收 + metadata 透传 |
+
+## Next Steps
+- [ ] 运行时:按 `docs/phase0-drape-realism-findings.md` 跑 `docker compose --profile rigging`,采集根因结论 + 三项基线,填表后即可 flip PRD Phase 0 → `complete`
+- [ ] `/code-review` 审查本次改动
+- [ ] Phase 1(B1 材质恢复 + D1 阴影 + D2 兜底材质)—— B1 落地后可把 `validate_material_and_uv` 升级为硬校验

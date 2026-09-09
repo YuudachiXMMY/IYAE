@@ -13,6 +13,7 @@ public record KpiSummaryResponse(
     public record CohortKpi(
         String cohort,
         long views,
+        long tryOnStarted,
         long addToCart,
         long checkoutInitiated,
         long ordersPaid,
