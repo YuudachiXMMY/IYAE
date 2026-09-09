@@ -1,17 +1,25 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState, useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { LocalImagePicker } from "@/components/profile/LocalImagePicker";
 import { getBodyMeasurementCoverage } from "@/lib/profile-dashboard";
-import { STYLE_AESTHETICS, FIT_PREFERENCES } from "@/lib/profile-options";
+import {
+  STYLE_AESTHETICS,
+  FIT_PREFERENCES,
+  COLOR_PALETTE,
+  BRANDS,
+  BUDGET_RANGES,
+  OUTFIT_GOALS,
+} from "@/lib/profile-options";
 import { api, auth, avatar, ApiError } from "@/lib/api";
 import { useAvatarStatus } from "@/lib/hooks/useAvatarStatus";
 import { cn } from "@/lib/utils";
@@ -88,6 +96,28 @@ export function ProfileSettingsDialog({
   const [selectedFits, setSelectedFits] = useState<string[]>(
     user.fitPreferences ?? []
   );
+  // Merged from the former /profile/preferences page.
+  const [favoriteColors, setFavoriteColors] = useState<string[]>(
+    (user.favoriteColors as string[] | undefined) ?? []
+  );
+  const [avoidedColors, setAvoidedColors] = useState<string[]>(
+    (user.avoidedColors as string[] | undefined) ?? []
+  );
+  const [outfitGoals, setOutfitGoals] = useState<string[]>(
+    (user.outfitGoals as string[] | undefined) ?? []
+  );
+  const [budgetRange, setBudgetRange] = useState<string>(
+    (user.budgetRange as string | undefined) ?? ""
+  );
+  const [favoriteBrands, setFavoriteBrands] = useState<string[]>(
+    (user.favoriteBrands as string[] | undefined) ?? []
+  );
+  const [sustainableInterest, setSustainableInterest] = useState<boolean>(
+    (user.sustainableFashionInterest as boolean | undefined) ?? false
+  );
+  const [priceNote, setPriceNote] = useState<string>(
+    (user.pricePreference as string | undefined) ?? ""
+  );
   const [savingStyle, setSavingStyle] = useState(false);
 
   // Tab 3: Body Measurements state (loaded from /api/body-profile)
@@ -133,6 +163,15 @@ export function ProfileSettingsDialog({
     setProfileVisibility((user.profileVisibility as "PUBLIC" | "PRIVATE") ?? "PUBLIC");
     setSelectedStyles(user.styleAesthetics ?? []);
     setSelectedFits(user.fitPreferences ?? []);
+    setFavoriteColors((user.favoriteColors as string[] | undefined) ?? []);
+    setAvoidedColors((user.avoidedColors as string[] | undefined) ?? []);
+    setOutfitGoals((user.outfitGoals as string[] | undefined) ?? []);
+    setBudgetRange((user.budgetRange as string | undefined) ?? "");
+    setFavoriteBrands((user.favoriteBrands as string[] | undefined) ?? []);
+    setSustainableInterest(
+      (user.sustainableFashionInterest as boolean | undefined) ?? false
+    );
+    setPriceNote((user.pricePreference as string | undefined) ?? "");
 
     // Fetch body measurements from the canonical source
     api
@@ -183,7 +222,17 @@ export function ProfileSettingsDialog({
   const handleSaveStyle = useCallback(async () => {
     setSavingStyle(true);
     try {
-      await auth.updateProfile({ styleAesthetics: selectedStyles, fitPreferences: selectedFits });
+      await auth.updateProfile({
+        styleAesthetics: selectedStyles,
+        fitPreferences: selectedFits,
+        favoriteColors,
+        avoidedColors,
+        outfitGoals,
+        budgetRange: budgetRange || undefined,
+        favoriteBrands,
+        sustainableFashionInterest: sustainableInterest,
+        pricePreference: priceNote || undefined,
+      });
       onUserRefresh();
       toast.success("Style preferences updated");
     } catch {
@@ -191,7 +240,18 @@ export function ProfileSettingsDialog({
     } finally {
       setSavingStyle(false);
     }
-  }, [selectedStyles, selectedFits, onUserRefresh]);
+  }, [
+    selectedStyles,
+    selectedFits,
+    favoriteColors,
+    avoidedColors,
+    outfitGoals,
+    budgetRange,
+    favoriteBrands,
+    sustainableInterest,
+    priceNote,
+    onUserRefresh,
+  ]);
 
   const handleSaveMeasurements = useCallback(async () => {
     setSavingMeasurements(true);
@@ -260,6 +320,16 @@ export function ProfileSettingsDialog({
     );
   }, []);
 
+  // Generic multi-select toggle for the merged preference chip groups.
+  const toggleValue = useCallback(
+    (setter: Dispatch<SetStateAction<string[]>>, value: string) => {
+      setter((prev) =>
+        prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+      );
+    },
+    []
+  );
+
   const measurementCoverage = getBodyMeasurementCoverage(
     measurements as unknown as Record<string, unknown>
   );
@@ -267,13 +337,20 @@ export function ProfileSettingsDialog({
   const isSaving = savingProfile || savingStyle || savingMeasurements;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2rem] p-0">
-        <DialogHeader className="px-8 pt-8 pb-4">
-          <DialogTitle className="text-xl font-semibold">Settings</DialogTitle>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-xl"
+      >
+        <SheetHeader className="px-8 pt-8 pb-4 text-left">
+          <SheetTitle className="text-xl font-semibold">Settings</SheetTitle>
+        </SheetHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <div className="px-8">
             <TabsList className="w-full justify-start bg-muted rounded-full p-1 h-auto gap-1">
               <TabsTrigger value="edit-profile" className="rounded-full text-xs px-4 py-1.5">
@@ -288,6 +365,7 @@ export function ProfileSettingsDialog({
             </TabsList>
           </div>
 
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Tab 1: Edit Profile */}
           <TabsContent value="edit-profile" className="px-8 py-6 space-y-6">
             <div className="space-y-4">
@@ -518,6 +596,161 @@ export function ProfileSettingsDialog({
                 ))}
               </div>
             </div>
+
+            <Separator />
+
+            {/* Colors */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Favorite Colors</h3>
+              <p className="text-xs text-muted-foreground">Shades you reach for</p>
+              <div className="flex flex-wrap gap-3">
+                {COLOR_PALETTE.map(({ name, hex }) => (
+                  <button
+                    key={name}
+                    type="button"
+                    title={name}
+                    onClick={() => toggleValue(setFavoriteColors, name)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-lg p-1 transition-all",
+                      favoriteColors.includes(name)
+                        ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
+                        : "opacity-80 hover:opacity-100"
+                    )}
+                  >
+                    <span
+                      className="h-8 w-8 rounded-full border border-border shadow-sm"
+                      style={{ backgroundColor: hex }}
+                    />
+                    <span className="text-[10px] text-muted-foreground">{name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Colors to Avoid</h3>
+              <p className="text-xs text-muted-foreground">Shades to keep out of your edit</p>
+              <div className="flex flex-wrap gap-3">
+                {COLOR_PALETTE.map(({ name, hex }) => (
+                  <button
+                    key={name}
+                    type="button"
+                    title={name}
+                    onClick={() => toggleValue(setAvoidedColors, name)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-lg p-1 transition-all",
+                      avoidedColors.includes(name)
+                        ? "ring-2 ring-destructive ring-offset-2 ring-offset-background"
+                        : "opacity-80 hover:opacity-100"
+                    )}
+                  >
+                    <span
+                      className="h-8 w-8 rounded-full border border-border shadow-sm"
+                      style={{ backgroundColor: hex }}
+                    />
+                    <span className="text-[10px] text-muted-foreground">{name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Outfit goals */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Outfit Goals</h3>
+              <p className="text-xs text-muted-foreground">What are you dressing for?</p>
+              <div className="flex flex-wrap gap-2">
+                {OUTFIT_GOALS.map((goal) => (
+                  <button
+                    key={goal}
+                    type="button"
+                    onClick={() => toggleValue(setOutfitGoals, goal)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      outfitGoals.includes(goal)
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    {goal}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Budget & brands */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Budget Range</h3>
+              <p className="text-xs text-muted-foreground">Your typical spend per piece</p>
+              <div className="flex flex-wrap gap-2">
+                {BUDGET_RANGES.map((range) => (
+                  <button
+                    key={range}
+                    type="button"
+                    onClick={() =>
+                      setBudgetRange((prev) => (prev === range ? "" : range))
+                    }
+                    className={cn(
+                      "rounded-full px-4 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      budgetRange === range
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    {range}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Favorite Brands</h3>
+              <p className="text-xs text-muted-foreground">Labels you love</p>
+              <div className="flex flex-wrap gap-2">
+                {BRANDS.map((brand) => (
+                  <button
+                    key={brand}
+                    type="button"
+                    onClick={() => toggleValue(setFavoriteBrands, brand)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
+                      favoriteBrands.includes(brand)
+                        ? "bg-foreground text-background"
+                        : "border border-border text-muted-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    {brand}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="settings-sustainable"
+                checked={sustainableInterest}
+                onCheckedChange={(checked) => setSustainableInterest(checked === true)}
+              />
+              <Label htmlFor="settings-sustainable" className="cursor-pointer text-sm">
+                I prefer sustainable / ethical fashion brands
+              </Label>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="settings-price-note" className="text-xs text-muted-foreground">
+                Price Notes
+              </Label>
+              <Input
+                id="settings-price-note"
+                placeholder="e.g. I prefer quality over quantity"
+                value={priceNote}
+                onChange={(e) => setPriceNote(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
           </TabsContent>
 
           {/* Tab 3: Body Measurements */}
@@ -565,6 +798,7 @@ export function ProfileSettingsDialog({
               ))}
             </div>
           </TabsContent>
+          </div>
         </Tabs>
 
         {/* Footer */}
@@ -584,7 +818,7 @@ export function ProfileSettingsDialog({
             {isSaving ? "Saving..." : "Save Settings"}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
