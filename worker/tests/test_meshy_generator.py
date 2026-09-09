@@ -80,6 +80,16 @@ class TestResolveImageUrl:
         with pytest.raises(FileNotFoundError, match="Image file not found"):
             gen._resolve_image_url("/uploads/products/nonexistent.jpg")
 
+    def test_relative_path_traversal_rejected(self, tmp_path):
+        gen = MeshyGenerator(api_key="k", output_base_dir=str(tmp_path))
+        with pytest.raises(ValueError, match="escapes asset root"):
+            gen._resolve_image_url("../../../../etc/passwd")
+
+    def test_absolute_escape_rejected(self, tmp_path):
+        gen = MeshyGenerator(api_key="k", output_base_dir=str(tmp_path))
+        with pytest.raises(ValueError, match="escapes asset root"):
+            gen._resolve_image_url("/../../etc/passwd")
+
 
 class TestMeshyGeneratorInit:
     def test_stores_api_key(self):
