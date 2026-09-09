@@ -12,6 +12,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # Align the servlet cap with FileStorageService's 10 MB code limit. Spring's 1 MB default
+      # otherwise rejects 2–8 MB photo uploads before they reach the service (→ handled as 413).
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 server:
   port: 8080

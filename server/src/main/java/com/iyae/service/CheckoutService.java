@@ -177,38 +177,66 @@ public class CheckoutService {
             throw new IllegalArgumentException("Invalid Stripe webhook signature");
         }
 
-        if ("checkout.session.completed".equals(event.getType())) {
+        // checkout.session.completed fires when the buyer finishes Checkout, but for asynchronous
+        // payment methods (SEPA, Bacs, Interac, some BNPL) the money has NOT settled yet — the
+        // session arrives with payment_status=unpaid and a later async_payment_succeeded event
+        // confirms funds. Fulfilling on 'completed' alone ships unpaid goods and irreversibly marks
+        // unique resale units SOLD, so we only fulfill once Stripe reports the session paid.
+        String type = event.getType();
+        if ("checkout.session.completed".equals(type)
+                || "checkout.session.async_payment_succeeded".equals(type)) {
             Session session = (Session) event.getDataObjectDeserializer()
                     .getObject()
                     .orElseThrow(() -> new IllegalArgumentException("Missing session data in webhook event"));
 
-            orderRepository.findByStripeSessionId(session.getId()).ifPresent(order -> {
-                if (order.getStatus() == OrderStatus.PAID) {
-                    log.info("Order {} already PAID, skipping duplicate webhook", order.getId());
-                    return;
-                }
-                order.setStatus(OrderStatus.PAID);
-                order.setPaymentStatus("PAID");
-                if (session.getPaymentIntent() != null) {
-                    order.setStripePaymentIntent(session.getPaymentIntent());
-                }
-                orderRepository.save(order);
-                log.info("Order {} marked PAID via Stripe session {}", order.getId(), session.getId());
-
-                analyticsService.record(order.getUser().getId(), EventType.ORDER_PAID, null,
-                        order.getId(), null, null);
-
-                if (order.getResaleListingId() != null) {
-                    // Resale order: mark the pre-loved listing SOLD; there is no cart to clear.
-                    resaleService.markSold(order.getResaleListingId());
-                } else {
-                    cartRepository.findByUserId(order.getUser().getId()).ifPresent(cart -> {
-                        cartItemRepository.deleteByCartId(cart.getId());
-                        log.info("Cart cleared for user {} after successful payment", order.getUser().getId());
-                    });
-                }
-            });
+            if (!isSessionPaid(session)) {
+                log.info("Stripe session {} not yet paid (payment_status={}, event={}); deferring fulfillment",
+                        session.getId(), session.getPaymentStatus(), type);
+                return;
+            }
+            fulfillPaidSession(session);
         }
+    }
+
+    /** True only when Stripe confirms the money has settled (or none was required). */
+    private boolean isSessionPaid(Session session) {
+        String paymentStatus = session.getPaymentStatus();
+        return "paid".equals(paymentStatus) || "no_payment_required".equals(paymentStatus);
+    }
+
+    /**
+     * Transition a confirmed-paid session's order to PAID and run one-time fulfillment. The
+     * PENDING→PAID guard plus the {@code @Version} optimistic lock on Order make this idempotent
+     * under Stripe's at-least-once, possibly-concurrent webhook delivery: a duplicate that races
+     * the winner fails to commit and Stripe's retry then sees the order already PAID and skips.
+     */
+    private void fulfillPaidSession(Session session) {
+        orderRepository.findByStripeSessionId(session.getId()).ifPresent(order -> {
+            if (order.getStatus() == OrderStatus.PAID) {
+                log.info("Order {} already PAID, skipping duplicate webhook", order.getId());
+                return;
+            }
+            order.setStatus(OrderStatus.PAID);
+            order.setPaymentStatus("PAID");
+            if (session.getPaymentIntent() != null) {
+                order.setStripePaymentIntent(session.getPaymentIntent());
+            }
+            orderRepository.save(order);
+            log.info("Order {} marked PAID via Stripe session {}", order.getId(), session.getId());
+
+            analyticsService.record(order.getUser().getId(), EventType.ORDER_PAID, null,
+                    order.getId(), null, null);
+
+            if (order.getResaleListingId() != null) {
+                // Resale order: mark the pre-loved listing SOLD; there is no cart to clear.
+                resaleService.markSold(order.getResaleListingId());
+            } else {
+                cartRepository.findByUserId(order.getUser().getId()).ifPresent(cart -> {
+                    cartItemRepository.deleteByCartId(cart.getId());
+                    log.info("Cart cleared for user {} after successful payment", order.getUser().getId());
+                });
+            }
+        });
     }
 
     /**

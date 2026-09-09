@@ -76,8 +76,10 @@ export default function CheckoutPage() {
   }, []);
 
   const serverTotal = serverItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const demoTotal = demoItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const subtotal = serverTotal + demoTotal;
+  // Only the real, server-side cart is charged. Demo (AI-recommendation) items
+  // carry negative IDs and are never sent to the server, so they must not inflate
+  // the amount we tell the shopper they'll pay.
+  const subtotal = serverTotal;
   const isEmpty = totalCount === 0 && !cartLoading;
 
   const selectedFee =
@@ -290,6 +292,10 @@ export default function CheckoutPage() {
                         </span>
                       </div>
                     ))}
+                    <p className="text-xs text-muted-foreground">
+                      AI recommendations are previews only — they aren&apos;t included in this
+                      order and won&apos;t be charged.
+                    </p>
                   </div>
                 )}
 

@@ -175,7 +175,21 @@ class MeshyGenerator:
         if image_url.startswith(("http://", "https://", "data:")):
             return image_url
 
-        file_path = os.path.join(self.output_base_dir, image_url.lstrip("/"))
+        # Containment check: resolve the real path and ensure it stays within
+        # the real asset root. realpath collapses ".." segments and resolves
+        # symlinks, so this defeats both "../../etc/passwd" traversal and
+        # symlink-escape attempts before any file is opened.
+        base = os.path.realpath(self.output_base_dir)
+        resolved = os.path.realpath(os.path.join(base, image_url.lstrip("/")))
+        try:
+            within_base = os.path.commonpath([base, resolved]) == base
+        except ValueError:
+            # Different drives (Windows) or mixed absolute/relative — treat as escape.
+            within_base = False
+        if not within_base:
+            raise ValueError(f"Image path escapes asset root: {image_url}")
+
+        file_path = resolved
         if not os.path.isfile(file_path):
             raise FileNotFoundError(
                 f"Image file not found at {file_path} (from url: {image_url})"

@@ -175,6 +175,10 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatSectionRef = useRef<HTMLDivElement>(null);
+  // When quick-start creates a session it owns populating the first message via
+  // the optimistic send path. Flag that session so the load effect below skips
+  // its reset+refetch (which would otherwise clobber the optimistic message).
+  const skipLoadForSessionRef = useRef<number | null>(null);
 
   // ── Scroll to bottom ──────────────────────────────────────────────────────
   const scrollToBottom = useCallback(() => {
@@ -206,6 +210,13 @@ export default function ChatPage() {
   // ── Load messages when session changes ───────────────────────────────────
   useEffect(() => {
     if (!activeSessionId) return;
+
+    // Quick-start just created this session and is populating it optimistically;
+    // don't reset/refetch or we'd wipe the in-flight first message.
+    if (skipLoadForSessionRef.current === activeSessionId) {
+      skipLoadForSessionRef.current = null;
+      return;
+    }
 
     setIsLoadingMessages(true);
     setMessages([]);
@@ -296,6 +307,9 @@ export default function ChatPage() {
       try {
         const session = await chat.createSession();
         setSessions((prev) => [session, ...prev]);
+        // Claim this session before the id change triggers the load effect, so
+        // the effect skips its reset+refetch and lets the send path own messages.
+        skipLoadForSessionRef.current = session.id;
         setActiveSessionId(session.id);
         setMessages([]);
         setCurrentSuggestions([]);

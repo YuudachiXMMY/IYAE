@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useProfileSurface } from "@/lib/profile-surface";
 import { useCommunityState } from "@/lib/hooks/useCommunityState";
 import { getProfileTabPosts, getProfileStats } from "@/lib/profile-dashboard";
+import { follows } from "@/lib/api";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { DarkPanel } from "@/components/design-system/DarkPanel";
 import { SectionKicker } from "@/components/design-system/SectionKicker";
@@ -274,10 +275,30 @@ function MyProfilePanel({
     ? getProfileStats(state, username)
     : { posts: 0, followers: 0, following: 0, archives: 0 };
 
+  // getProfileStats is a synchronous, localStorage-only helper and hardcodes
+  // followers=0. Fetch the real server-side follower/following counts here and
+  // merge them over the placeholder stats.
+  const [followCounts, setFollowCounts] = useState<{
+    followers: number;
+    following: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user.id) return;
+    const controller = new AbortController();
+    follows
+      .counts(user.id, controller.signal)
+      .then((c) => setFollowCounts({ followers: c.followers, following: c.following }))
+      .catch(() => {
+        // Non-fatal: fall back to the local placeholder stats on failure/abort.
+      });
+    return () => controller.abort();
+  }, [user.id]);
+
   const statCards: ReadonlyArray<{ label: string; value: number }> = [
     { label: "Posts", value: stats.posts },
-    { label: "Followers", value: stats.followers },
-    { label: "Following", value: stats.following },
+    { label: "Followers", value: followCounts?.followers ?? stats.followers },
+    { label: "Following", value: followCounts?.following ?? stats.following },
   ];
 
   return (

@@ -1,5 +1,6 @@
 package com.iyae.dto;
 
+import com.fasterxml.jackson.annotation.JsonRawValue;
 import com.iyae.entity.Order;
 import com.iyae.entity.enums.FulfillmentMethod;
 import com.iyae.entity.enums.OrderStatus;
@@ -11,7 +12,9 @@ public record OrderResponse(
         Long id,
         OrderStatus status,
         BigDecimal totalAmount,
-        String items,
+        // itemsSnapshot is already-serialized JSON (an array of item objects); emit it as an
+        // embedded array rather than a JSON-escaped string so clients can consume it directly.
+        @JsonRawValue String items,
         Instant createdAt,
         FulfillmentMethod fulfillmentMethod,
         String shippingCarrier,     // carrier display name; null for pickup

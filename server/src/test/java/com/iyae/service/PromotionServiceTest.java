@@ -2,6 +2,7 @@ package com.iyae.service;
 
 import com.iyae.dto.PromotionRequest;
 import com.iyae.dto.PromotionResponse;
+import com.iyae.dto.UpdatePromotionRequest;
 import com.iyae.entity.Promotion;
 import com.iyae.entity.enums.SlotType;
 import com.iyae.repository.ProductRepository;
@@ -112,7 +113,7 @@ class PromotionServiceTest {
         var designer = TestUsers.aDesigner();
         Promotion promo = buildPromotion(5L, SlotType.FEATURED);
         Instant newEnd = Instant.now().plusSeconds(7200);
-        PromotionRequest request = new PromotionRequest(1L, SlotType.SPONSORED, 20, null, newEnd);
+        UpdatePromotionRequest request = new UpdatePromotionRequest(SlotType.SPONSORED, 20, null, newEnd);
 
         when(userRepository.findByEmail(designer.getEmail())).thenReturn(Optional.of(designer));
         when(promotionRepository.findByIdAndProductDesignerProfileUserId(5L, designer.getId()))
@@ -133,7 +134,7 @@ class PromotionServiceTest {
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> promotionService.updatePromotion(designer.getEmail(), 99L,
-                new PromotionRequest(1L, SlotType.FEATURED, 1, Instant.now(), Instant.now().plusSeconds(60))))
+                new UpdatePromotionRequest(SlotType.FEATURED, 1, Instant.now(), Instant.now().plusSeconds(60))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Promotion not found");
     }

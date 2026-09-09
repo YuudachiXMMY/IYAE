@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { ProfileSettingsDialog } from "@/components/profile/ProfileSettingsDialog";
-import { avatar } from "@/lib/api";
+import { avatar, auth } from "@/lib/api";
 import { toast } from "sonner";
 
 vi.mock("sonner", () => ({
@@ -148,5 +148,52 @@ describe("ProfileSettingsDialog delete flow (M10/M11)", () => {
     const cancelBtn = screen.getByRole("button", { name: /^cancel$/i });
     await waitFor(() => expect(cancelBtn).toHaveFocus());
     expect(cancelBtn.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
+  });
+});
+
+describe("ProfileSettingsDialog multi-tab save (F8)", () => {
+  it("saves an edit made on a tab that is no longer the active tab", async () => {
+    vi.mocked(auth.updateProfile).mockClear();
+    // Ensure the async body-profile load resolves cleanly before we act.
+    render(<ProfileSettingsDialog open onOpenChange={vi.fn()} {...baseProps} />);
+
+    // Edit the Profile tab (the default active tab).
+    const nameInput = await screen.findByLabelText(/^name$/i);
+    fireEvent.change(nameInput, { target: { value: "Janet" } });
+
+    // Switch the active tab away from Edit Profile — the pre-fix bug only saved
+    // whichever tab was visible, so the name edit would have been dropped.
+    fireEvent.click(screen.getByRole("tab", { name: /style preferences/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
+
+    // The Profile save handler must still run for the (now inactive) dirty tab.
+    await waitFor(() =>
+      expect(auth.updateProfile).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Janet" })
+      )
+    );
+  });
+
+  it("does not save tabs that were never touched", async () => {
+    vi.mocked(auth.updateProfile).mockClear();
+    render(<ProfileSettingsDialog open onOpenChange={vi.fn()} {...baseProps} />);
+
+    // Change only the name (Profile tab). Style + Measurements stay pristine.
+    const nameInput = await screen.findByLabelText(/^name$/i);
+    fireEvent.change(nameInput, { target: { value: "Janet" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
+
+    // Exactly one save call — the Profile one. handleSaveProfile sends a payload
+    // WITHOUT styleAesthetics, so the untouched Style tab was skipped (no second,
+    // style-shaped updateProfile call).
+    await waitFor(() => expect(auth.updateProfile).toHaveBeenCalledTimes(1));
+    expect(auth.updateProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Janet" })
+    );
+    expect(vi.mocked(auth.updateProfile).mock.calls[0][0]).not.toHaveProperty(
+      "styleAesthetics"
+    );
   });
 });

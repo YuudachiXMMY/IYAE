@@ -2,6 +2,7 @@ package com.iyae.service;
 
 import com.iyae.dto.PromotionRequest;
 import com.iyae.dto.PromotionResponse;
+import com.iyae.dto.UpdatePromotionRequest;
 import com.iyae.entity.Product;
 import com.iyae.entity.Promotion;
 import com.iyae.entity.User;
@@ -58,7 +59,7 @@ public class PromotionService {
     }
 
     @Transactional
-    public PromotionResponse updatePromotion(String email, Long id, PromotionRequest request) {
+    public PromotionResponse updatePromotion(String email, Long id, UpdatePromotionRequest request) {
         User user = resolveUser(email);
         Promotion promotion = promotionRepository.findByIdAndProductDesignerProfileUserId(id, user.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Promotion not found: " + id));

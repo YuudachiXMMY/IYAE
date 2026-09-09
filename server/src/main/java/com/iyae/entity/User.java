@@ -38,6 +38,15 @@ public class User {
     @Builder.Default
     private Boolean emailVerified = false;
 
+    /**
+     * Incremented on password reset (and any future credential change) to revoke previously-issued
+     * JWTs: a token carries the version it was minted with, and {@code JwtAuthenticationFilter}
+     * rejects any token whose version is below the user's current value.
+     */
+    @Column(name = "token_version", nullable = false)
+    @Builder.Default
+    private Integer tokenVersion = 0;
+
     @Column(name = "verification_token", length = 64)
     private String verificationToken;
 

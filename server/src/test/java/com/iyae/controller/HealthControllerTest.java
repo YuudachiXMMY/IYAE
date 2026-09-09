@@ -3,6 +3,7 @@ package com.iyae.controller;
 import com.iyae.ai.AIProviderFactory;
 import com.iyae.config.BrandProperties;
 import com.iyae.config.RateLimitProperties;
+import com.iyae.repository.UserRepository;
 import com.iyae.security.JwtTokenProvider;
 import com.iyae.security.UserDetailsServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,11 @@ class HealthControllerTest {
 
     @MockBean
     UserDetailsServiceImpl userDetailsService;
+
+    // JwtAuthenticationFilter (a Filter bean) is picked up by @WebMvcTest; it now depends on
+    // UserRepository (for token-version + email-verified checks), so the slice must provide it.
+    @MockBean
+    UserRepository userRepository;
 
     @Test
     void getHealth_returnsUpStatus() throws Exception {
