@@ -64,7 +64,7 @@ class AdminControllerTest {
     }
 
     private PromotionResponse samplePromotion() {
-        return new PromotionResponse(3L, 5L, SlotType.FEATURED, 10, null, null);
+        return new PromotionResponse(3L, 5L, "Sample Product", SlotType.FEATURED, 10, null, null, false);
     }
 
     private PostReportResponse sampleReport() {

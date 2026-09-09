@@ -41,6 +41,28 @@ public class AuthService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    // Timing-attack guard: a real 60-char bcrypt hash used when the email doesn't exist, so the
+    // login path spends the same ~100ms of bcrypt work whether or not the account is real. Computed
+    // once from the actual encoder (a hardcoded literal risks being a malformed hash that
+    // BCryptPasswordEncoder.matches() short-circuits, defeating the constant-time property).
+    private static final String DUMMY_TIMING_PASSWORD = "timing-attack-guard-not-a-real-password";
+    // Canonical valid 60-char bcrypt hash, used as a fallback if the encoder ever yields nothing.
+    // Any well-formed bcrypt hash makes matches() perform the full bcrypt work; the value it encodes
+    // is irrelevant because a non-existent account can never match anyway.
+    private static final String FALLBACK_DUMMY_HASH =
+            "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+    private volatile String dummyPasswordHash;
+
+    private String dummyPasswordHash() {
+        String cached = dummyPasswordHash;
+        if (cached == null) {
+            String encoded = passwordEncoder.encode(DUMMY_TIMING_PASSWORD);
+            cached = (encoded != null && !encoded.isBlank()) ? encoded : FALLBACK_DUMMY_HASH;
+            dummyPasswordHash = cached;
+        }
+        return cached;
+    }
+
     @Value("${app.auth.verification-token-ttl}")
     private Duration verificationTokenTtl;
 
@@ -133,14 +155,14 @@ public class AuthService {
             log.warn("Failed to send verification email for user {}", user.getId(), e);
         }
 
-        String jwt = jwtTokenProvider.generateToken(user.getEmail());
+        String jwt = jwtTokenProvider.generateToken(user.getEmail(), user.getTokenVersion());
         return new AuthResponse(jwt, UserResponse.from(user));
     }
 
     public AuthResponse login(LoginRequest request) {
         // Constant-time: always hash-check even if user doesn't exist
         User user = userRepository.findByEmail(request.email()).orElse(null);
-        String storedHash = user != null ? user.getPasswordHash() : "$2a$10$dummyhashfortimingattak";
+        String storedHash = user != null ? user.getPasswordHash() : dummyPasswordHash();
 
         boolean matches = passwordEncoder.matches(request.password(), storedHash);
         if (user == null || !matches) {
@@ -153,7 +175,7 @@ public class AuthService {
             throw new EmailNotVerifiedException("Please verify your email before signing in");
         }
 
-        String token = jwtTokenProvider.generateToken(user.getEmail());
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getTokenVersion());
         return new AuthResponse(token, UserResponse.from(user));
     }
 
@@ -288,6 +310,10 @@ public class AuthService {
 
         User user = resetToken.getUser();
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // Revoke every JWT issued before this reset: bumping tokenVersion invalidates any token
+        // carrying the prior version (enforced in JwtAuthenticationFilter), so a leaked/old session
+        // can't outlive the password change up to the 24h token TTL.
+        user.setTokenVersion(user.getTokenVersion() + 1);
         userRepository.save(user);
 
         // Invalidate all other unused tokens for this user

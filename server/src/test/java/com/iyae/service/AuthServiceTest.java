@@ -111,7 +111,7 @@ class AuthServiceTest {
         when(secureTokenService.hashToken("rawtoken")).thenReturn("hashedtoken");
         when(passwordEncoder.encode("password123")).thenReturn("$2a$10$encoded");
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
-        when(jwtTokenProvider.generateToken("new@example.com")).thenReturn("test.jwt.token");
+        when(jwtTokenProvider.generateToken(eq("new@example.com"), any())).thenReturn("test.jwt.token");
 
         AuthResponse response = authService.register(request);
 
@@ -135,7 +135,7 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("password123", "$2a$10$hashedpassword")).thenReturn(true);
-        when(jwtTokenProvider.generateToken("test@example.com")).thenReturn("test.jwt.token");
+        when(jwtTokenProvider.generateToken(eq("test@example.com"), any())).thenReturn("test.jwt.token");
 
         AuthResponse response = authService.login(request);
 
@@ -189,7 +189,7 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("password123", "$2a$10$hashedpassword")).thenReturn(true);
-        when(jwtTokenProvider.generateToken("test@example.com")).thenReturn("test.jwt.token");
+        when(jwtTokenProvider.generateToken(eq("test@example.com"), any())).thenReturn("test.jwt.token");
 
         AuthResponse response = authService.login(request);
 
@@ -217,7 +217,7 @@ class AuthServiceTest {
         when(secureTokenService.hashToken("rawtoken")).thenReturn("hashedtoken");
         when(passwordEncoder.encode("password123")).thenReturn("$2a$10$encoded");
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
-        when(jwtTokenProvider.generateToken("newuser@example.com")).thenReturn("test.jwt.token");
+        when(jwtTokenProvider.generateToken(eq("newuser@example.com"), any())).thenReturn("test.jwt.token");
 
         authService.register(request);
 
@@ -246,7 +246,7 @@ class AuthServiceTest {
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
         when(designerProfileRepository.save(any(DesignerProfile.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
-        when(jwtTokenProvider.generateToken("designer@example.com")).thenReturn("test.jwt.token");
+        when(jwtTokenProvider.generateToken(eq("designer@example.com"), any())).thenReturn("test.jwt.token");
 
         AuthResponse response = authService.register(request);
 
@@ -274,7 +274,7 @@ class AuthServiceTest {
         when(secureTokenService.hashToken("rawtoken")).thenReturn("hashedtoken");
         when(passwordEncoder.encode("password123")).thenReturn("$2a$10$encoded");
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
-        when(jwtTokenProvider.generateToken("buyer@example.com")).thenReturn("test.jwt.token");
+        when(jwtTokenProvider.generateToken(eq("buyer@example.com"), any())).thenReturn("test.jwt.token");
 
         authService.register(request);
 

@@ -24,6 +24,16 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic-lock guard. Ensures concurrent Stripe webhook deliveries for the same order
+     * can't both cross the PENDING→PAID transition and double-fulfill (double markSold / duplicate
+     * ORDER_PAID analytics); the losing writer fails and Stripe's retry then sees the order PAID.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    @Builder.Default
+    private Long version = 0L;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;

@@ -346,6 +346,7 @@ class CheckoutServiceTest {
         // build a mock Session
         Session mockSession = mock(Session.class);
         when(mockSession.getId()).thenReturn("cs_live_abc123");
+        when(mockSession.getPaymentStatus()).thenReturn("paid");
         when(mockSession.getPaymentIntent()).thenReturn("pi_test_123");
 
         // build a mock EventDataObjectDeserializer
@@ -388,6 +389,7 @@ class CheckoutServiceTest {
 
         Session mockSession = mock(Session.class);
         when(mockSession.getId()).thenReturn("cs_live_dup");
+        when(mockSession.getPaymentStatus()).thenReturn("paid");
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
         when(deserializer.getObject()).thenReturn(Optional.of(mockSession));
@@ -410,6 +412,35 @@ class CheckoutServiceTest {
         checkoutService.handleWebhook("{}", "sig_valid");
 
         verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void handleWebhook_sessionCompleted_unpaid_doesNotFulfill() throws Exception {
+        // F2: async payment methods (SEPA/Bacs/Interac) complete Checkout with payment_status=unpaid
+        // before funds settle — fulfilling here would ship unpaid goods / markSold a unique unit.
+        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeWebhookSecret");
+        f.setAccessible(true);
+        f.set(checkoutService, "whsec_test_secret");
+
+        Session mockSession = mock(Session.class);
+        when(mockSession.getId()).thenReturn("cs_live_unpaid");
+        when(mockSession.getPaymentStatus()).thenReturn("unpaid");
+
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.of(mockSession));
+
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("checkout.session.completed");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+        when(stripeGateway.constructEvent(any(), any(), any())).thenReturn(mockEvent);
+
+        checkoutService.handleWebhook("{}", "sig_valid");
+
+        // No order lookup, no PAID transition, no cart clear, no resale markSold.
+        verify(orderRepository, never()).findByStripeSessionId(any());
+        verify(orderRepository, never()).save(any());
+        verify(cartItemRepository, never()).deleteByCartId(any());
+        verify(resaleService, never()).markSold(any());
     }
 
     // ---- resale buy-now path ----
@@ -447,6 +478,7 @@ class CheckoutServiceTest {
 
         Session mockSession = mock(Session.class);
         when(mockSession.getId()).thenReturn("cs_live_resale");
+        when(mockSession.getPaymentStatus()).thenReturn("paid");
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
         when(deserializer.getObject()).thenReturn(Optional.of(mockSession));
         Event mockEvent = mock(Event.class);

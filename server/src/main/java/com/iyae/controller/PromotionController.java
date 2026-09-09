@@ -2,6 +2,7 @@ package com.iyae.controller;
 
 import com.iyae.dto.PromotionRequest;
 import com.iyae.dto.PromotionResponse;
+import com.iyae.dto.UpdatePromotionRequest;
 import com.iyae.service.PromotionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +42,7 @@ public class PromotionController {
     @PutMapping("/{id}")
     public ResponseEntity<PromotionResponse> updatePromotion(
             @PathVariable Long id,
-            @Valid @RequestBody PromotionRequest request,
+            @Valid @RequestBody UpdatePromotionRequest request,
             Authentication authentication
     ) {
         return ResponseEntity.ok(promotionService.updatePromotion(authentication.getName(), id, request));

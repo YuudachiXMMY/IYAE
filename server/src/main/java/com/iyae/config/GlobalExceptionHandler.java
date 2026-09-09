@@ -13,6 +13,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -74,6 +75,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleEmailDelivery(AuthMailService.EmailDeliveryException ex) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .body(new ErrorResponse("Email service unavailable: " + ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value(), Instant.now()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUpload(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+            .body(new ErrorResponse("Uploaded file is too large (max 10 MB)", HttpStatus.PAYLOAD_TOO_LARGE.value(), Instant.now()));
     }
 
     @ExceptionHandler(RuntimeException.class)

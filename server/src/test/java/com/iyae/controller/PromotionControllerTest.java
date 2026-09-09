@@ -40,8 +40,8 @@ class PromotionControllerTest {
     PromotionService promotionService;
 
     private PromotionResponse samplePromotion() {
-        return new PromotionResponse(1L, 10L, SlotType.FEATURED, 50,
-                Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-12-31T23:59:59Z"));
+        return new PromotionResponse(1L, 10L, "Sample Product", SlotType.FEATURED, 50,
+                Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-12-31T23:59:59Z"), true);
     }
 
     private String promotionRequestJson() throws Exception {

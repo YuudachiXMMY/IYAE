@@ -65,6 +65,21 @@ class JwtTokenProviderTest {
     }
 
     @Test
+    void extractTokenVersion_roundTripsClaim() {
+        String token = jwtTokenProvider.generateToken("user@example.com", 7);
+
+        assertThat(jwtTokenProvider.extractTokenVersion(token)).isEqualTo(7);
+    }
+
+    @Test
+    void extractTokenVersion_legacyTokenWithoutClaim_defaultsToZero() {
+        // The single-arg overload (and any pre-tokenVersion token) carries version 0.
+        String token = jwtTokenProvider.generateToken("user@example.com");
+
+        assertThat(jwtTokenProvider.extractTokenVersion(token)).isZero();
+    }
+
+    @Test
     void extractEmail_afterRoundTrip_preservesEmail() {
         String[] emails = {"alice@example.com", "designer+shop@example.com", "user123@test.org"};
         for (String email : emails) {

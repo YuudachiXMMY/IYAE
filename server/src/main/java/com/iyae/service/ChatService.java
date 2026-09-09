@@ -114,7 +114,12 @@ public class ChatService {
             .toList();
     }
 
-    @Transactional
+    // Deliberately NOT @Transactional: this method makes a blocking AI provider HTTP call
+    // (worst case ~20s). Holding one transaction/DB connection across that call exhausts the
+    // connection pool under concurrency and pins row locks. Instead each repository write runs in
+    // its own short transaction (Spring Data JPA default), and the AI call happens with no
+    // connection held. Only basic fields / FK-by-id are read on the loaded entities, so
+    // open-in-view=false is safe here; the outfit persistence path manages its own transaction.
     public ChatMessageResponse sendMessage(Long sessionId, String email, String content) {
         User user = findUserByEmail(email);
 

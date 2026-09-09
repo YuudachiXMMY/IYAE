@@ -218,17 +218,48 @@ public class GenerationService {
             JsonNode node = objectMapper.readTree(mediaJson);
             if (node.isArray() && node.size() > 0) {
                 JsonNode first = node.get(0);
+                String candidate = null;
                 if (first.isTextual()) {
-                    return first.asText();
+                    candidate = first.asText();
+                } else {
+                    JsonNode urlNode = first.get("url");
+                    if (urlNode != null && !urlNode.isNull()) {
+                        candidate = urlNode.asText();
+                    }
                 }
-                JsonNode urlNode = first.get("url");
-                if (urlNode != null && !urlNode.isNull()) {
-                    return urlNode.asText();
-                }
+                return sanitizeMediaUrl(candidate);
             }
         } catch (Exception e) {
             log.warn("Failed to parse media JSON for product");
         }
+        return null;
+    }
+
+    /**
+     * Defense-in-depth for the worker's Meshy image resolver (F3): only a public http(s)/data URL
+     * or an in-bounds uploaded-asset relative path is allowed into the generation payload. A value
+     * with a path-traversal segment, or one pointing outside /uploads, is rejected (→ empty
+     * image_url) so a designer-controlled media entry can't drive the worker into reading arbitrary
+     * local files.
+     */
+    private String sanitizeMediaUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String trimmed = url.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("data:")) {
+            return trimmed;
+        }
+        String normalized = trimmed.replace('\\', '/');
+        if (normalized.contains("..")) {
+            log.warn("Rejected media path with traversal sequence for generation payload");
+            return null;
+        }
+        String pathPart = normalized.startsWith("/") ? normalized.substring(1) : normalized;
+        if (pathPart.startsWith("uploads/")) {
+            return trimmed;
+        }
+        log.warn("Rejected out-of-bounds media path for generation payload");
         return null;
     }
 
