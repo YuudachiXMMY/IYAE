@@ -174,6 +174,7 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `MODEL_GENERATION_PROVIDER` | No | `mock` | `mock` / `tripo3d` / `meshy` |
 | `WORKER_TRIPO_API_KEY` | For tripo3d | -- | Tripo3D API key |
 | `WORKER_MESHY_API_KEY` | For meshy | -- | Meshy.ai API key |
+| `WORKER_MESHY_ENABLE_PBR` | No | `false` | Enable Meshy PBR maps (metallic/roughness/normal); off by default (extra credits) — drape-realism Phase 2 C1 |
 | `WORKER_POLL_INTERVAL` | No | `5` | Seconds between task queue polls |
 | `WORKER_OUTPUT_DIR` | No | `/var/iyae/assets` | Directory for generated 3D model output |
 | `FRONTEND_BASE_URL` | No | `http://localhost:3000` | Base URL for email links (verification, password reset) |

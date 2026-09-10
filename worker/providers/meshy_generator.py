@@ -157,9 +157,18 @@ def _compute_glb_metadata(glb_path: str) -> dict:
 class MeshyGenerator:
     """Generates 3D models via Meshy.ai API."""
 
-    def __init__(self, api_key: str, output_base_dir: str = "/var/iyae/assets"):
+    def __init__(
+        self,
+        api_key: str,
+        output_base_dir: str = "/var/iyae/assets",
+        enable_pbr: bool = False,
+    ):
         self.api_key = api_key
         self.output_base_dir = output_base_dir
+        # PBR map generation (metallic/roughness/normal). Off by default: it burns
+        # extra Meshy credits, so flipping it on is a live cost/quality decision
+        # (env WORKER_MESHY_ENABLE_PBR), not a code default. Requires should_texture=True.
+        self.enable_pbr = enable_pbr
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -220,7 +229,7 @@ class MeshyGenerator:
                 "topology": "triangle",
                 "target_polycount": 30000,
                 "target_formats": ["glb", "usdz"],
-                "enable_pbr": False,
+                "enable_pbr": self.enable_pbr,
                 "should_texture": True,
             },
             timeout=30,
