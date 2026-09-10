@@ -195,6 +195,35 @@ class TestOutputFormat:
         assert "min" in result["bbox"]
         assert "max" in result["bbox"]
 
+    def test_output_has_penetration_block(self, provider):
+        """A1: generate() output carries a penetration stats block (drape-realism Phase 3).
+
+        Deterministic with or without igl: when igl is absent resolve_penetration is a
+        graceful no-op but still returns a stats dict, so the block is always present.
+        """
+        verts, faces, normals = self._make_mesh_arrays()
+        weights = np.ones((4, 55)) / 55.0
+        joint_positions = np.zeros((55, 3), dtype=np.float32)
+
+        with (
+            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals, None, None, None)),
+            patch.object(provider, "_get_avatar_data", return_value=(verts, faces, normals, weights, joint_positions)),
+            patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
+            patch("providers.weight_transfer.transfer_weights", return_value=weights),
+            patch("providers.weight_transfer.dense_weights_to_top4", return_value=(
+                np.zeros((4, 4), dtype=np.uint8),
+                np.ones((4, 4), dtype=np.float32) / 4,
+            )),
+            patch("providers.skinned_glb_writer.write_skinned_glb"),
+        ):
+            result = provider.generate(1, 88, VALID_PAYLOAD)
+
+        assert "penetration" in result
+        pen = result["penetration"]
+        assert pen["fabric_thickness_m"] > 0
+        for key in ("penetrating_before", "penetrating_after", "vertices_pushed", "was_applied"):
+            assert key in pen, f"missing penetration key: {key}"
+
 
 # ---------------------------------------------------------------------------
 # Call-chain verification

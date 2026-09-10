@@ -268,6 +268,22 @@ def run():
                         material["has_texcoord"],
                     )
 
+                    # Phase 3 drape-realism baseline: non-blocking audit of the geometric
+                    # push-out (A1). Only PythonRiggingProvider emits a "penetration" block;
+                    # greppable via the PENETRATION_AUDIT prefix for the self-collision-count
+                    # metric (penetrating vertices before/after push-out).
+                    pen = output.get("penetration") if isinstance(output, dict) else None
+                    if pen:
+                        logger.info(
+                            "PENETRATION_AUDIT task=%s garment=%s before=%s after=%s pushed=%s thickness_m=%s",
+                            task_id,
+                            garment_asset_id,
+                            pen.get("penetrating_before"),
+                            pen.get("penetrating_after"),
+                            pen.get("vertices_pushed"),
+                            pen.get("fabric_thickness_m"),
+                        )
+
                     rigging_queue.complete_task(task_id, output)
                     logger.info(f"Rigging task {task_id} completed successfully")
                 except MemoryError:
