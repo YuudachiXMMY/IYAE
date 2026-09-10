@@ -5,11 +5,24 @@ import com.iyae.entity.enums.EventType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface AnalyticsEventRepository extends JpaRepository<AnalyticsEvent, Long> {
 
     long countByEventType(EventType eventType);
+
+    /**
+     * Pre-cutoff (before deploy) count of an event type — powers the Phase 4 pre/post
+     * drape-decision comparison. Half-open interval: {@code created_at < cutoff}.
+     */
+    long countByEventTypeAndCreatedAtBefore(EventType eventType, Instant cutoff);
+
+    /**
+     * Post-cutoff (on/after deploy) count of an event type — half-open interval:
+     * {@code created_at >= cutoff}, so the cutoff instant itself falls in the "after" window.
+     */
+    long countByEventTypeAndCreatedAtGreaterThanEqual(EventType eventType, Instant cutoff);
 
     /**
      * Per-cohort event-type counts: rows of {@code [cohort, eventType, count]}.

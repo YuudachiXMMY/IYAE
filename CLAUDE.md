@@ -184,6 +184,7 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 | `WEATHER_LONGITUDE` | No | `-79.3832` | Longitude for weather lookup (default Toronto) |
 | `WEATHER_TIMEZONE` | No | `America/Toronto` | Timezone for weather lookup |
 | `WEATHER_CACHE_TTL` | No | `1800` | Weather cache TTL in seconds; also the off-path cache pre-warm cadence |
+| `ANALYTICS_DRAPE_DEPLOY_CUTOFF` | No | `` (empty) | ISO-8601 instant of the Phase 1-3 drape deploy; default split point for `GET /api/admin/kpis/drape-decision` pre/post comparison — drape-realism Phase 4. Empty → endpoint requires `?cutoff=` |
 | `AVATAR_GENERATION_PROVIDER` | No | `mock` | `mock` / `smplx` (avatar body model provider) |
 | `SMPLX_MODELS_PATH` | For smplx | `./smplx_models` | Host path to SMPL-X model files (mounted read-only into worker container) |
 | `RIGGING_PROVIDER` | No | `mock` | `mock` / `python` / `blender` (garment rigging provider) |

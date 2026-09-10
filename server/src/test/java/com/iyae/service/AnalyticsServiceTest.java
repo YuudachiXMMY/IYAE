@@ -1,6 +1,7 @@
 package com.iyae.service;
 
 import com.iyae.config.AnalyticsProperties;
+import com.iyae.dto.DrapeDecisionResponse;
 import com.iyae.dto.KpiSummaryResponse;
 import com.iyae.entity.AnalyticsEvent;
 import com.iyae.entity.CohortAssignment;
@@ -12,11 +13,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,7 +34,20 @@ class AnalyticsServiceTest {
 
     private AnalyticsService service(boolean enabled) {
         return new AnalyticsService(eventRepository, cohortRepository,
-                new AnalyticsProperties(enabled, List.of("control", "variant")));
+                new AnalyticsProperties(enabled, List.of("control", "variant"), null));
+    }
+
+    private static final Instant CUTOFF = Instant.parse("2026-09-10T00:00:00Z");
+
+    private void stubWindows(long tryBefore, long cartBefore, long tryAfter, long cartAfter) {
+        when(eventRepository.countByEventTypeAndCreatedAtBefore(eq(EventType.TRYON_STARTED), any(Instant.class)))
+                .thenReturn(tryBefore);
+        when(eventRepository.countByEventTypeAndCreatedAtBefore(eq(EventType.ADD_TO_CART), any(Instant.class)))
+                .thenReturn(cartBefore);
+        when(eventRepository.countByEventTypeAndCreatedAtGreaterThanEqual(eq(EventType.TRYON_STARTED), any(Instant.class)))
+                .thenReturn(tryAfter);
+        when(eventRepository.countByEventTypeAndCreatedAtGreaterThanEqual(eq(EventType.ADD_TO_CART), any(Instant.class)))
+                .thenReturn(cartAfter);
     }
 
     @Test
@@ -116,5 +133,51 @@ class AnalyticsServiceTest {
         // Configured cohort with no events still appears with zeroed metrics.
         assertThat(summary.cohorts()).anyMatch(c ->
                 c.cohort().equals("variant") && c.tryOnStarted() == 0L && c.checkoutInitiated() == 0L);
+    }
+
+    @Test
+    void drapeDecision_computesLiftAndRate_recommendsInvest() {
+        stubWindows(1000, 100, 1000, 200);   // before 10% → after 20% (+100% rel), large n → significant
+
+        DrapeDecisionResponse d = service(true).drapeDecision(CUTOFF);
+
+        assertThat(d.before().tryOnToCartRate()).isCloseTo(0.10, within(1e-6));
+        assertThat(d.after().tryOnToCartRate()).isCloseTo(0.20, within(1e-6));
+        assertThat(d.absoluteLift()).isCloseTo(0.10, within(1e-6));
+        assertThat(d.relativeLift()).isCloseTo(1.0, within(1e-6));
+        assertThat(d.significant()).isTrue();
+        assertThat(d.recommendation()).isEqualTo("INVEST");
+    }
+
+    @Test
+    void drapeDecision_significantDrop_recommendsStop() {
+        stubWindows(1000, 200, 1000, 100);   // before 20% → after 10% (−50% rel), significant
+
+        DrapeDecisionResponse d = service(true).drapeDecision(CUTOFF);
+
+        assertThat(d.relativeLift()).isCloseTo(-0.5, within(1e-6));
+        assertThat(d.significant()).isTrue();
+        assertThat(d.recommendation()).isEqualTo("STOP");
+    }
+
+    @Test
+    void drapeDecision_smallSample_isInconclusive() {
+        stubWindows(100, 20, 100, 22);       // +10% rel but tiny n → not significant
+
+        DrapeDecisionResponse d = service(true).drapeDecision(CUTOFF);
+
+        assertThat(d.significant()).isFalse();
+        assertThat(d.recommendation()).isEqualTo("INCONCLUSIVE");
+    }
+
+    @Test
+    void drapeDecision_zeroBeforeWindow_isInconclusiveNoDivideByZero() {
+        stubWindows(0, 0, 100, 20);          // no pre-deploy try-on samples
+
+        DrapeDecisionResponse d = service(true).drapeDecision(CUTOFF);
+
+        assertThat(d.before().tryOnToCartRate()).isZero();
+        assertThat(d.pValue()).isEqualTo(1.0);
+        assertThat(d.recommendation()).isEqualTo("INCONCLUSIVE");
     }
 }

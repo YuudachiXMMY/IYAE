@@ -65,3 +65,6 @@ app:
     enabled: ${ANALYTICS_ENABLED:true}
     # Experiment cohorts users are deterministically bucketed into (defaults to control,variant).
     cohorts: ${ANALYTICS_COHORTS:control,variant}
+    # Phase 1-3 垂坠改动的部署时间戳(ISO-8601 instant),作为 /api/admin/kpis/drape-decision
+    # 前后对比的默认切分点。留空则该端点须显式传 ?cutoff=。
+    drape-deploy-cutoff: ${ANALYTICS_DRAPE_DEPLOY_CUTOFF:}

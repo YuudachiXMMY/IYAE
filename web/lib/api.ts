@@ -71,6 +71,50 @@ export interface TrackEventPayload {
   metadata?: string;
 }
 
+/** One pre/post window of the Phase 4 drape-decision funnel. */
+export interface FunnelWindow {
+  tryOnStarted: number;
+  addToCart: number;
+  tryOnToCartRate: number;
+}
+
+/** Phase 4 pre/post (before-vs-after deploy) drape conversion decision gate. */
+export interface DrapeDecisionResponse {
+  cutoff: string;
+  before: FunnelWindow;
+  after: FunnelWindow;
+  absoluteLift: number;
+  relativeLift: number;
+  zScore: number;
+  pValue: number;
+  significant: boolean;
+  recommendation: "INVEST" | "STOP" | "INCONCLUSIVE";
+}
+
+/** Per-cohort KPI row from GET /api/admin/kpis. */
+export interface CohortKpi {
+  cohort: string;
+  views: number;
+  tryOnStarted: number;
+  addToCart: number;
+  checkoutInitiated: number;
+  ordersPaid: number;
+  ordersReturned: number;
+  conversionRate: number;
+  returnRate: number;
+}
+
+export interface SizeBracketKpi {
+  cohort: string;
+  sizeBracket: string;
+  paidCount: number;
+}
+
+export interface KpiSummaryResponse {
+  cohorts: CohortKpi[];
+  sizeBrackets: SizeBracketKpi[];
+}
+
 /**
  * Best-effort, fire-and-forget analytics emitter. Never throws or blocks the UI —
  * the server treats client events as advisory; server-side emission is authoritative.
@@ -81,6 +125,13 @@ export const analytics = {
       /* swallow — analytics must never surface an error to the user */
     });
   },
+
+  // ── ADMIN reads (unlike track, these THROW ApiError — callers must try/catch) ──
+  kpis: () => api.get<KpiSummaryResponse>("/api/admin/kpis"),
+  drapeDecision: (cutoff?: string) =>
+    api.get<DrapeDecisionResponse>(
+      `/api/admin/kpis/drape-decision${cutoff ? `?cutoff=${encodeURIComponent(cutoff)}` : ""}`,
+    ),
 };
 
 export type ProfileVisibility = "PUBLIC" | "PRIVATE";
