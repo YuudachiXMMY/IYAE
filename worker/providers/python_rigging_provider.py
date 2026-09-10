@@ -109,6 +109,21 @@ class PythonRiggingProvider:
         )
         logger.info("Rigging task %s: weight transfer complete, writing GLB", task_id)
 
+        # A1 (drape-realism Phase 3): geometric push-out — nudge any garment vertex
+        # sitting inside the avatar (or within the fabric shell) back outside the body,
+        # in the bind pose, before writing. Reuses the igl BVH; graceful no-op when igl
+        # is unavailable. Runs after weight transfer so the LBS binding is untouched.
+        from providers.penetration_pushout import resolve_penetration
+        garment_verts, pen_stats = resolve_penetration(
+            garment_verts, avatar_verts, avatar_faces
+        )
+        if pen_stats["was_applied"]:
+            logger.info(
+                "Rigging task %s: push-out moved %d/%d verts (%d penetrating before, %d after)",
+                task_id, pen_stats["vertices_pushed"], len(garment_verts),
+                pen_stats["penetrating_before"], pen_stats["penetrating_after"],
+            )
+
         from providers.weight_transfer import dense_weights_to_top4
         from providers.skinned_glb_writer import write_skinned_glb
         from providers.canonical_skeleton import SMPLX_JOINT_NAMES, SMPLX_PARENT_INDICES
@@ -152,6 +167,7 @@ class PythonRiggingProvider:
             "skin": {"has_skin": True, "joint_count": joint_count},
             "rigging": {"method": "PYTHON_WEIGHT_TRANSFER", "pose": "A_POSE"},
             "scale_normalization": scale_info,
+            "penetration": pen_stats,
             "elapsed_ms": elapsed_ms,
         }
 
