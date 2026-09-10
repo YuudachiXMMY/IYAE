@@ -247,6 +247,54 @@ def validate_rigged_glb(file_path: str, slot_hint: str | None = None) -> dict:
     return skin_result
 
 
+def validate_material_and_uv(file_path: str) -> dict:
+    """Advisory check: does this GLB carry UVs (TEXCOORD_0) + a material reference?
+
+    Phase 0 drape-realism baseline: measures the "untextured garment" ratio. This is
+    NON-BLOCKING and is intentionally NOT chained into validate_rigged_glb — the current
+    python-rigged output carries neither UV nor material, so a hard check here would fail
+    every real rig task before the B1 material-restoration work lands. Callers should log
+    the result, not reject on it.
+
+    Returns dict with 'valid' (bool = has_texcoord AND has_material), 'has_texcoord' (bool),
+    'has_material' (bool), and 'errors' (list of str).
+    """
+    from pygltflib import GLTF2
+
+    try:
+        gltf = GLTF2.load(file_path)
+    except Exception as e:
+        return {
+            "valid": False,
+            "has_texcoord": False,
+            "has_material": False,
+            "errors": [f"Failed to parse GLB: {e}"],
+        }
+
+    has_texcoord = False
+    has_material = False
+    for mesh in (gltf.meshes or []):
+        for prim in (mesh.primitives or []):
+            attrs = prim.attributes
+            if getattr(attrs, "TEXCOORD_0", None) is not None:
+                has_texcoord = True
+            if prim.material is not None:
+                has_material = True
+
+    errors: list[str] = []
+    if not has_texcoord:
+        errors.append("No mesh primitive has TEXCOORD_0 (UV) attribute")
+    if not has_material:
+        errors.append("No mesh primitive references a material")
+
+    return {
+        "valid": has_texcoord and has_material,
+        "has_texcoord": has_texcoord,
+        "has_material": has_material,
+        "errors": errors,
+    }
+
+
 def validate_skin_metadata(file_path: str) -> dict:
     """Check that GLB contains valid glTF skin data (skins, joints, weights)."""
     from pygltflib import GLTF2

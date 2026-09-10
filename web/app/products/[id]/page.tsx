@@ -409,6 +409,7 @@ export default function ProductDetailPage({
                       glbUrls={[glbUrl]}
                       usdzUrl={usdzUrl}
                       previewImageUrl={product.media?.[0] ?? undefined}
+                      trackingContext={{ productId: product.id, surface: "pdp" }}
                     />
                   </ViewerErrorBoundary>
                 ) : null;

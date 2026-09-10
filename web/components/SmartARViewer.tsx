@@ -28,6 +28,8 @@ interface SmartARViewerProps {
   riggedUsdzUrl?: string;
   /** 2D product still shown while the desktop 3D viewer streams GLBs in. */
   previewImageUrl?: string;
+  /** Forwarded to the desktop AvatarViewer for the TRYON_STARTED analytics event. */
+  trackingContext?: { productId?: number; surface?: string };
 }
 
 export function SmartARViewer({
@@ -38,6 +40,7 @@ export function SmartARViewer({
   riggedGlbUrl,
   riggedUsdzUrl,
   previewImageUrl,
+  trackingContext,
 }: SmartARViewerProps) {
   const { webxr, arQuickLook, sceneViewer, loading } = useARSupport();
 
@@ -87,6 +90,7 @@ export function SmartARViewer({
       glbUrls={effectiveGlbUrls}
       riggedGarmentUrls={riggedGlbUrl ? [riggedGlbUrl] : undefined}
       previewImageUrl={previewImageUrl}
+      trackingContext={trackingContext}
     />
   );
 }

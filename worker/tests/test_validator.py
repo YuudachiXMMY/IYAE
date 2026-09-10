@@ -14,6 +14,7 @@ from validator import (
     validate_bounding_box,
     validate_no_nan,
     validate_rigged_glb,
+    validate_material_and_uv,
     validate_skin_metadata,
     validate_required_bones,
     GLB_MAGIC,
@@ -270,6 +271,69 @@ class TestValidateRiggedGlb:
                 result = validate_rigged_glb(path)
             assert result["valid"]
             assert result["errors"] == []
+        finally:
+            os.unlink(path)
+
+
+def _make_material_primitive(*, texcoord_0, material):
+    """Build a mock primitive with explicit TEXCOORD_0 attribute + material ref.
+
+    Both must be set explicitly: a bare MagicMock auto-creates truthy attributes,
+    which would make the missing-UV/material case falsely pass.
+    """
+    attrs = MagicMock()
+    attrs.TEXCOORD_0 = texcoord_0
+    prim = MagicMock()
+    prim.attributes = attrs
+    prim.material = material
+    return prim
+
+
+class TestValidateMaterialAndUv:
+    def test_missing_material_and_uv(self):
+        """Current python-rigged output: no TEXCOORD_0, no material -> not valid (advisory)."""
+        path = _make_valid_glb_file()
+        try:
+            prim = _make_material_primitive(texcoord_0=None, material=None)
+            mesh = _make_mesh(primitives=[prim])
+            gltf = _make_mock_gltf(meshes=[mesh])
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_material_and_uv(path)
+            assert not result["valid"]
+            assert result["has_material"] is False
+            assert result["has_texcoord"] is False
+            assert any("material" in e for e in result["errors"])
+            assert any("TEXCOORD_0" in e for e in result["errors"])
+        finally:
+            os.unlink(path)
+
+    def test_present_material_and_uv(self):
+        """A textured, materialed garment (post-B1) passes the advisory check."""
+        path = _make_valid_glb_file()
+        try:
+            prim = _make_material_primitive(texcoord_0=0, material=0)
+            mesh = _make_mesh(primitives=[prim])
+            gltf = _make_mock_gltf(meshes=[mesh])
+            with patch("pygltflib.GLTF2") as MockGLTF2:
+                MockGLTF2.load.return_value = gltf
+                result = validate_material_and_uv(path)
+            assert result["valid"]
+            assert result["has_material"] is True
+            assert result["has_texcoord"] is True
+            assert result["errors"] == []
+        finally:
+            os.unlink(path)
+
+    def test_parse_failure_is_error_not_raise(self):
+        """An unparseable GLB returns valid=False (never raises into the poll loop)."""
+        with tempfile.NamedTemporaryFile(suffix=".glb", delete=False) as f:
+            f.write(b"NOT_GLB_DATA")
+            path = f.name
+        try:
+            result = validate_material_and_uv(path)
+            assert not result["valid"]
+            assert any("Failed to parse" in e for e in result["errors"])
         finally:
             os.unlink(path)
 

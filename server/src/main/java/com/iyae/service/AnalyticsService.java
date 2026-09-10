@@ -108,6 +108,7 @@ public class AnalyticsService {
         for (Map.Entry<String, EnumMap<EventType, Long>> e : byCohort.entrySet()) {
             EnumMap<EventType, Long> counts = e.getValue();
             long views = counts.getOrDefault(EventType.VIEW, 0L);
+            long tryOnStarted = counts.getOrDefault(EventType.TRYON_STARTED, 0L);
             long addToCart = counts.getOrDefault(EventType.ADD_TO_CART, 0L);
             long initiated = counts.getOrDefault(EventType.CHECKOUT_INITIATED, 0L);
             long paid = counts.getOrDefault(EventType.ORDER_PAID, 0L);
@@ -115,7 +116,7 @@ public class AnalyticsService {
             double conversion = initiated > 0 ? (double) paid / initiated : 0.0;
             double returnRate = paid > 0 ? (double) returned / paid : 0.0;
             cohortKpis.add(new KpiSummaryResponse.CohortKpi(
-                    e.getKey(), views, addToCart, initiated, paid, returned, conversion, returnRate));
+                    e.getKey(), views, tryOnStarted, addToCart, initiated, paid, returned, conversion, returnRate));
         }
 
         List<KpiSummaryResponse.SizeBracketKpi> sizeKpis = new ArrayList<>();

@@ -6,6 +6,7 @@ package com.iyae.entity.enums;
  */
 public enum EventType {
     VIEW,
+    TRYON_STARTED,
     ADD_TO_CART,
     CHECKOUT_INITIATED,
     ORDER_PAID,
