@@ -53,7 +53,12 @@ def get_provider():
         api_key = os.environ.get("WORKER_MESHY_API_KEY")
         if not api_key:
             raise ValueError("WORKER_MESHY_API_KEY required for meshy provider")
-        return MeshyGenerator(api_key=api_key, output_base_dir=OUTPUT_BASE_DIR)
+        enable_pbr = os.environ.get("WORKER_MESHY_ENABLE_PBR", "false").lower() in (
+            "1", "true", "yes",
+        )
+        return MeshyGenerator(
+            api_key=api_key, output_base_dir=OUTPUT_BASE_DIR, enable_pbr=enable_pbr
+        )
     else:
         return StubGenerator(output_base_dir=OUTPUT_BASE_DIR)
 

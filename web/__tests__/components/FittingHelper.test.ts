@@ -6,7 +6,10 @@ import {
   applyLayeredAntiPenetrationToScene,
   fabricizeMaterial,
   fabricizeScene,
+  applyGarmentNormalMap,
+  applyGarmentNormalMapToScene,
 } from "@/components/FittingHelper";
+import { getFabricNormalConfig } from "@/lib/fabric-textures";
 
 function createMockMesh(
   material?: MeshStandardMaterial | MeshStandardMaterial[]
@@ -188,5 +191,59 @@ describe("fabricizeScene", () => {
     expect(mat2.metalness).toBe(0);
     expect(mesh1.castShadow).toBe(true);
     expect(mesh2.receiveShadow).toBe(true);
+  });
+});
+
+describe("applyGarmentNormalMap", () => {
+  it("assigns a slot-keyed tiled normal map to an untextured material", () => {
+    const mat = new MeshStandardMaterial();
+    const mesh = createMockMesh(mat);
+    const versionBefore = mat.version;
+    applyGarmentNormalMap(mesh, "top");
+    const cfg = getFabricNormalConfig("top");
+    expect(mat.normalMap).toBeTruthy();
+    expect(mat.normalScale.x).toBe(cfg.normalScale);
+    expect(mat.normalScale.y).toBe(cfg.normalScale);
+    // needsUpdate is a write-only setter (reads undefined); it bumps material.version
+    expect(mat.version).toBeGreaterThan(versionBefore);
+  });
+
+  it("uses the default config for an unknown/undefined slot", () => {
+    const mat = new MeshStandardMaterial();
+    const mesh = createMockMesh(mat);
+    applyGarmentNormalMap(mesh, undefined);
+    const cfg = getFabricNormalConfig(undefined);
+    expect(mat.normalMap).toBeTruthy();
+    expect(mat.normalScale.x).toBe(cfg.normalScale);
+  });
+
+  it("does not clobber a material that already has a normalMap", () => {
+    const mat = new MeshStandardMaterial();
+    // sentinel: a pre-existing (e.g. Meshy-PBR C1) normal map must survive
+    const sentinel = { isSentinel: true } as unknown as MeshStandardMaterial["normalMap"];
+    mat.normalMap = sentinel;
+    const mesh = createMockMesh(mat);
+    applyGarmentNormalMap(mesh, "top");
+    expect(mat.normalMap).toBe(sentinel);
+  });
+});
+
+describe("applyGarmentNormalMapToScene", () => {
+  it("applies the normal map to all mesh children in the scene", () => {
+    const mat1 = new MeshStandardMaterial();
+    const mat2 = new MeshStandardMaterial();
+    const mesh1 = { isMesh: true, material: mat1 };
+    const mesh2 = { isMesh: true, material: mat2 };
+    const nonMesh = { isMesh: false, material: new MeshStandardMaterial() };
+    const scene = {
+      traverse: (cb: (child: Mesh) => void) => {
+        cb(mesh1 as unknown as Mesh);
+        cb(mesh2 as unknown as Mesh);
+        cb(nonMesh as unknown as Mesh); // skipped
+      },
+    } as unknown as Object3D;
+    applyGarmentNormalMapToScene(scene, "bottom");
+    expect(mat1.normalMap).toBeTruthy();
+    expect(mat2.normalMap).toBeTruthy();
   });
 });

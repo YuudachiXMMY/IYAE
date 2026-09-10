@@ -11,13 +11,23 @@ import {
   Html,
   ContactShadows,
 } from "@react-three/drei";
-import { Skeleton, Matrix4, Box3, Vector3, type Bone, type Mesh, type Object3D } from "three";
+import {
+  Skeleton,
+  Matrix4,
+  Box3,
+  Vector3,
+  ACESFilmicToneMapping,
+  type Bone,
+  type Mesh,
+  type Object3D,
+} from "three";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { SkinnedMesh } from "three";
 import SkeletonContext, { useSkeletonContext } from "./SkeletonContext";
 import {
   applyAntiPenetrationToScene,
   applyLayeredAntiPenetrationToScene,
+  applyGarmentNormalMapToScene,
   fabricizeScene,
 } from "./FittingHelper";
 import { usePoseAnimation } from "@/lib/hooks/usePoseAnimation";
@@ -78,14 +88,16 @@ function PreviewFallback({ previewImageUrl }: { previewImageUrl?: string }) {
 
 interface GarmentModelProps {
   url: string;
+  slot?: string;
 }
 
-function GarmentModel({ url }: GarmentModelProps) {
+function GarmentModel({ url, slot }: GarmentModelProps) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   useEffect(() => {
     fabricizeScene(cloned);
-  }, [cloned]);
+    applyGarmentNormalMapToScene(cloned, slot);
+  }, [cloned, slot]);
   return <primitive object={cloned} />;
 }
 
@@ -175,6 +187,7 @@ function BoundGarmentModel({ url, slot, onError }: BoundGarmentModelProps) {
       }
 
       fabricizeScene(clonedScene);
+      applyGarmentNormalMapToScene(clonedScene, slot);
 
       /** Scale guard: detect garments with wildly incorrect scale */
       const box = new Box3().setFromObject(clonedScene);
@@ -273,7 +286,7 @@ export default function AvatarViewer({
                 onError={() => setRiggedFailed(true)}
               />
             ) : (
-              <GarmentModel key={`rigged-${url}`} url={url} />
+              <GarmentModel key={`rigged-${url}`} url={url} slot={riggedGarmentSlots?.[i]} />
             )
           )}
           {staticGarments.map((url) => (
@@ -299,7 +312,11 @@ export default function AvatarViewer({
       tabIndex={0}
     >
       <LoadStatus />
-      <Canvas shadows camera={{ position: [0, 1, 3], fov: 50 }}>
+      <Canvas
+        shadows
+        camera={{ position: [0, 1, 3], fov: 50 }}
+        gl={{ toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+      >
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[4, 6, 4]} intensity={1.2} />
         <directionalLight position={[-4, 2, -4]} intensity={0.4} />
@@ -322,7 +339,7 @@ export default function AvatarViewer({
             resolution={512}
             color="#000000"
           />
-          <Environment preset="studio" />
+          <Environment preset="studio" environmentIntensity={0.6} />
         </Suspense>
         <OrbitControls makeDefault enablePan enableZoom enableRotate />
       </Canvas>

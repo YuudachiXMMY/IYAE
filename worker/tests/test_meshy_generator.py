@@ -112,6 +112,14 @@ class TestMeshyGeneratorInit:
         gen = MeshyGenerator(api_key="test-key")
         assert gen.headers["Content-Type"] == "application/json"
 
+    def test_enable_pbr_defaults_false(self):
+        gen = MeshyGenerator(api_key="test-key")
+        assert gen.enable_pbr is False
+
+    def test_enable_pbr_can_be_enabled(self):
+        gen = MeshyGenerator(api_key="test-key", enable_pbr=True)
+        assert gen.enable_pbr is True
+
 
 class TestMeshyGeneratorGenerate:
     """Tests for the happy-path generate() flow."""
@@ -202,6 +210,31 @@ class TestMeshyGeneratorGenerate:
         assert body["topology"] == "triangle"
         assert body["target_polycount"] == 30000
         assert "glb" in body["target_formats"]
+        # PBR is off by default; texturing stays on (enable_pbr requires should_texture).
+        assert body["enable_pbr"] is False
+        assert body["should_texture"] is True
+
+    @patch("providers.meshy_generator.time.sleep")
+    @patch("providers.meshy_generator.requests.get")
+    @patch("providers.meshy_generator.requests.post")
+    def test_post_request_enables_pbr_when_flag_set(self, mock_post, mock_get, mock_sleep, tmp_path):
+        mock_post.return_value.json.return_value = {"result": "meshy-pbr"}
+        status_mock = self._make_status_response(meshy_task_id="meshy-pbr")
+
+        def get_side_effect(url, **kwargs):
+            if "image-to-3d" in url:
+                return status_mock
+            return _streaming_download_mock(b"data")
+
+        mock_get.side_effect = get_side_effect
+
+        gen = MeshyGenerator(api_key="test-key", output_base_dir=str(tmp_path), enable_pbr=True)
+        gen.generate(task_id=1, product_id=10, input_payload={"image_url": "https://example.com/img.jpg"})
+
+        _, kwargs = mock_post.call_args
+        body = kwargs["json"]
+        assert body["enable_pbr"] is True
+        assert body["should_texture"] is True
 
     @patch("providers.meshy_generator.time.sleep")
     @patch("providers.meshy_generator.requests.get")
