@@ -228,7 +228,11 @@ class PythonRiggingProvider:
         if material is not None:
             factor = getattr(material, "baseColorFactor", None)
             if factor is not None:
-                base_color_factor = [float(c) for c in np.asarray(factor).ravel()[:4]]
+                arr = np.asarray(factor, dtype=np.float64).ravel()[:4]
+                # trimesh normalizes baseColorFactor to uint8 [0,255]; glTF requires [0,1].
+                if np.issubdtype(np.asarray(factor).dtype, np.integer) or np.any(arr > 1.0):
+                    arr = arr / 255.0
+                base_color_factor = [float(np.clip(c, 0.0, 1.0)) for c in arr]
             else:
                 base_color_factor = [1.0, 1.0, 1.0, 1.0]
 

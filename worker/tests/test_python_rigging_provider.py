@@ -399,3 +399,53 @@ class TestScaleNormalizationIntegration:
             provider.generate(1, 42, VALID_PAYLOAD)
 
         assert call_order.index("normalize") < call_order.index("transfer")
+
+# ---------------------------------------------------------------------------
+# _load_garment_glb — real trimesh extraction (UV + baseColor factor/texture)
+# NOTE: this path is otherwise fully mocked; it also locks the H1 fix
+# (trimesh returns baseColorFactor as uint8 [0,255]; glTF requires [0,1]).
+# ---------------------------------------------------------------------------
+
+def _make_textured_glb(path, base_color_factor=(0.5, 0.25, 0.125, 1.0)):
+    """Export a box GLB carrying UV + a colored PBR baseColorFactor + a texture."""
+    import trimesh
+    from trimesh.visual.material import PBRMaterial
+    from trimesh.visual import TextureVisuals
+    from PIL import Image
+
+    mesh = trimesh.creation.box(extents=(1, 1, 1))
+    uv = np.random.rand(len(mesh.vertices), 2).astype(np.float32)
+    img = Image.new("RGB", (4, 4), (128, 64, 32))
+    mesh.visual = TextureVisuals(
+        uv=uv,
+        material=PBRMaterial(baseColorFactor=list(base_color_factor), baseColorTexture=img),
+    )
+    mesh.export(str(path), file_type="glb")
+    return str(path)
+
+
+class TestLoadGarmentGlbExtraction:
+    def test_returns_six_tuple(self, provider, tmp_path):
+        glb = _make_textured_glb(tmp_path / "g.glb")
+        result = provider._load_garment_glb(glb)
+        assert len(result) == 6
+
+    def test_uv_matches_vertex_count(self, provider, tmp_path):
+        glb = _make_textured_glb(tmp_path / "g.glb")
+        verts, _faces, _normals, uv, _tex, _factor = provider._load_garment_glb(glb)
+        assert uv is not None
+        assert uv.shape == (len(verts), 2)
+
+    def test_texture_extracted_as_png_bytes(self, provider, tmp_path):
+        glb = _make_textured_glb(tmp_path / "g.glb")
+        *_rest, tex, _factor = provider._load_garment_glb(glb)
+        assert isinstance(tex, bytes)
+        assert tex[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic
+
+    def test_base_color_factor_normalized_to_unit_range(self, provider, tmp_path):
+        """H1: every baseColorFactor component must land in [0, 1], not [0, 255]."""
+        glb = _make_textured_glb(tmp_path / "g.glb", base_color_factor=(0.5, 0.25, 0.125, 1.0))
+        *_rest, factor = provider._load_garment_glb(glb)
+        assert factor is not None
+        assert len(factor) == 4
+        assert all(0.0 <= c <= 1.0 for c in factor), f"baseColorFactor out of [0,1]: {factor}"
