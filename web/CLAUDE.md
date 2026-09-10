@@ -151,7 +151,7 @@ e2e/                             --> Playwright E2E specs
 | GenerationStatusCard | Expanded generation status with actions |
 | RiggingStatusBadge | Inline garment rigging status indicator |
 | RiggingStatusCard | Expanded rigging status with trigger/retry actions |
-| FittingHelper | Fitting assistance component for try-on flows |
+| FittingHelper | Fitting assistance for try-on: `applyLayeredAntiPenetration` (polygonOffset) + `fabricizeMaterial`/`fabricizeScene` (D2 — forces metalness=0/roughness=0.85 on untextured garment materials, sets castShadow/receiveShadow) |
 | SizeSelector | Cloth size selection buttons (aria-pressed, disabled state support) |
 | RecommendedSizeHint | Presentational recommended-size hint ("Your recommended size: M"); renders nothing when basis is NONE; "based on your saved sizes" caption for SELF_REPORTED |
 | Footer | Site footer |
@@ -165,7 +165,7 @@ e2e/                             --> Playwright E2E specs
 | PoseSelector | Horizontal pose preset strip overlay for AvatarViewer (categories: stationary/movement/lifestyle) |
 | ModelViewer | `@google/model-viewer` fallback (iOS AR Quick Look, Android Scene Viewer) |
 | DemoOutfitModel | Demo mannequin when no GLB assets available (loads `public/models/demo-outfit.glb`) |
-| AvatarViewer | R3F-based 3D avatar with GLB models; optional `previewImageUrl` prop renders an instant 2D product still (drei `<Html>`) as the `<Suspense>` fallback while the 3D avatar streams in |
+| AvatarViewer | R3F-based 3D avatar with GLB models; optional `previewImageUrl` prop renders an instant 2D product still (drei `<Html>`) as the `<Suspense>` fallback while the 3D avatar streams in; `<Canvas shadows>` + drei `<ContactShadows>` + `castShadow` key light ground the figure (D1); garment scenes run through `fabricizeScene` (D2) |
 | ARViewer | WebXR AR session with hit testing |
 | SmartARViewer | Auto-detects device capability, routes to appropriate viewer; passes `previewImageUrl` through to the desktop AvatarViewer |
 
@@ -374,7 +374,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `__tests__/lib/hooks/useRequireAuth.test.ts` | 7 | useRequireAuth: redirect unauthenticated, role-based access, allow authenticated |
 | `__tests__/lib/hooks/useGenerationStatus.test.ts` | 11 | useGenerationStatus: polling lifecycle, status transitions, error handling, cleanup |
 | `__tests__/lib/hooks/useRedirectIfAuthenticated.test.ts` | 6 | useRedirectIfAuthenticated: redirect authenticated users away from auth pages |
-| `__tests__/components/FittingHelper.test.ts` | 13 | FittingHelper: LAYER_MAP constants, applyLayeredAntiPenetration material offset, applyLayeredAntiPenetrationToScene scene traversal |
+| `__tests__/components/FittingHelper.test.ts` | 19 | FittingHelper: LAYER_MAP constants, applyLayeredAntiPenetration material offset, applyLayeredAntiPenetrationToScene scene traversal, fabricizeMaterial (metalness=0/roughness on untextured, leaves `.map` garments alone, castShadow), fabricizeScene traversal |
 | `__tests__/lib/hooks/useOutfitRiggingStatus.test.ts` | 13 | useOutfitRiggingStatus: initial items passthrough, polling lifecycle, rigging status sync, AbortController cleanup |
 | `__tests__/lib/pose-config.test.ts` | 14 | pose-config: POSE_PRESETS count and field validation, POSE_CATEGORIES structure, getPoseById lookup/miss, default pose flag |
 | `__tests__/api/internal-mail-send.test.ts` | 11 | Internal mail send API route: auth secret validation, Resend integration (subjects from BRAND), error handling |
@@ -494,3 +494,4 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | 2026-09-06 | Phase 4 size-chart authoring (PR-C/F1-F3): `ProductForm` per-size grid relabeled "Size chart (cm, optional)" with "powers your recommended size" helper + a heads-up when clearing a size drops its measurements. Designer measurements now reach the PDP `MEASUREMENT_CHART` hint (recommender fallback landed in PR-B). Added `ProductForm.test.tsx` (4); tests 17->18 files / 230->234 cases |
 | 2026-09-08 | Phase 9 a11y closeout: light-mode `--color-destructive` `#dc2626→#b91c1c` (red-700) so the destructive error-banner pattern (27 files) clears WCAG AA 4.5:1 on the `bg-destructive/10` tint; added `__tests__/a11y/token-contrast.test.ts` (3, pins destructive + muted-foreground AA) + a deterministic invalid-login banner case in `e2e/a11y.spec.ts`; web unit 30->31 files / 301->304 cases |
 | 2026-09-08 | Tech-debt cleanup: aligned the mocked `ApiError` in `__tests__/lib/hooks/useGenerationStatus.test.ts` to the real `(status, message)` constructor (was `(message, status)`) + swapped the two call-site args — clears the 2 pre-existing `TS2345` errors; `tsc --noEmit` now fully clean. No runtime/behavior change (hook 11/11, suite 301 green). |
+| 2026-09-10 | Drape-realism Phase 1 (D1 contact shadows + D2 fabric fallback): `AvatarViewer` gains `<Canvas shadows>`, `castShadow` on the key directional light, drei `<ContactShadows>` grounding the avatar at y=0, and `castShadow`/`receiveShadow` on avatar meshes — kills the "floating" read. `FittingHelper` gains `fabricizeMaterial`/`fabricizeScene` (D2): untextured `MeshStandardMaterial` (`.map==null`) forced to metalness=0/roughness=0.85 so pre-B1 / non-PBR garments read as matte fabric, not plastic; textured (B1) garments untouched; every garment mesh gets castShadow. `BoundGarmentModel` + `GarmentModel` run scenes through `fabricizeScene`. `FittingHelper.test.ts` 13→19. |

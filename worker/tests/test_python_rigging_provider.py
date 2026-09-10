@@ -55,7 +55,7 @@ class TestInputValidation:
         jp = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(v, f, n)),
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, jp)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=w) as mock_tw,
@@ -110,7 +110,7 @@ class TestOutputFormat:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals)),
+            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(verts, faces, normals, weights, joint_positions)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=weights),
@@ -140,7 +140,7 @@ class TestOutputFormat:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals)),
+            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(verts, faces, normals, weights, joint_positions)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=weights),
@@ -160,7 +160,7 @@ class TestOutputFormat:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals)),
+            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(verts, faces, normals, weights, joint_positions)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=weights),
@@ -180,7 +180,7 @@ class TestOutputFormat:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals)),
+            patch.object(provider, "_load_garment_glb", return_value=(verts, faces, normals, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(verts, faces, normals, weights, joint_positions)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=weights),
@@ -213,7 +213,7 @@ class TestCallChain:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(v, f, n)),
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, joint_positions)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=w) as mock_tw,
@@ -236,7 +236,7 @@ class TestCallChain:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(v, f, n)),
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, joint_positions)),
             patch(
                 "providers.mesh_preflight.preflight_mesh",
@@ -252,7 +252,7 @@ class TestCallChain:
         joint_positions = np.zeros((55, 3), dtype=np.float32)
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(v, f, n)),
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, joint_positions)),
             patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
             patch("providers.weight_transfer.transfer_weights", return_value=w),
@@ -270,6 +270,33 @@ class TestCallChain:
         assert "joint_names" in kwargs, "missing joint_names kwarg"
         assert "parent_indices" in kwargs, "missing parent_indices kwarg"
         assert "joint_positions" in kwargs, "missing joint_positions kwarg"
+
+    def test_write_skinned_glb_receives_uv_and_texture_kwargs(self, provider):
+        """When the source garment carries UV + texture, they thread into write_skinned_glb."""
+        v, f, n, w = self._make_mesh()
+        joint_positions = np.zeros((55, 3), dtype=np.float32)
+        uv = np.zeros((len(v), 2), dtype=np.float32)
+        tex = b"\x89PNG\r\n\x1a\nfake-png-bytes"
+        factor = [1.0, 1.0, 1.0, 1.0]
+
+        with (
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, uv, tex, factor)),
+            patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, joint_positions)),
+            patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
+            patch("providers.weight_transfer.transfer_weights", return_value=w),
+            patch("providers.weight_transfer.dense_weights_to_top4", return_value=(
+                np.zeros((3, 4), dtype=np.uint8),
+                np.ones((3, 4), dtype=np.float32) / 4,
+            )),
+            patch("providers.skinned_glb_writer.write_skinned_glb") as mock_write,
+        ):
+            provider.generate(1, 10, VALID_PAYLOAD)
+
+        mock_write.assert_called_once()
+        _, kwargs = mock_write.call_args
+        assert kwargs.get("uv") is uv, "uv not forwarded to write_skinned_glb"
+        assert kwargs.get("base_color_texture") == tex, "texture not forwarded"
+        assert kwargs.get("base_color_factor") == factor, "base_color_factor not forwarded"
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +339,7 @@ class TestScaleNormalizationIntegration:
         }
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(v, f, n)),
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, jp)),
             patch(
                 "providers.scale_normalizer.normalize_garment_to_avatar",
@@ -355,7 +382,7 @@ class TestScaleNormalizationIntegration:
             return w
 
         with (
-            patch.object(provider, "_load_garment_glb", return_value=(v, f, n)),
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
             patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, jp)),
             patch(
                 "providers.scale_normalizer.normalize_garment_to_avatar",

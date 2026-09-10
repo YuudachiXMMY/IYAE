@@ -64,7 +64,14 @@ class PythonRiggingProvider:
 
         source_path = self._resolve_path(source_url)
 
-        garment_verts, garment_faces, garment_normals = self._load_garment_glb(source_path)
+        (
+            garment_verts,
+            garment_faces,
+            garment_normals,
+            garment_uv,
+            garment_tex,
+            garment_base_color,
+        ) = self._load_garment_glb(source_path)
         avatar_verts, avatar_faces, avatar_normals, avatar_weights, joint_positions = self._get_avatar_data(
             input_payload  # type: ignore[arg-type]
         )
@@ -122,6 +129,9 @@ class PythonRiggingProvider:
             parent_indices=SMPLX_PARENT_INDICES,
             joint_positions=joint_positions,
             slot_hint=slot_hint,
+            uv=garment_uv,
+            base_color_texture=garment_tex,
+            base_color_factor=garment_base_color,
         )
         logger.info("Rigging task %s: skinned GLB written to %s", task_id, out_abs)
 
@@ -167,21 +177,75 @@ class PythonRiggingProvider:
 
     def _load_garment_glb(
         self, path: str | None
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Load garment GLB and return (verts, faces, normals)."""
+    ) -> tuple[
+        np.ndarray,
+        np.ndarray,
+        np.ndarray,
+        np.ndarray | None,
+        bytes | None,
+        list[float] | None,
+    ]:
+        """Load garment GLB and return (verts, faces, normals, uv, tex_png_bytes, base_color_factor).
+
+        Loads with ``process=False`` to preserve topology/UV alignment (the default
+        ``process=True`` merges duplicate vertices, which reorders verts and collapses
+        UV seams). The UV, baseColor texture, and baseColor factor are extracted from
+        the mesh's visual/material when present; each degrades to ``None`` when absent.
+        Never crashes on a missing visual/material (e.g. ColorVisuals / vertex-color meshes).
+        """
+        import io
+
         import trimesh
 
         if not path:
             raise RiggingError(["source_glb_url resolved to empty path"], "LOAD_FAILED")
 
-        mesh = trimesh.load(path, force="mesh")
+        mesh = trimesh.load(path, force="mesh", process=False)
         if not isinstance(mesh, trimesh.Trimesh):
             raise RiggingError([f"Could not load mesh from {path}"], "LOAD_FAILED")
 
         verts = np.asarray(mesh.vertices, dtype=np.float64)
         faces = np.asarray(mesh.faces, dtype=np.int32)
         normals = np.asarray(mesh.vertex_normals, dtype=np.float64)
-        return verts, faces, normals
+
+        # --- Extract UV (guard ColorVisuals, which has no .uv) ---
+        uv: np.ndarray | None = None
+        raw_uv = getattr(mesh.visual, "uv", None)
+        if raw_uv is not None:
+            candidate = np.asarray(raw_uv, dtype=np.float32)
+            if candidate.ndim == 2 and candidate.shape == (len(verts), 2):
+                uv = candidate
+            else:
+                logger.warning(
+                    "Garment UV shape %s does not match vertex count %d; discarding UV",
+                    candidate.shape, len(verts),
+                )
+
+        # --- Extract baseColor factor + texture (never crash on missing material) ---
+        tex_png_bytes: bytes | None = None
+        base_color_factor: list[float] | None = None
+        material = getattr(mesh.visual, "material", None)
+        if material is not None:
+            factor = getattr(material, "baseColorFactor", None)
+            if factor is not None:
+                base_color_factor = [float(c) for c in np.asarray(factor).ravel()[:4]]
+            else:
+                base_color_factor = [1.0, 1.0, 1.0, 1.0]
+
+            # PBRMaterial.baseColorTexture or SimpleMaterial.image is a PIL image
+            img = getattr(material, "baseColorTexture", None)
+            if img is None:
+                img = getattr(material, "image", None)
+            if img is not None:
+                try:
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    tex_png_bytes = buf.getvalue()
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("Failed to encode baseColor texture to PNG: %s", exc)
+                    tex_png_bytes = None
+
+        return verts, faces, normals, uv, tex_png_bytes, base_color_factor
 
     def _get_avatar_data(
         self, payload: dict[str, Any]

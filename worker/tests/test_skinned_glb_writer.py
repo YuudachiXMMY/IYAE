@@ -19,6 +19,7 @@ from providers.canonical_skeleton import (
 from validator import (
     validate_glb,
     validate_glb_geometry,
+    validate_material_and_uv,
     validate_skin_metadata,
     validate_required_bones,
 )
@@ -295,3 +296,103 @@ class TestLocalJointTranslations:
         assert gltf.nodes[0].translation[0] == pytest.approx(0.5)
         assert gltf.nodes[0].translation[1] == pytest.approx(1.0)
         assert gltf.nodes[0].translation[2] == pytest.approx(0.3)
+
+
+# ---------------------------------------------------------------------------
+# B1: material + UV emission
+# ---------------------------------------------------------------------------
+
+def _tiny_png_bytes() -> bytes:
+    """Build a 2x2 PNG in-memory (mirrors the extract-end PIL save path)."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2, 2)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _write_with_uv_and_texture(tmp_path: Path, with_texture: bool = True) -> Path:
+    """Write a small skinned GLB carrying a UV (and optionally a baseColor texture)."""
+    vertices, normals, indices, ji, jw = make_test_mesh()
+    uv = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32)
+    names = ["root"]
+    parents = [-1]
+    positions = np.zeros((1, 3), dtype=np.float32)
+    ji_clamped = np.zeros_like(ji)
+    out = tmp_path / ("mat_uv.glb" if with_texture else "mat_uv_notex.glb")
+    write_skinned_glb(
+        output_path=out, vertices=vertices, normals=normals, indices=indices,
+        joint_indices=ji_clamped, joint_weights=jw,
+        joint_names=names, parent_indices=parents, joint_positions=positions,
+        uv=uv,
+        base_color_texture=_tiny_png_bytes() if with_texture else None,
+    )
+    return out
+
+
+class TestMaterialAndUv:
+    def test_uv_and_texture_round_trip(self, tmp_path):
+        out = _write_with_uv_and_texture(tmp_path, with_texture=True)
+        gltf = pygltflib.GLTF2.load(str(out))
+
+        # A VEC2 TEXCOORD_0 accessor must exist and be referenced by the primitive.
+        texcoord_idx = gltf.meshes[0].primitives[0].attributes.TEXCOORD_0
+        assert texcoord_idx is not None
+        assert gltf.accessors[texcoord_idx].type == "VEC2"
+        assert gltf.accessors[texcoord_idx].count == 4
+
+        # A fabric PBR material (metalness 0) must be present.
+        assert gltf.materials, "no materials written"
+        assert gltf.materials[0].pbrMetallicRoughness.metallicFactor == 0
+
+        # Image + texture + sampler must all be present.
+        assert gltf.images, "no images written"
+        assert gltf.textures, "no textures written"
+        assert gltf.samplers, "no samplers written"
+        assert gltf.materials[0].pbrMetallicRoughness.baseColorTexture is not None
+
+        assert validate_material_and_uv(str(out))["valid"] is True
+
+    def test_no_texture_still_writes_material(self, tmp_path):
+        out = _write_with_uv_and_texture(tmp_path, with_texture=False)
+        gltf = pygltflib.GLTF2.load(str(out))
+
+        # Material written even without a texture (metalness 0 kills the plastic look).
+        assert gltf.materials, "no materials written"
+        assert gltf.materials[0].pbrMetallicRoughness.metallicFactor == 0
+        assert not gltf.images, "no image expected when base_color_texture is None"
+
+        # Geometry validation still passes (POSITION bounds intact).
+        result = validate_glb_geometry(str(out))
+        assert result["valid"], result["errors"]
+
+    def test_no_uv_reports_no_texcoord(self, tmp_path):
+        """A material-only write (uv=None) has no TEXCOORD_0."""
+        out = write_for_slot(tmp_path, "TOP")
+        audit = validate_material_and_uv(str(out))
+        assert audit["has_texcoord"] is False
+        # Material is now always written, so has_material is True.
+        assert audit["has_material"] is True
+
+    def test_uv_shape_mismatch_raises(self, tmp_path):
+        vertices, normals, indices, ji, jw = make_test_mesh()
+        bad_uv = np.zeros((3, 2), dtype=np.float32)  # 3 rows, mesh has 4 verts
+        with pytest.raises(ValueError, match="uv must be"):
+            write_skinned_glb(
+                output_path=tmp_path / "bad_uv.glb",
+                vertices=vertices, normals=normals, indices=indices,
+                joint_indices=np.zeros_like(ji), joint_weights=jw,
+                joint_names=["root"], parent_indices=[-1],
+                joint_positions=np.zeros((1, 3), dtype=np.float32),
+                uv=bad_uv,
+            )
+
+    def test_all_buffer_views_4byte_aligned_with_texture(self, tmp_path):
+        out = _write_with_uv_and_texture(tmp_path, with_texture=True)
+        gltf = pygltflib.GLTF2.load(str(out))
+        for bv in gltf.bufferViews:
+            assert bv.byteOffset % 4 == 0, (
+                f"BufferView byteOffset {bv.byteOffset} is not 4-byte aligned"
+            )
