@@ -96,6 +96,12 @@ def write_skinned_glb(
     parent_indices: list[int],
     joint_positions: np.ndarray,
     slot_hint: str = "DRESS",
+    uv: np.ndarray | None = None,
+    base_color_texture: bytes | None = None,
+    base_color_texture_mime: str = "image/png",
+    base_color_factor: list[float] | None = None,
+    metallic_factor: float = 0.0,
+    roughness_factor: float = 0.85,
 ) -> None:
     """Write a skinned GLB file.
 
@@ -110,6 +116,15 @@ def write_skinned_glb(
         parent_indices: Parent index per joint (-1 = root).
         joint_positions: (J, 3) float32 joint world positions.
         slot_hint: Garment slot ('TOP', 'BOTTOM', 'DRESS'). Filters joint subset.
+        uv: Optional (V, 2) float32 texture coordinates. When present, emitted as a
+            TEXCOORD_0 accessor (index 6) so the garment carries its own UV mapping.
+        base_color_texture: Optional embedded baseColor image bytes (PNG by default),
+            stored in the GLB binary buffer as a trailing bufferView + glTF image.
+        base_color_texture_mime: MIME type for base_color_texture (default 'image/png').
+        base_color_factor: Optional RGBA baseColor factor (length 4); defaults to
+            [1, 1, 1, 1] when None.
+        metallic_factor: PBR metallic factor (default 0.0 — fabric, not plastic/metal).
+        roughness_factor: PBR roughness factor (default 0.85 — matte fabric).
     """
     # --- 0. Input shape validation ---
     if vertices.ndim != 2 or vertices.shape[1] != 3:
@@ -122,6 +137,8 @@ def write_skinned_glb(
         raise ValueError(f"joint_indices must be ({len(vertices)}, 4), got {joint_indices.shape}")
     if joint_weights.shape != (len(vertices), 4):
         raise ValueError(f"joint_weights must be ({len(vertices)}, 4), got {joint_weights.shape}")
+    if uv is not None and uv.shape != (len(vertices), 2):
+        raise ValueError(f"uv must be ({len(vertices)}, 2), got {uv.shape}")
 
     # --- 1. Filter joints by slot_hint ---
     subset = SLOT_BONE_SUBSETS.get(slot_hint)
@@ -196,6 +213,20 @@ def write_skinned_glb(
         None,
     ]
 
+    # Optional TEXCOORD_0 (accessor/bufferView index 6) — appended, never renumbering 0-5.
+    uv_buffer_view: int | None = None
+    if uv is not None:
+        uv_buffer_view = len(blobs)  # -> 6
+        blobs.append(uv.astype(np.float32).tobytes())
+        targets.append(_ARRAY_BUFFER)
+
+    # Optional embedded baseColor image goes in the LAST bufferView (no accessor).
+    img_buffer_view: int | None = None
+    if base_color_texture is not None:
+        img_buffer_view = len(blobs)
+        blobs.append(bytes(base_color_texture))
+        targets.append(None)
+
     # --- 5. Compute buffer views with 4-byte-aligned offsets ---
     buffer_views: list[pygltflib.BufferView] = []
     padded_blobs: list[bytes] = []
@@ -229,6 +260,14 @@ def write_skinned_glb(
         pygltflib.Accessor(bufferView=4, componentType=idx_component_type, count=num_faces * 3, type="SCALAR"),  # indices
         pygltflib.Accessor(bufferView=5, componentType=_FLOAT,        count=j, type="MAT4"),           # IBM
     ]
+    # Optional TEXCOORD_0 accessor (index 6) — must follow accessors 0-5 (referenced by index).
+    texcoord_accessor: int | None = None
+    if uv_buffer_view is not None:
+        texcoord_accessor = len(accessors)  # -> 6
+        accessors.append(
+            pygltflib.Accessor(bufferView=uv_buffer_view, componentType=_FLOAT,
+                               count=num_verts, type="VEC2")  # TEXCOORD_0
+        )
 
     # --- 7. Build joint nodes ---
     gltf_nodes: list[pygltflib.Node] = []
@@ -250,8 +289,31 @@ def write_skinned_glb(
 
     # --- 8. Build mesh primitive ---
     attrs = pygltflib.Attributes(POSITION=0, NORMAL=1, JOINTS_0=2, WEIGHTS_0=3)
-    primitive = pygltflib.Primitive(attributes=attrs, indices=4, mode=pygltflib.TRIANGLES)
+    if texcoord_accessor is not None:
+        attrs.TEXCOORD_0 = texcoord_accessor
+    primitive = pygltflib.Primitive(
+        attributes=attrs, indices=4, mode=pygltflib.TRIANGLES, material=0,
+    )
     mesh = pygltflib.Mesh(primitives=[primitive])
+
+    # --- 8b. Build PBR material (always) + optional embedded baseColor texture ---
+    # A fabric-tuned material (metalness=0) is written even without a texture, replacing
+    # the glTF default material (metalness=1) that makes garments read as grey plastic.
+    pbr = pygltflib.PbrMetallicRoughness(
+        baseColorFactor=base_color_factor or [1.0, 1.0, 1.0, 1.0],
+        metallicFactor=metallic_factor,
+        roughnessFactor=roughness_factor,
+    )
+    material = pygltflib.Material(pbrMetallicRoughness=pbr)
+
+    gltf_images: list[pygltflib.Image] = []
+    gltf_samplers: list[pygltflib.Sampler] = []
+    gltf_textures: list[pygltflib.Texture] = []
+    if img_buffer_view is not None:
+        gltf_images = [pygltflib.Image(bufferView=img_buffer_view, mimeType=base_color_texture_mime)]
+        gltf_samplers = [pygltflib.Sampler()]
+        gltf_textures = [pygltflib.Texture(source=0, sampler=0)]
+        pbr.baseColorTexture = pygltflib.TextureInfo(index=0)
 
     # --- 9. Build skin ---
     skin = pygltflib.Skin(joints=list(range(j)), inverseBindMatrices=5)
@@ -269,6 +331,10 @@ def write_skinned_glb(
         accessors=accessors,
         bufferViews=buffer_views,
         buffers=[pygltflib.Buffer(byteLength=len(binary_blob))],
+        materials=[material],
+        images=gltf_images,
+        samplers=gltf_samplers,
+        textures=gltf_textures,
     )
     gltf.set_binary_blob(binary_blob)
     gltf.save(str(output_path))

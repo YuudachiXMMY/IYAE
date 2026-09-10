@@ -72,3 +72,39 @@ export function applyLayeredAntiPenetrationToScene(scene: Object3D, slot: string
     }
   });
 }
+
+/**
+ * Apply a neutral matte-fabric fallback to a garment mesh.
+ *
+ * The glTF default material is metalness=1/roughness=1 (a grey-white plastic
+ * shell). For any untextured MeshStandardMaterial (no baseColor `.map`) this
+ * forces a fabric-like PBR response (metalness=0, roughness=0.85), killing the
+ * plastic specular look. Textured garments (those carrying a `.map` from the
+ * B1 rigging pipeline) are left untouched so their authored material survives.
+ *
+ * Always enables cast/receive shadow so the mesh participates in the viewer's
+ * contact + directional shadows. Materials are mutated in place — never
+ * replaced — so SkinnedMesh binding is preserved.
+ */
+export function fabricizeMaterial(mesh: Mesh): void {
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const mat of materials) {
+    if (mat && mat instanceof MeshStandardMaterial && !mat.map) {
+      mat.metalness = 0;
+      mat.roughness = 0.85;
+    }
+  }
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+}
+
+/**
+ * Traverse a loaded GLTF scene and apply the fabric fallback to all meshes.
+ */
+export function fabricizeScene(scene: Object3D): void {
+  scene.traverse((child) => {
+    if ((child as Mesh).isMesh) {
+      fabricizeMaterial(child as Mesh);
+    }
+  });
+}

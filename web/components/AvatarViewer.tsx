@@ -9,12 +9,17 @@ import {
   Bounds,
   useProgress,
   Html,
+  ContactShadows,
 } from "@react-three/drei";
-import { Skeleton, Matrix4, Box3, Vector3, type Bone, type Object3D } from "three";
+import { Skeleton, Matrix4, Box3, Vector3, type Bone, type Mesh, type Object3D } from "three";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { SkinnedMesh } from "three";
 import SkeletonContext, { useSkeletonContext } from "./SkeletonContext";
-import { applyAntiPenetrationToScene, applyLayeredAntiPenetrationToScene } from "./FittingHelper";
+import {
+  applyAntiPenetrationToScene,
+  applyLayeredAntiPenetrationToScene,
+  fabricizeScene,
+} from "./FittingHelper";
 import { usePoseAnimation } from "@/lib/hooks/usePoseAnimation";
 import { PoseSelector } from "./PoseSelector";
 import { POSE_PRESETS } from "@/lib/pose-config";
@@ -78,6 +83,9 @@ interface GarmentModelProps {
 function GarmentModel({ url }: GarmentModelProps) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
+  useEffect(() => {
+    fabricizeScene(cloned);
+  }, [cloned]);
   return <primitive object={cloned} />;
 }
 
@@ -97,9 +105,15 @@ function AvatarModel({ url, poseId = null, children }: AvatarModelProps) {
     clone.traverse((child) => {
       if ((child as SkinnedMesh).isSkinnedMesh) {
         const mesh = child as SkinnedMesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         for (const bone of mesh.skeleton.bones) {
           map.set(bone.name, bone);
         }
+      } else if ((child as Mesh).isMesh) {
+        const mesh = child as Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
       }
     });
     return { clonedScene: clone, boneMap: map };
@@ -159,6 +173,8 @@ function BoundGarmentModel({ url, slot, onError }: BoundGarmentModelProps) {
       } else {
         applyAntiPenetrationToScene(clonedScene);
       }
+
+      fabricizeScene(clonedScene);
 
       /** Scale guard: detect garments with wildly incorrect scale */
       const box = new Box3().setFromObject(clonedScene);
@@ -283,9 +299,9 @@ export default function AvatarViewer({
       tabIndex={0}
     >
       <LoadStatus />
-      <Canvas camera={{ position: [0, 1, 3], fov: 50 }}>
+      <Canvas shadows camera={{ position: [0, 1, 3], fov: 50 }}>
         <ambientLight intensity={0.6} />
-        <directionalLight position={[4, 6, 4]} intensity={1.2} />
+        <directionalLight castShadow position={[4, 6, 4]} intensity={1.2} />
         <directionalLight position={[-4, 2, -4]} intensity={0.4} />
         <Suspense fallback={<PreviewFallback previewImageUrl={previewImageUrl} />}>
           <Bounds fit clip observe margin={1.2}>
@@ -297,6 +313,15 @@ export default function AvatarViewer({
               renderGarments(false)
             )}
           </Bounds>
+          <ContactShadows
+            position={[0, 0, 0]}
+            opacity={0.35}
+            scale={6}
+            blur={2.4}
+            far={4}
+            resolution={512}
+            color="#000000"
+          />
           <Environment preset="studio" />
         </Suspense>
         <OrbitControls makeDefault enablePan enableZoom enableRotate />
