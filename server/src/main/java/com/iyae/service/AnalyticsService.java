@@ -1,6 +1,7 @@
 package com.iyae.service;
 
 import com.iyae.config.AnalyticsProperties;
+import com.iyae.dto.DrapeDecisionResponse;
 import com.iyae.dto.KpiSummaryResponse;
 import com.iyae.entity.AnalyticsEvent;
 import com.iyae.entity.CohortAssignment;
@@ -13,6 +14,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -126,5 +128,76 @@ public class AnalyticsService {
         }
 
         return new KpiSummaryResponse(cohortKpis, sizeKpis);
+    }
+
+    /** PRD 主指标目标:试穿→加购相对提升 ≥ +10%。 */
+    private static final double TARGET_RELATIVE_LIFT = 0.10;
+
+    /**
+     * Phase 4 前后对比决策门:以 {@code cutoff} 切分 analytics_events,比较部署前 vs 部署后的
+     * 试穿→加购(TRYON_STARTED→ADD_TO_CART)聚合转化率、lift 与两比例 z 检验显著性,产出
+     * INVEST/STOP/INCONCLUSIVE 方向建议。守卫比率(分母为 0 时返回 0.0),绝不除零/抛异常。
+     */
+    @Transactional(readOnly = true)
+    public DrapeDecisionResponse drapeDecision(Instant cutoff) {
+        long tryBefore = eventRepository.countByEventTypeAndCreatedAtBefore(EventType.TRYON_STARTED, cutoff);
+        long cartBefore = eventRepository.countByEventTypeAndCreatedAtBefore(EventType.ADD_TO_CART, cutoff);
+        long tryAfter = eventRepository.countByEventTypeAndCreatedAtGreaterThanEqual(EventType.TRYON_STARTED, cutoff);
+        long cartAfter = eventRepository.countByEventTypeAndCreatedAtGreaterThanEqual(EventType.ADD_TO_CART, cutoff);
+
+        double rateBefore = tryBefore > 0 ? (double) cartBefore / tryBefore : 0.0;
+        double rateAfter = tryAfter > 0 ? (double) cartAfter / tryAfter : 0.0;
+        double absLift = rateAfter - rateBefore;
+        double relLift = rateBefore > 0 ? (rateAfter - rateBefore) / rateBefore : 0.0;
+
+        double z = twoProportionZ(cartBefore, tryBefore, cartAfter, tryAfter);
+        double p = Double.isNaN(z) ? 1.0 : 2.0 * (1.0 - normalCdf(Math.abs(z)));
+        boolean significant = p < 0.05;
+
+        String rec;
+        if (tryBefore == 0 || tryAfter == 0) {
+            rec = "INCONCLUSIVE";           // 任一窗口无试穿样本
+        } else if (significant && relLift >= TARGET_RELATIVE_LIFT) {
+            rec = "INVEST";
+        } else if (significant && relLift < 0) {
+            rec = "STOP";
+        } else {
+            rec = "INCONCLUSIVE";
+        }
+        return new DrapeDecisionResponse(cutoff,
+                new DrapeDecisionResponse.FunnelWindow(tryBefore, cartBefore, rateBefore),
+                new DrapeDecisionResponse.FunnelWindow(tryAfter, cartAfter, rateAfter),
+                absLift, relLift, z, p, significant, rec);
+    }
+
+    /** 两比例 z 检验(pooled)。分母为 0 或退化(SE=0)时返回 NaN(上游按 p=1 处理)。 */
+    private static double twoProportionZ(long x1, long n1, long x2, long n2) {
+        if (n1 <= 0 || n2 <= 0) {
+            return Double.NaN;
+        }
+        double p1 = clamp01((double) x1 / n1);
+        double p2 = clamp01((double) x2 / n2);
+        double pooled = clamp01((double) (x1 + x2) / (n1 + n2));
+        double se = Math.sqrt(pooled * (1 - pooled) * (1.0 / n1 + 1.0 / n2));
+        if (se == 0.0) {
+            return Double.NaN;
+        }
+        return (p2 - p1) / se;
+    }
+
+    private static double clamp01(double v) {
+        return v < 0 ? 0 : (v > 1 ? 1 : v);
+    }
+
+    /** 标准正态 CDF,Abramowitz & Stegun 7.1.26 erf 逼近(零依赖)。 */
+    private static double normalCdf(double z) {
+        return 0.5 * (1.0 + erf(z / Math.sqrt(2.0)));
+    }
+
+    private static double erf(double x) {
+        double t = 1.0 / (1.0 + 0.3275911 * Math.abs(x));
+        double y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
+                - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+        return x >= 0 ? y : -y;
     }
 }

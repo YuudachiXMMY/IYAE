@@ -1,5 +1,7 @@
 package com.iyae.controller;
 
+import com.iyae.config.AnalyticsProperties;
+import com.iyae.dto.DrapeDecisionResponse;
 import com.iyae.dto.KpiSummaryResponse;
 import com.iyae.dto.TrackEventRequest;
 import com.iyae.entity.User;
@@ -18,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +45,16 @@ class AnalyticsControllerTest {
 
     @MockBean
     UserRepository userRepository;
+
+    @MockBean
+    AnalyticsProperties analyticsProperties;
+
+    private static DrapeDecisionResponse sampleDecision() {
+        return new DrapeDecisionResponse(Instant.parse("2026-09-10T00:00:00Z"),
+                new DrapeDecisionResponse.FunnelWindow(1000, 100, 0.10),
+                new DrapeDecisionResponse.FunnelWindow(1000, 200, 0.20),
+                0.10, 1.0, 3.5, 0.0004, true, "INVEST");
+    }
 
     @Test
     @WithMockUser(username = "test@example.com")
@@ -125,6 +138,56 @@ class AnalyticsControllerTest {
     @WithMockUser(username = "buyer@example.com", roles = "BUYER")
     void kpis_asBuyer_returns403() throws Exception {
         mockMvc.perform(get("/api/admin/kpis"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void drapeDecision_asAdmin_usesConfiguredCutoff_returns200() throws Exception {
+        when(analyticsProperties.drapeDeployCutoff()).thenReturn("2026-09-10T00:00:00Z");
+        when(analyticsService.drapeDecision(any(Instant.class))).thenReturn(sampleDecision());
+
+        mockMvc.perform(get("/api/admin/kpis/drape-decision"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendation").value("INVEST"))
+                .andExpect(jsonPath("$.significant").value(true));
+
+        verify(analyticsService).drapeDecision(Instant.parse("2026-09-10T00:00:00Z"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void drapeDecision_withQueryCutoff_overridesConfig_returns200() throws Exception {
+        when(analyticsService.drapeDecision(any(Instant.class))).thenReturn(sampleDecision());
+
+        mockMvc.perform(get("/api/admin/kpis/drape-decision").param("cutoff", "2026-09-01T00:00:00Z"))
+                .andExpect(status().isOk());
+
+        verify(analyticsService).drapeDecision(Instant.parse("2026-09-01T00:00:00Z"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void drapeDecision_missingCutoff_returns400() throws Exception {
+        when(analyticsProperties.drapeDeployCutoff()).thenReturn("");
+
+        mockMvc.perform(get("/api/admin/kpis/drape-decision"))
+                .andExpect(status().isBadRequest());
+        verify(analyticsService, never()).drapeDecision(any());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@example.com", roles = "ADMIN")
+    void drapeDecision_invalidCutoff_returns400() throws Exception {
+        mockMvc.perform(get("/api/admin/kpis/drape-decision").param("cutoff", "not-a-date"))
+                .andExpect(status().isBadRequest());
+        verify(analyticsService, never()).drapeDecision(any());
+    }
+
+    @Test
+    @WithMockUser(username = "designer@example.com", roles = "DESIGNER")
+    void drapeDecision_asDesigner_returns403() throws Exception {
+        mockMvc.perform(get("/api/admin/kpis/drape-decision"))
                 .andExpect(status().isForbidden());
     }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { api, auth, admin, avatar, sizing, ApiError, posts, follows, adminReports, resale } from '@/lib/api'
+import { api, auth, admin, avatar, sizing, ApiError, posts, follows, adminReports, resale, analytics } from '@/lib/api'
 import type { RegisterRequest, UpdateProfileRequest, UserResponse, ProfileVisibility, AvatarMode, SizeRecommendationResponse } from '@/lib/api'
 
 describe('api', () => {
@@ -370,6 +370,31 @@ describe('api', () => {
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('/api/resale/listings/9')
       expect(init.method).toBe('DELETE')
+    })
+  })
+
+  describe('analytics (Phase 4 drape decision)', () => {
+    it('analytics.kpis GETs /api/admin/kpis', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ cohorts: [], sizeBrackets: [] }))
+      await analytics.kpis()
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/kpis')
+      expect(init.method).toBe('GET')
+    })
+
+    it('analytics.drapeDecision appends the URL-encoded cutoff', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ recommendation: 'INVEST' }))
+      await analytics.drapeDecision('2026-09-10T00:00:00Z')
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/kpis/drape-decision?cutoff=2026-09-10T00%3A00%3A00Z')
+      expect(init.method).toBe('GET')
+    })
+
+    it('analytics.drapeDecision omits the query when no cutoff is given', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ recommendation: 'INCONCLUSIVE' }))
+      await analytics.drapeDecision()
+      const [url] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('/api/admin/kpis/drape-decision')
     })
   })
 })
