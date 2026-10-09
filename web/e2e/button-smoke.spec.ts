@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
 /**
  * Button smoke audit.
@@ -16,12 +17,10 @@ import { test, expect, type Page } from '@playwright/test';
 
 const API_URL = process.env.PLAYWRIGHT_API_URL ?? 'http://localhost:3001';
 const TOKEN_KEY = 'clossette_token';
-const SEED_PASSWORD = 'password123';
-const SEED_DOMAIN = process.env.PLAYWRIGHT_SEED_DOMAIN ?? 'iyae.ca';
 
 const ACCOUNTS = {
-  shopper: `emma@${SEED_DOMAIN}`,
-  designer: `luna@${SEED_DOMAIN}`,
+  shopper: SEED_USERS.shopper.email,
+  designer: SEED_USERS.designer.email,
 } as const;
 
 type Role = 'guest' | 'shopper' | 'designer';
@@ -73,6 +72,13 @@ const ROUTES: ReadonlyArray<{ path: string; roles: readonly Role[] }> = [
  * seed data, end the session, or hand off to a third party (Stripe).
  */
 const SKIP_LABEL = /delete|archive|unpublish|deactivate|sign out|log ?out|proceed to (payment|checkout)|place order|pay now|confirm order|reset (all )?data/i;
+
+/**
+ * The Next.js dev overlay injects its own controls into the page. They are not
+ * part of the product, so they are dropped from the audit entirely — otherwise
+ * running against `next dev` adds one phantom "dead button" per route.
+ */
+const DEV_OVERLAY_LABEL = /next\.js dev tools|issues badge|^[\d\s]*issues?$/i;
 
 /** Dev-build noise that says nothing about whether a button works. */
 const IGNORED_CONSOLE: readonly RegExp[] = [
@@ -263,6 +269,8 @@ async function probe(
       (el) =>
         el.getAttribute('aria-pressed') === 'true' ||
         el.getAttribute('aria-selected') === 'true' ||
+        // `aria-current` is how some nav-flavoured chips mark themselves.
+        !['false', null].includes(el.getAttribute('aria-current')) ||
         el.getAttribute('data-state') === 'active' ||
         el.getAttribute('data-active') === 'true',
     )
@@ -410,6 +418,9 @@ for (const role of ['guest', 'shopper', 'designer'] as const) {
 
         for (let i = 0; i < labels.length; i += 1) {
           const label = labels[i];
+          // Index stays aligned with the unfiltered locator — we skip the
+          // entry rather than compacting the list.
+          if (DEV_OVERLAY_LABEL.test(label)) continue;
           if (SKIP_LABEL.test(label)) {
             results.push({ label, index: i, severity: 'skipped', notes: ['destructive / external — not clicked'] });
             continue;

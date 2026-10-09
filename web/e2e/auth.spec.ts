@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
 test.describe('Authentication flows', () => {
   test('buyer can log in and reach the dashboard', async ({ page }) => {
@@ -8,8 +9,8 @@ test.describe('Authentication flows', () => {
     await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
 
     // Fill credentials
-    await page.getByLabel('Email').fill('emma@example.com');
-    await page.getByLabel('Password').fill('password123');
+    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
 
     // Submit
     await page.getByRole('button', { name: 'Sign In' }).click();

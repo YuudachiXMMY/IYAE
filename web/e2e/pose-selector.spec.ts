@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
 // NOTE: the 5 canvas-dependent tests below are `test.fixme` — they require a seeded
 // outfit with a RIGGED garment (non-null riggedGlbUrl) reachable at /outfits/[id]/view,
@@ -9,8 +10,8 @@ import { test, expect, type Page } from '@playwright/test';
 test.describe('Pose Selector', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill('emma@iyae.ca');
-    await page.getByLabel('Password').fill('password123');
+    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL('/dashboard', { timeout: 30000 });
   });

@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
-const DESIGNER_EMAIL = 'designer@example.com';
-const DESIGNER_PASSWORD = 'password123';
+const DESIGNER_EMAIL = SEED_USERS.designer.email;
+const DESIGNER_PASSWORD = SEED_PASSWORD;
 const UNIQUE_SUFFIX = () => Date.now().toString();
 
 test.describe('Designer product CRUD', () => {
@@ -130,8 +131,8 @@ test.describe('Designer product CRUD', () => {
   test('non-designer sees designer area gate', async ({ page }) => {
     // Log in as a buyer instead
     await page.goto('/login');
-    await page.getByLabel('Email').fill('emma@example.com');
-    await page.getByLabel('Password').fill('password123');
+    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL('/dashboard', { timeout: 10000 });
 

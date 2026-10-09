@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
 /**
  * Navigate through registration wizard steps by filling basics and clicking Next.
@@ -47,7 +48,7 @@ test.describe('Registration Wizard', () => {
     await page.goto('/register');
 
     await page.getByLabel('Email').fill('testuser@example.com');
-    await page.getByLabel('Password').fill('password123');
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
 
     const nextButton = page.getByRole('button', { name: 'Next' });
     await expect(nextButton).toBeEnabled();
@@ -157,10 +158,10 @@ test.describe('Registration Wizard', () => {
   });
 
   test('shows error on duplicate email', async ({ page }) => {
-    // emma@example.com is a seed user — registration should fail with duplicate email error
+    // The shopper is a seed user — registration must fail as a duplicate email
     await page.goto('/register');
 
-    await page.getByLabel('Email').fill('emma@example.com');
+    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
     await page.getByLabel('Password').fill('testpassword123');
     await page.getByRole('button', { name: 'Next' }).click();
 

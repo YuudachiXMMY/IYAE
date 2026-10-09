@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Automated accessibility (axe-core) gate for the key routes. Gates on
@@ -46,8 +47,8 @@ async function expectNoSeriousA11yViolations(
 
 async function login(page: Page) {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('emma@iyae.ca');
-  await page.getByLabel('Password').fill('password123');
+  await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
+  await page.getByLabel('Password').fill(SEED_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
   await page.waitForURL('/dashboard', { timeout: 30000 });
 }

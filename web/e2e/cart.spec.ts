@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 
 /** Select a size button on the product detail page if one is visible. */
 async function selectSizeIfPresent(page: import('@playwright/test').Page) {
@@ -14,8 +15,8 @@ test.describe('Shopping cart', () => {
     await page.goto('/login');
     await page.evaluate(() => localStorage.removeItem('clossette_demo_cart_items'));
 
-    await page.getByLabel('Email').fill('emma@example.com');
-    await page.getByLabel('Password').fill('password123');
+    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
+    await page.getByLabel('Password').fill(SEED_PASSWORD);
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL('/dashboard', { timeout: 10000 });
   });
