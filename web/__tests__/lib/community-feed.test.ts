@@ -688,6 +688,23 @@ describe('buildCurrentUserSeedPost', () => {
     const post = buildCurrentUserSeedPost('Test', 'test', 'Streetwear')
     expect(post.tags).toContain('Streetwear')
   })
+
+  // The aesthetic defaults to "Everyday" for a user who has set no style
+  // aesthetics, which collided with the literal "Everyday" tag. Every tag list
+  // is rendered with `key={tag}`, so the duplicate crashed /community with
+  // "Encountered two children with the same key, `Everyday`".
+  it('does not repeat a tag when the aesthetic is already a static tag', () => {
+    const post = buildCurrentUserSeedPost('Test', 'test', 'Everyday')
+    expect(post.tags).toContain('Everyday')
+    expect(new Set(post.tags).size).toBe(post.tags.length)
+  })
+
+  it('keeps tags unique for every aesthetic the profile options offer', () => {
+    for (const aesthetic of ['Everyday', 'Personal archive', 'Minimalist']) {
+      const post = buildCurrentUserSeedPost('Test', 'test', aesthetic)
+      expect(new Set(post.tags).size).toBe(post.tags.length)
+    }
+  })
 })
 
 describe('migrateCommunityState', () => {
