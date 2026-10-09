@@ -373,6 +373,7 @@ cd worker && pytest                    # Worker (unit tests)
 | `docs/guides/GEN-Pose.md` | Pose generation guide (programmatic, FBX import, SMPL-X import) |
 | `docs/huly/` | Huly knowledge base setup and Claude Cowork configuration (3 files) |
 | `.gitignore` | Ignore rules for all modules |
+| `.github/workflows/e2e.yml` | CI: Playwright E2E on every PR — brings the stack up via `docker compose` (mysql + server + web), waits for `DataSeeder` to populate the catalogue, then runs the `regression` and `audit` projects at different concurrency. The only CI in the repo; unit/server/worker suites still run locally only. |
 
 ## Changelog
 

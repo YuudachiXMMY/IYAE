@@ -1,0 +1,174 @@
+name: E2E
+
+# The Playwright suite is the only gate that exercises the real server, the
+# real database and a production web build together. It is also the suite that
+# rotted silently — selectors drifted, the auth rate limit turned into
+# unrelated-looking failures, and four tests skipped themselves rather than
+# fail — because nothing ran it automatically. That is what this workflow is for.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright (chromium)
+    runs-on: ubuntu-latest
+    # Two image builds (gradle bootJar + next build) plus the suite itself.
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # The stack is brought up through the project's own docker-compose so CI
+      # and `./dev.sh start` cannot drift apart. It also sidesteps a real
+      # problem with building the server directly: gradle-wrapper.jar is
+      # gitignored (`*.jar`), so `./gradlew` does not exist in a fresh
+      # checkout — server/Dockerfile uses the gradle:8.10-jdk22 image instead.
+      - name: Write .env for docker compose
+        run: |
+          cat > .env <<EOF
+          MYSQL_ROOT_PASSWORD=ci-root-password
+          DB_PASSWORD=ci-app-password
+          JWT_SECRET=$(openssl rand -hex 32)
+          SPRING_PROFILES_ACTIVE=dev
+          AI_PROVIDER=mock
+          WEB_PORT=3000
+          API_PORT=3001
+          DB_PORT=3002
+          EOF
+
+      # docker-compose declares `proxy` as an external network (Traefik in the
+      # author's local setup). It does not exist on a runner.
+      - name: Create the external proxy network
+        run: docker network create proxy
+
+      # Only the three services the suite needs. The 3D/rigging workers add
+      # several minutes of build time and nothing the E2E tests assert on.
+      - name: Start mysql, server and web
+        run: docker compose up -d --build mysql server web
+
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3001/api/health >/dev/null 2>&1; then
+              echo "API up after ${i} tries"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API never became healthy"
+          exit 1
+
+      # DataSeeder (@Profile("!prod")) populates the catalogue and the seed
+      # accounts e2e/seed-users.ts expects. /api/health answers before that
+      # finishes, so wait for actual seeded data rather than liveness. This
+      # deliberately avoids polling the login endpoint, which is rate-limited
+      # to five requests per minute per IP.
+      - name: Wait for seeded data
+        run: |
+          for i in $(seq 1 60); do
+            count=$(curl -fsS 'http://localhost:3001/api/products?page=0&size=1' \
+              | grep -o '"totalElements":[0-9]*' | cut -d: -f2 || echo 0)
+            if [ "${count:-0}" -gt 0 ]; then
+              echo "catalogue seeded (${count} products)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "DataSeeder never populated the catalogue"
+          exit 1
+
+      - name: Wait for the web app
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login >/dev/null 2>&1; then
+              echo "web up after ${i} tries"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "web never became reachable"
+          exit 1
+
+      # Two phases against the one stack, because the halves want different
+      # concurrency. Measured against a production build: 14m16s as a single
+      # one-worker run (button-smoke alone was 13.2m of it) versus ~6m split.
+      #
+      # CI is set by Actions, so playwright.config.ts applies workers: 1 and
+      # retries: 1. One worker is load-bearing here: these specs mutate state
+      # the seed accounts share (the shopper's single server-side cart, follow
+      # edges), so concurrent runs delete each other's fixtures.
+      - name: Run Playwright — regression
+        working-directory: web
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_API_URL: http://localhost:3001
+          # Distinct folders: the two phases are separate runs and would
+          # otherwise overwrite each other's report and traces.
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/regression
+        run: npx playwright test --project=regression --output=test-results/regression
+
+      # The audit shares no fixture and re-navigates before every click, so it
+      # parallelises. Two workers rather than three: a runner has far fewer
+      # cores than a dev machine, and this spec's original failure mode was
+      # click timeouts under worker contention. The longer click timeout is
+      # there for the same reason.
+      - name: Run Playwright — button audit
+        working-directory: web
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_API_URL: http://localhost:3001
+          PLAYWRIGHT_CLICK_TIMEOUT: 30000
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/audit
+        # Runs even when the regression phase failed: a dead button is worth
+        # knowing about in the same run as whatever else broke.
+        if: ${{ !cancelled() }}
+        run: npx playwright test --project=audit --workers=2 --output=test-results/audit
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 14
+
+      # error-context.md snapshots and traces for the failing tests.
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: web/test-results/
+          retention-days: 14
+
+      # A Playwright failure is often a server-side failure. Without these the
+      # report shows a timeout and nothing about why.
+      - name: Dump service logs
+        if: failure()
+        run: docker compose logs --no-color --tail 400 mysql server web
+
+      - name: Tear down
+        if: ${{ !cancelled() }}
+        run: docker compose down -v
