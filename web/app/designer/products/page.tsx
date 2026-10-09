@@ -218,7 +218,9 @@ export default function DesignerProductsPage() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  aria-current={isActive ? "page" : undefined}
+                  // A filter chip is a toggle, not a location: `aria-pressed`
+                  // is what conveys "this filter is on" to assistive tech.
+                  aria-pressed={isActive}
                   className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? "bg-foreground text-background shadow-sm"
