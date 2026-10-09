@@ -1,24 +1,57 @@
-import { test, expect } from '@playwright/test';
-import { SEED_USERS, SEED_PASSWORD } from './seed-users';
+import { test, expect, type Page } from '@playwright/test';
+import { apiAs, signIn, signOut } from './session';
+
+/**
+ * The server cart persists per user, so items survive between runs and the
+ * "cart is empty" assertions below could never come true. There is no bulk
+ * clear endpoint — only DELETE /api/cart/items/{id} — so empty it item by item.
+ */
+async function clearServerCart(): Promise<void> {
+  const cart = await apiAs<{ items: { id: number }[] }>('shopper', 'GET', '/api/cart');
+  for (const item of cart.items) {
+    await apiAs('shopper', 'DELETE', `/api/cart/items/${item.id}`);
+  }
+}
 
 /** Select a size button on the product detail page if one is visible. */
-async function selectSizeIfPresent(page: import('@playwright/test').Page) {
-  const sizeButton = page.getByRole('button', { name: /^(XS|S|M|L|XL|XXL|ONE SIZE)$/ }).first();
+async function selectSizeIfPresent(page: Page) {
+  // ONE_SIZE carries an underscore in the app's own data (app/cart/page.tsx:103).
+  const sizeButton = page.getByRole('button', { name: /^(XS|S|M|L|XL|XXL|ONE_SIZE)$/ }).first();
   if (await sizeButton.isVisible().catch(() => false)) {
     await sizeButton.click();
   }
 }
 
+/** Open the first catalogue product, pick a size if required, and add it. */
+async function addFirstProductToCart(page: Page): Promise<void> {
+  await page.goto('/products');
+  await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
+
+  const firstProductLink = page
+    .locator('a[href*="/products/"]')
+    .filter({ hasNot: page.locator('nav') })
+    .first();
+  await firstProductLink.click();
+  await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
+
+  await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
+  await selectSizeIfPresent(page);
+  await page.getByRole('button', { name: 'Add to Cart' }).click();
+  await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+}
+
+// Serial: every test here clears and repopulates the ONE server-side cart the
+// seed shopper owns, so running them concurrently means each test deletes the
+// item another just added.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('Shopping cart', () => {
   test.beforeEach(async ({ page }) => {
+    await clearServerCart();
+    await signIn(page, 'shopper');
     // Clear demo cart items from localStorage before each test
-    await page.goto('/login');
+    await page.goto('/dashboard');
     await page.evaluate(() => localStorage.removeItem('clossette_demo_cart_items'));
-
-    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
-    await page.getByLabel('Password').fill(SEED_PASSWORD);
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('/dashboard', { timeout: 10000 });
   });
 
   test('empty cart shows browse products CTA', async ({ page }) => {
@@ -73,7 +106,7 @@ test.describe('Shopping cart', () => {
     await page.goto('/cart');
 
     // Cart should not be empty — either server items or the total count > 0
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
     await expect(page.getByText('Your cart is empty.')).not.toBeVisible({ timeout: 5000 });
   });
 
@@ -84,31 +117,16 @@ test.describe('Shopping cart', () => {
 
   test('quantity increase button updates item count', async ({ page }) => {
     // First add a product
-    await page.goto('/products');
-    await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
-
-    const firstProductLink = page.locator('a[href*="/products/"]').filter({ hasNot: page.locator('nav') }).first();
-    await firstProductLink.click();
-    await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
-
-    await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
-    await selectSizeIfPresent(page);
-    await page.getByRole('button', { name: 'Add to Cart' }).click();
-    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+    await addFirstProductToCart(page);
 
     // Go to cart
     await page.goto('/cart');
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
 
-    // Check quantity controls exist
+    // The row loads asynchronously after the heading, so wait for the control
+    // rather than probing it with an instant isVisible() and skipping.
     const increaseBtn = page.getByLabel('Increase quantity').first();
-    const hasIncrease = await increaseBtn.isVisible().catch(() => false);
-
-    if (!hasIncrease) {
-      // Cart might be empty if server-side add failed
-      test.skip();
-      return;
-    }
+    await expect(increaseBtn).toBeVisible({ timeout: 10000 });
 
     // Read current quantity
     const quantityEl = page.locator('span.w-6').first();
@@ -126,28 +144,13 @@ test.describe('Shopping cart', () => {
 
   test('quantity decrease to zero removes item from cart', async ({ page }) => {
     // Add a product first
-    await page.goto('/products');
-    await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
-
-    const firstProductLink = page.locator('a[href*="/products/"]').filter({ hasNot: page.locator('nav') }).first();
-    await firstProductLink.click();
-    await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
-
-    await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
-    await selectSizeIfPresent(page);
-    await page.getByRole('button', { name: 'Add to Cart' }).click();
-    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+    await addFirstProductToCart(page);
 
     await page.goto('/cart');
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
 
     const decreaseBtn = page.getByLabel('Decrease quantity').first();
-    const hasDecrease = await decreaseBtn.isVisible().catch(() => false);
-
-    if (!hasDecrease) {
-      test.skip();
-      return;
-    }
+    await expect(decreaseBtn).toBeVisible({ timeout: 10000 });
 
     // Click decrease (quantity is 1 → removing the item)
     await decreaseBtn.click();
@@ -159,28 +162,13 @@ test.describe('Shopping cart', () => {
 
   test('remove item button clears item from cart', async ({ page }) => {
     // Add a product first
-    await page.goto('/products');
-    await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
-
-    const firstProductLink = page.locator('a[href*="/products/"]').filter({ hasNot: page.locator('nav') }).first();
-    await firstProductLink.click();
-    await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
-
-    await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
-    await selectSizeIfPresent(page);
-    await page.getByRole('button', { name: 'Add to Cart' }).click();
-    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+    await addFirstProductToCart(page);
 
     await page.goto('/cart');
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
 
     const removeBtn = page.getByLabel('Remove item').first();
-    const hasRemove = await removeBtn.isVisible().catch(() => false);
-
-    if (!hasRemove) {
-      test.skip();
-      return;
-    }
+    await expect(removeBtn).toBeVisible({ timeout: 10000 });
 
     await removeBtn.click();
     await page.waitForTimeout(1500);
@@ -191,30 +179,13 @@ test.describe('Shopping cart', () => {
 
   test('order summary shows total price', async ({ page }) => {
     // Add a product
-    await page.goto('/products');
-    await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
-
-    const firstProductLink = page.locator('a[href*="/products/"]').filter({ hasNot: page.locator('nav') }).first();
-    await firstProductLink.click();
-    await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
-
-    await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
-    await selectSizeIfPresent(page);
-    await page.getByRole('button', { name: 'Add to Cart' }).click();
-    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+    await addFirstProductToCart(page);
 
     await page.goto('/cart');
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
 
     const summaryHeading = page.getByRole('heading', { name: 'Order Summary' });
-    const hasItems = await summaryHeading.isVisible().catch(() => false);
-
-    if (!hasItems) {
-      test.skip();
-      return;
-    }
-
-    await expect(summaryHeading).toBeVisible();
+    await expect(summaryHeading).toBeVisible({ timeout: 10000 });
     // Total line should show a currency value
     await expect(page.getByText('Total')).toBeVisible();
     await expect(page.locator('text=/\\$[0-9]/').last()).toBeVisible({ timeout: 5000 });
@@ -222,57 +193,33 @@ test.describe('Shopping cart', () => {
 
   test('checkout button is enabled when cart has items', async ({ page }) => {
     // Add a product
-    await page.goto('/products');
-    await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
-
-    const firstProductLink = page.locator('a[href*="/products/"]').filter({ hasNot: page.locator('nav') }).first();
-    await firstProductLink.click();
-    await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
-
-    await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
-    await selectSizeIfPresent(page);
-    await page.getByRole('button', { name: 'Add to Cart' }).click();
-    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+    await addFirstProductToCart(page);
 
     await page.goto('/cart');
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
 
     const checkoutBtn = page.getByRole('button', { name: 'Checkout' });
-    const hasCheckout = await checkoutBtn.isVisible().catch(() => false);
-
-    if (!hasCheckout) {
-      test.skip();
-      return;
-    }
-
+    await expect(checkoutBtn).toBeVisible({ timeout: 10000 });
     await expect(checkoutBtn).toBeEnabled();
   });
 
   test('unauthenticated user adding product creates demo cart item', async ({ page }) => {
-    // Log out first
-    await page.evaluate(() => {
-      localStorage.removeItem('clossette_token');
-      localStorage.removeItem('clossette_demo_cart_items');
-    });
-    await page.reload();
+    // `signIn` re-seeds the token on every navigation, so clearing storage by
+    // hand is not enough — `signOut` registers a later init script that wins.
+    await signOut(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('clossette_demo_cart_items'));
 
-    await page.goto('/products');
-    await expect(page.locator('a[href*="/products/"]').first()).toBeVisible({ timeout: 10000 });
-
-    const firstProductLink = page.locator('a[href*="/products/"]').filter({ hasNot: page.locator('nav') }).first();
-    await firstProductLink.click();
-    await page.waitForURL(/\/products\/\d+/, { timeout: 8000 });
-
-    await expect(page.getByRole('button', { name: 'Add to Cart' })).toBeVisible({ timeout: 8000 });
-    await selectSizeIfPresent(page);
-    await page.getByRole('button', { name: 'Add to Cart' }).click();
-    await expect(page.getByText('Added to cart!')).toBeVisible({ timeout: 5000 });
+    await addFirstProductToCart(page);
 
     // Navigate to cart
     await page.goto('/cart');
-    await expect(page.getByText('Your Cart')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'Your Cart' })).toBeVisible({ timeout: 8000 });
 
-    // Demo item has "AI recommendation" badge
-    await expect(page.getByText('AI recommendation')).toBeVisible({ timeout: 5000 });
+    // Demo item has an "AI recommendation" badge. `exact` keeps it off the
+    // "AI recommendations" section label, which also contains the substring.
+    await expect(
+      page.getByText('AI recommendation', { exact: true }),
+    ).toBeVisible({ timeout: 5000 });
   });
 });

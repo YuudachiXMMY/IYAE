@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { SEED_USERS, SEED_PASSWORD } from './seed-users';
+import { signIn } from './session';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Automated accessibility (axe-core) gate for the key routes. Gates on
@@ -45,12 +45,13 @@ async function expectNoSeriousA11yViolations(
   ).toEqual([]);
 }
 
+// Being signed in is a precondition for the authed-route audits below, not
+// their subject — so seed the token instead of spending one of the five
+// logins/minute the API allows per IP. The invalid-credentials banner test at
+// the bottom of this file still drives the real form, as it must.
 async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
-  await page.getByLabel('Password').fill(SEED_PASSWORD);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await page.waitForURL('/dashboard', { timeout: 30000 });
+  await signIn(page, 'shopper');
+  await page.goto('/dashboard');
 }
 
 test.describe('Accessibility (axe) — public routes', () => {

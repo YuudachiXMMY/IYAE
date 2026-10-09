@@ -5,8 +5,8 @@ test.describe('Authentication flows', () => {
   test('buyer can log in and reach the dashboard', async ({ page }) => {
     await page.goto('/login');
 
-    // Verify the login page rendered
-    await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
+    // Verify the login page rendered (editorial <h1>, trailing period)
+    await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
 
     // Fill credentials
     await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
@@ -23,12 +23,16 @@ test.describe('Authentication flows', () => {
   test('register page renders wizard and accepts input on step 1', async ({ page }) => {
     await page.goto('/register');
 
-    // Verify the register page heading rendered
-    await expect(page.getByRole('heading', { name: 'Join IYAE' })).toBeVisible();
+    // There is no page-level heading any more — the wizard step owns it.
+    await expect(
+      page.getByRole('heading', { name: 'Create your account.' }),
+    ).toBeVisible();
 
-    // Verify WizardProgress step labels are visible
-    await expect(page.getByText('Basics')).toBeVisible();
-    await expect(page.getByText('Style')).toBeVisible();
+    // WizardProgress now groups the six steps into three display labels. Scope
+    // to <main>: SiteHeader also carries an "ACCOUNT" link.
+    const wizard = page.getByRole('main');
+    await expect(wizard.getByText('ACCOUNT', { exact: true })).toBeVisible();
+    await expect(wizard.getByText('STYLE PROFILE', { exact: true })).toBeVisible();
 
     // StepBasics fields are visible
     await expect(page.getByLabel('Email')).toBeVisible();
@@ -38,26 +42,30 @@ test.describe('Authentication flows', () => {
     await page.getByLabel('Email').fill(`testuser+${Date.now()}@example.com`);
     await page.getByLabel('Password').fill('testpassword123');
 
-    // Next button should become enabled after filling required fields
-    const nextButton = page.getByRole('button', { name: 'Next' });
+    // The step CTA is "CONTINUE" (CTA_LABEL in app/register/page.tsx), not "Next".
+    const nextButton = page.getByRole('button', { name: 'CONTINUE' });
     await expect(nextButton).toBeVisible();
     await expect(nextButton).toBeEnabled();
 
     // Advance to step 2
     await nextButton.click();
 
-    // Should now see Style step
-    await expect(page.getByText('Style Aesthetics')).toBeVisible();
+    // Should now see the Style step's heading
+    await expect(
+      page.getByRole('heading', { name: 'What feels most like you?' }),
+    ).toBeVisible();
   });
 
   test('products page loads without authentication', async ({ page }) => {
     await page.goto('/products');
 
     // Verify the products page header
-    await expect(page.getByRole('heading', { name: 'Browse Products' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Pieces, considered for you.' }),
+    ).toBeVisible();
 
-    // Wait for loading to complete — the item count text appears after fetch
-    await expect(page.getByText(/\d+ items/)).toBeVisible({ timeout: 10000 });
+    // Wait for loading to complete — the count reads "N pieces" after fetch
+    await expect(page.getByText(/\d+ pieces?/)).toBeVisible({ timeout: 10000 });
   });
 
   test('login shows error on invalid credentials', async ({ page }) => {
@@ -76,7 +84,7 @@ test.describe('Authentication flows', () => {
   test('login page has link to register', async ({ page }) => {
     await page.goto('/login');
 
-    const registerLink = page.getByRole('link', { name: 'Create one' });
+    const registerLink = page.getByRole('link', { name: 'Create an account' });
     await expect(registerLink).toBeVisible();
     await expect(registerLink).toHaveAttribute('href', '/register');
   });

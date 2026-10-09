@@ -118,34 +118,130 @@ running container still has the old value.
 effect in dev, so the same page was appended twice and collided `key={product.id}`.
 Now appends by id.
 
-## Open
+## Resolved in the follow-up pass
 
-### Duplicate React keys on `/community` (18 warnings)
+The three items this report previously left open were measured directly (a
+throwaway spec that dumped every console warning verbatim on the affected
+routes). **Two of the three root causes stated below were wrong** — both had
+been inferred from the symptom rather than observed. The corrected findings:
 
-Fires on load for both shopper and designer, so `state.posts` contains repeated
-ids. The render site (`app/community/page.tsx:509`, `key={post.id}`) is correct;
-the duplication comes from the localStorage demo layer
-(`buildInitialCommunityPosts` / `migrateCommunityState` in `lib/community-feed.ts`).
-Deduplicating at the render boundary would hide a data bug, so this is left for
-a pass that fixes the generation instead. Not touched by this diff.
+### Duplicate React keys on `/community` — FIXED
 
-### "Cannot update a component while rendering a different component" (9 warnings)
+Previously attributed to repeated post ids in `state.posts`. Measured: post ids
+are unique (`dupes: []`). The duplicate key was the **tag string `Everyday`**:
+`buildCurrentUserSeedPost` built `tags: [aesthetic, "Everyday", "Personal
+archive"]`, and `aesthetic` falls back to `"Everyday"` for a user who has set no
+style aesthetics — so the array repeated itself. Five render sites use
+`key={tag}`, all correctly; a tag list has to be unique at the data layer.
 
-`/profile/avatar` (7) and `/ar-visualization` (2), on load. `setViewerError` at
-`app/profile/avatar/page.tsx:132,136` is reached during another component's
-render. `ViewerErrorBoundary.componentDidCatch` is commit-phase and legitimate,
-so the caller is further down (a `dynamic()` boundary or an R3F loader path).
-Needs its own investigation. Not touched by this diff.
+`lib/community-feed.ts` now dedupes the tag list. The existing tests only ever
+passed `'Minimalist'` / `'Streetwear'`, neither of which collides, which is why
+this slipped through; `__tests__/lib/community-feed.test.ts` gains a case for
+every aesthetic that does.
 
-### The existing E2E specs are stale beyond credentials
+Measured after: `/community` emits 0 console warnings.
 
-Seed logins are now centralised in `web/e2e/seed-users.ts` (derived from
-`app.brand.domain`, so `emma@example.com` → `emma@iyae.ca` and
-`designer@example.com` → `luna@iyae.ca`). That removes one blocker, but it does
-**not** make those specs pass: their selectors have drifted from the current UI.
-`e2e/auth.spec.ts:57` still expects a `Browse Products` heading that the
-redesigned `/products` no longer has. Re-deriving selectors across the 7
-login-dependent specs is a separate job.
+### "Cannot update a component while rendering a different component" — FIXED
+
+Previously attributed to `setViewerError` at `app/profile/avatar/page.tsx:132,136`.
+That was wrong: `ViewerErrorBoundary.componentDidCatch` is commit-phase and
+entirely legitimate, and the warning never named it. The actual text is
+
+    Cannot update a component (`Loader`) while rendering a different
+    component (`EnvironmentCube`)
+
+`EnvironmentCube` is `@react-three/drei`'s `<Environment preset="studio">`. It
+starts its HDR load during render, which synchronously writes drei's global
+`useProgress` store — and `AvatarViewer`'s own `Loader` (the `<Suspense>`
+fallback, `components/AvatarViewer.tsx:54`) subscribes to that store from inside
+the same boundary.
+
+`AvatarViewer` now calls `useEnvironment.preload({ preset })` at module scope,
+so the lookup is a cache hit and nothing is written mid-render. Measured after:
+the warning is gone from both `/profile/avatar` and `/ar-visualization`. What
+remains on those routes is upstream three.js deprecation noise (`THREE.Clock`,
+`PCFSoftShadowMap`, a `GLTFLoader` POSITION min/max notice on a static asset)
+and GPU performance messages — no React errors.
+
+### The existing E2E specs — RE-ALIGNED
+
+All 7 login-dependent specs now pass: **106 passed, 0 failed, 5 skipped** across
+the whole Playwright suite (the 5 are pre-existing `test.fixme` pose tests that
+need a seeded rigged outfit). Selector drift was only part of it; three
+structural problems mattered more.
+
+**Rate limiting.** `POST /api/auth/login` allows 5 requests per minute per IP
+(`RateLimitFilter.RULES`). Every spec drove the sign-in form in `beforeEach`, so
+a full run 429s regardless of selector correctness. New `e2e/session.ts` seeds a
+JWT via `addInitScript`, and `e2e/global-setup.ts` mints one token per role for
+the entire run (workers are separate processes, so a per-worker cache still cost
+one login each). `auth.spec.ts` keeps the real form — it owns that journey — as
+does the invalid-credentials contrast check in `a11y.spec.ts`.
+`button-smoke.spec.ts` carried a second copy of this logic and now shares the one
+in `session.ts`.
+
+**Tests that silently skipped.** `/community`'s default Discover tab is a server
+feed, and `feedPosts ?? localPosts` does not fall back on a *successful empty*
+response — so with no posts on the server the page renders its empty state and
+four interaction tests skipped rather than failed. `community.spec.ts` now seeds
+its own post through the API (unique caption per run) and removes it afterwards.
+`cart.spec.ts` had five `test.skip()` branches guarded by an instant
+`isVisible()` against asynchronously-loaded rows; those are now real waits and
+real assertions.
+
+**Shared mutable state.** The seed shopper owns one server-side cart, so
+`cart.spec.ts`'s parallel tests deleted each other's items — that file and
+`checkout-flow.spec.ts` are now `mode: 'serial'`. `community.spec.ts` resets the
+follow edge its own follow test creates, which otherwise pushed the fixture post
+into the Following feed and broke the next run.
+
+Selector corrections, verified against current source: `Welcome Back` →
+`Welcome back.`; `Browse Products` → `Pieces, considered for you.`; `/\d+ items/`
+→ `/\d+ pieces?/`; `Create one` → `Create an account`; `Join IYAE` → the step's
+own `Create your account.`; wizard `Basics`/`Style` → `ACCOUNT`/`STYLE PROFILE`
+scoped to `<main>` (SiteHeader also has an `ACCOUNT` link); `Next` →
+`CONTINUE`/`BUILD MY PROFILE` behind one helper; `Style Aesthetics` → `What feels
+most like you?`; suggestion group `/suggestions/i` → `/suggested responses/i`;
+`IYAE Community` → `Style, in real life.`; the `/chat?event=shop` contract →
+`/outfits?…&source=shop`; `New Product` is a `CardTitle` (a `div`), not a
+heading. Three `community.spec.ts` tests lost their subject entirely when the
+creator `<aside>` rail was removed — the creator-search test is deleted (no
+replacement exists) and Follow is re-anchored to the in-card button.
+
+Also fixed while verifying: `getByText('Your Cart')` matched `Your cart is
+empty.` as a substring in 7 places (now `getByRole('heading')`), and the
+dark-patterns total check asserted `total === subtotal`, which a correct page
+fails since Phase 8 added shipping (now `total === subtotal + shipping`, reading
+the existing `checkout-shipping` testid).
+
+## Still open
+
+### CORS config needs a server restart to take effect in your stack
+
+`docker-compose.yml` now always appends `http://localhost:${WEB_PORT}` to
+`CORS_ORIGINS`, but a running container keeps the old value. Verified after
+recreating the server with the widened list:
+
+    Origin localhost:3000 -> POST /api/auth/login 200
+    Origin localhost:3010 -> 200   (was 403)
+    Origin localhost:3011 -> 200
+    Origin evil.example   -> 403   (still correctly rejected)
+
+Note the failure is not limited to writes: any request that carries a
+non-allowlisted `Origin` is rejected, including authenticated GETs such as
+`/api/avatar` and `/api/body-profile`.
+
+### Product saves are still client-side only
+
+`lib/saved-products.ts` persists to localStorage because the server has no
+"save a product" capability (`/api/looks` requires a `recommendationId` and
+stores outfit recommendations, not catalogue items). A real wishlist table is
+follow-up work.
+
+### Social sign-in buttons are disabled, not removed
+
+No OAuth provider is configured server-side. If social sign-in is not on the
+roadmap, delete the block in `app/login/page.tsx` outright.
 
 ## Deliberately not clicked
 

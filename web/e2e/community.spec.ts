@@ -1,21 +1,71 @@
-import { test, expect } from '@playwright/test';
-import { SEED_USERS, SEED_PASSWORD } from './seed-users';
+import { test, expect, type Page } from '@playwright/test';
+import { apiAs, signIn } from './session';
+
+/**
+ * The default Discover tab is a SERVER feed, and `feedPosts ?? localPosts` does
+ * not fall back on a *successful empty* response — so with no posts on the
+ * server `/community` renders its empty state and every interaction test here
+ * silently skips. This spec therefore seeds its own post through the API and
+ * removes it afterwards, instead of hoping the database happens to hold one.
+ *
+ * The post is authored by the designer so the shopper sees a post they do not
+ * own: `ownedByCurrentUser` gates the Follow button.
+ */
+interface SeededPost {
+  id: number;
+  userId: number;
+}
+
+let postId: number | null = null;
+let authorUserId: number | null = null;
+// Unique per run so a leftover fixture from an interrupted run can't be matched
+// instead of this one.
+const fixtureCaption = `E2E fixture look — layered neutrals ${Date.now()}.`;
+
+test.beforeAll(async () => {
+  const post = await apiAs<SeededPost>('designer', 'POST', '/api/posts', {
+    content: fixtureCaption,
+    mediaUrls: ['/assets/images/community/post-1.svg'],
+    topic: 'body-confidence',
+    city: 'Toronto',
+  });
+  postId = post.id;
+  authorUserId = post.userId;
+});
+
+test.afterAll(async () => {
+  if (postId == null) return;
+  await apiAs('designer', 'DELETE', `/api/posts/${postId}`).catch(() => {
+    /* best effort — a leftover fixture post is harmless */
+  });
+  postId = null;
+});
+
+/** The post this run seeded — never "whatever article is first". */
+function fixturePost(page: Page) {
+  return page.locator('article').filter({ hasText: fixtureCaption });
+}
 
 test.describe('Community feed', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
-    await page.getByLabel('Password').fill(SEED_PASSWORD);
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('/dashboard', { timeout: 10000 });
+    // The follow test below leaves a real follow edge behind, which would put
+    // the author's post into the Following feed and start the next run's
+    // button on "Following". Reset it so every test sees the same state.
+    if (authorUserId != null) {
+      await apiAs('shopper', 'DELETE', `/api/follows/${authorUserId}`).catch(() => {
+        /* not following — nothing to undo */
+      });
+    }
+
+    await signIn(page, 'shopper');
+    await page.goto('/community');
+    // The editorial <h1>; the old "IYAE Community" heading is gone.
+    await expect(
+      page.getByRole('heading', { name: 'Style, in real life.' }),
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test('community page renders with tabs', async ({ page }) => {
-    await page.goto('/community');
-
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
-
-    // Tab bar should be present
     await expect(page.getByRole('button', { name: 'Following' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Discover' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Toronto' })).toBeVisible();
@@ -24,163 +74,82 @@ test.describe('Community feed', () => {
     await expect(page.getByRole('button', { name: 'Reposted' })).toBeVisible();
   });
 
-  test('for-you tab shows post feed or empty state', async ({ page }) => {
-    await page.goto('/community');
-
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
-
-    // Either posts or an empty state message should appear
-    const hasPostsOrEmpty = await Promise.race([
-      page.locator('article').first().waitFor({ timeout: 8000 }).then(() => true),
-      page.getByText('Nothing to discover yet').waitFor({ timeout: 8000 }).then(() => true),
-    ]).catch(() => false);
-
-    expect(hasPostsOrEmpty).toBe(true);
+  test('discover tab shows the seeded post', async ({ page }) => {
+    await expect(fixturePost(page)).toBeVisible({ timeout: 10000 });
   });
 
   test('tab switching changes active tab state', async ({ page }) => {
-    await page.goto('/community');
+    // FilterPill carries aria-pressed, so assert the selection itself rather
+    // than a feed's contents: which posts a feed holds depends on follow edges
+    // and seeded data, while "this tab is the active one" is the actual subject.
+    const following = page.getByRole('button', { name: 'Following' });
+    const discover = page.getByRole('button', { name: 'Discover' });
 
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
+    await expect(discover).toHaveAttribute('aria-pressed', 'true');
+    await expect(following).toHaveAttribute('aria-pressed', 'false');
 
-    // Click Following tab
-    await page.getByRole('button', { name: 'Following' }).click();
+    await following.click();
+    await expect(following).toHaveAttribute('aria-pressed', 'true');
+    await expect(discover).toHaveAttribute('aria-pressed', 'false');
 
-    // Following tab should now be visually active (bg-foreground class applied)
-    const followingBtn = page.getByRole('button', { name: 'Following' });
-    await expect(followingBtn).toBeVisible();
-
-    // Switching to Saved
-    await page.getByRole('button', { name: 'Saved' }).click();
-    const savedBtn = page.getByRole('button', { name: 'Saved' });
-    await expect(savedBtn).toBeVisible();
+    const saved = page.getByRole('button', { name: 'Saved' });
+    await saved.click();
+    await expect(saved).toHaveAttribute('aria-pressed', 'true');
+    await expect(following).toHaveAttribute('aria-pressed', 'false');
   });
 
-  test('like button toggles on a post when feed has content', async ({ page }) => {
-    await page.goto('/community');
+  test('like button increments the count', async ({ page }) => {
+    const firstPost = fixturePost(page);
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
 
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
-
-    // Wait for posts to load (community uses localStorage demo data)
-    const firstPost = page.locator('article').first();
-    const postVisible = await firstPost.waitFor({ timeout: 8000, state: 'visible' }).then(() => true).catch(() => false);
-
-    if (!postVisible) {
-      // No posts — skip interaction test
-      test.skip();
-      return;
-    }
-
-    // Find like button (Heart icon) in the first post
-    const likeBtn = firstPost.getByLabel(/like/i).or(
-      firstPost.locator('button').filter({ has: page.locator('svg') }).first()
-    );
-
-    // Read like count before click
-    const likeCountBefore = await firstPost.locator('p').filter({ hasText: /likes/ }).textContent();
+    // The count is a bare number inside the Like button — the card has no
+    // "N likes" text any more.
+    const likeBtn = firstPost.getByLabel('Like');
+    await expect(likeBtn).toHaveText(/^0$/);
 
     await likeBtn.click();
-
-    // Like count text should still be visible (state updated)
-    await expect(firstPost.locator('p').filter({ hasText: /likes/ })).toBeVisible();
-
-    const likeCountAfter = await firstPost.locator('p').filter({ hasText: /likes/ }).textContent();
-    // Count changed (toggled) or remains same — either way the UI responded
-    expect(likeCountAfter).toBeDefined();
-    expect(likeCountBefore).toBeDefined();
+    // Real server write-through: POST /api/posts/{id}/like.
+    await expect(likeBtn).toHaveText(/^1$/, { timeout: 10000 });
   });
 
   test('opening post detail dialog via comment area', async ({ page }) => {
-    await page.goto('/community');
+    const firstPost = fixturePost(page);
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
 
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
+    // With no comments the trigger reads "Add a comment...".
+    await firstPost.getByText(/add a comment|view all/i).first().click();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
 
-    const firstPost = page.locator('article').first();
-    const postVisible = await firstPost.waitFor({ timeout: 8000, state: 'visible' }).then(() => true).catch(() => false);
-
-    if (!postVisible) {
-      test.skip();
-      return;
-    }
-
-    // Click "Add a comment..." or "View all X comments" to open PostDetailDialog
-    const commentTrigger = firstPost.getByText(/add a comment|view all/i);
-    const hasTrigger = await commentTrigger.count() > 0;
-
-    if (hasTrigger) {
-      await commentTrigger.first().click();
-      // Dialog should open
-      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
-      // Close the dialog
-      await page.keyboard.press('Escape');
-      await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 3000 });
-    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 3000 });
   });
 
-  test('follow button in creator sidebar toggles follow state', async ({ page }) => {
-    await page.goto('/community');
+  test('follow button on a post toggles follow state', async ({ page }) => {
+    const firstPost = fixturePost(page);
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
 
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
+    // The creator <aside> rail was removed; Follow now lives in the card and
+    // only renders for posts the viewer does not own.
+    const followBtn = firstPost.getByRole('button', { name: /^Follow$/ });
+    await expect(followBtn).toBeVisible();
 
-    // Desktop creator sidebar (xl only) — if not visible, check mobile strip
-    const sidebarFollowBtns = page.locator('aside button').filter({ hasText: /^Follow$/ });
-    const sidebarCount = await sidebarFollowBtns.count();
-
-    if (sidebarCount > 0) {
-      const firstFollowBtn = sidebarFollowBtns.first();
-      await firstFollowBtn.click();
-      // After clicking Follow, it should become Following
-      await expect(page.locator('aside button').filter({ hasText: 'Following' }).first()).toBeVisible({ timeout: 3000 });
-    } else {
-      // Mobile creator strip
-      const stripBtns = page.locator('button').filter({ hasText: /^Follow$/ });
-      const stripCount = await stripBtns.count();
-      if (stripCount > 0) {
-        await stripBtns.first().click();
-        await expect(page.locator('button').filter({ hasText: 'Following' }).first()).toBeVisible({ timeout: 3000 });
-      }
-    }
+    await followBtn.click();
+    await expect(
+      firstPost.getByRole('button', { name: 'Following' }),
+    ).toBeVisible({ timeout: 5000 });
   });
 
-  test('creator search filters the sidebar list', async ({ page }) => {
-    await page.goto('/community');
+  test('shop this look link targets the outfit generator', async ({ page }) => {
+    const firstPost = fixturePost(page);
+    await expect(firstPost).toBeVisible({ timeout: 10000 });
 
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
+    const linkHref = await firstPost
+      .getByRole('link', { name: 'Shop This Look' })
+      .getAttribute('href');
 
-    // Creator search input only visible on xl screens in aside
-    const searchInput = page.locator('aside input[placeholder*="Search creators"]');
-    const searchVisible = await searchInput.isVisible().catch(() => false);
-
-    if (!searchVisible) {
-      // Viewport too narrow — skip
-      test.skip();
-      return;
-    }
-
-    await searchInput.fill('a');
-    // Results should still appear (at least one creator name contains "a")
-    const creatorRows = page.locator('aside .space-y-3 > div');
-    await expect(creatorRows.first()).toBeVisible({ timeout: 3000 });
-  });
-
-  test('shop this look link navigates to chat with params', async ({ page }) => {
-    await page.goto('/community');
-
-    await expect(page.getByRole('heading', { name: 'IYAE Community' })).toBeVisible({ timeout: 10000 });
-
-    const firstPost = page.locator('article').first();
-    const postVisible = await firstPost.waitFor({ timeout: 8000, state: 'visible' }).then(() => true).catch(() => false);
-
-    if (!postVisible) {
-      test.skip();
-      return;
-    }
-
-    const shopLink = firstPost.getByRole('link', { name: 'Shop This Look' });
-    const linkHref = await shopLink.getAttribute('href');
-
-    // Link should point to /chat with query params
-    expect(linkHref).toContain('/chat');
-    expect(linkHref).toContain('event=shop');
+    // buildOutfitGeneratorHref returns /outfits?… — the mode travels as
+    // `source`, while `event` carries the occasion tag.
+    expect(linkHref).toContain('/outfits');
+    expect(linkHref).toContain('source=shop');
   });
 });

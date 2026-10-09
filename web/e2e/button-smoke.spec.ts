@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { SEED_USERS, SEED_PASSWORD } from './seed-users';
+import { signIn } from './session';
 
 /**
  * Button smoke audit.
@@ -14,14 +14,6 @@ import { SEED_USERS, SEED_PASSWORD } from './seed-users';
  * Softer signals (console errors, no observable effect) are reported as
  * warnings so a noisy dev build can't fail the suite on its own.
  */
-
-const API_URL = process.env.PLAYWRIGHT_API_URL ?? 'http://localhost:3001';
-const TOKEN_KEY = 'clossette_token';
-
-const ACCOUNTS = {
-  shopper: SEED_USERS.shopper.email,
-  designer: SEED_USERS.designer.email,
-} as const;
 
 type Role = 'guest' | 'shopper' | 'designer';
 
@@ -115,45 +107,8 @@ interface Problem {
   detail: string;
 }
 
-/**
- * One login per role per worker process. The API rate-limits auth per IP, so
- * logging in once per test trips a 429 well before the matrix finishes.
- */
-const tokenCache = new Map<string, Promise<string>>();
-
-async function login(role: Exclude<Role, 'guest'>): Promise<string> {
-  const email = ACCOUNTS[role];
-  let lastStatus = 0;
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: SEED_PASSWORD }),
-    });
-    if (res.ok) {
-      const body = (await res.json()) as { token?: string };
-      if (!body.token) throw new Error(`Login for ${email} returned no token`);
-      return body.token;
-    }
-    lastStatus = res.status;
-    if (res.status !== 429) break;
-    await new Promise((resolve) => setTimeout(resolve, 2_000 * (attempt + 1)));
-  }
-
-  throw new Error(
-    `Seed login failed for ${email} (${lastStatus}). Is the API seeded? ` +
-      `Override the domain with PLAYWRIGHT_SEED_DOMAIN.`,
-  );
-}
-
-function tokenFor(role: Exclude<Role, 'guest'>): Promise<string> {
-  const cached = tokenCache.get(role);
-  if (cached) return cached;
-  const pending = login(role);
-  tokenCache.set(role, pending);
-  return pending;
-}
+// Auth (one cached login per role per worker, plus the token injection) lives
+// in ./session — this spec used to carry its own copy of both.
 
 /** Collects every signal that would mark a click as broken or suspicious. */
 function watchPage(page: Page): Problem[] {
@@ -383,19 +338,7 @@ for (const role of ['guest', 'shopper', 'designer'] as const) {
         testInfo.setTimeout(6 * 60 * 1000);
 
         if (role !== 'guest') {
-          const token = await tokenFor(role);
-          await page.addInitScript(
-            ([key, value]) => {
-              // Runs in every document, including the opaque-origin about:blank
-              // a router.back() can land on — where storage access throws.
-              try {
-                window.localStorage.setItem(key, value);
-              } catch {
-                /* no storage on this origin */
-              }
-            },
-            [TOKEN_KEY, token] as const,
-          );
+          await signIn(page, role);
         }
 
         const problems = watchPage(page);
