@@ -11,6 +11,7 @@ import { SearchFilterBar, type ShopFilter } from "@/components/SearchFilterBar";
 import { Button } from "@/components/ui/button";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { api } from "@/lib/api";
+import { toggleSavedProduct, useSavedProductIds } from "@/lib/saved-products";
 import type { Product } from "@/components/ProductListItem";
 
 interface ProductPage {
@@ -47,6 +48,7 @@ function ProductsPageContent() {
     last: boolean;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const savedIds = useSavedProductIds();
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -69,9 +71,14 @@ function ProductsPageContent() {
         last: result.last,
       });
       // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
-      setProducts((prev) =>
-        currentPage === 0 ? result.content : [...prev, ...result.content],
-      );
+      setProducts((prev) => {
+        if (currentPage === 0) return result.content;
+        // Append by id, never blindly: a re-run of this effect (React Strict
+        // Mode double-invokes it in dev) would otherwise append the same page
+        // twice and collide React keys.
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...result.content.filter((p) => !seen.has(p.id))];
+      });
     } catch {
       if (currentPage === 0) {
         setProducts([]);
@@ -248,6 +255,8 @@ function ProductsPageContent() {
                   price={formatPrice(product.price, product.currency)}
                   imageUrl={product.media?.[0]}
                   href={`/products/${product.id}`}
+                  saved={savedIds.has(product.id)}
+                  onToggleSave={() => toggleSavedProduct(product.id)}
                 />
               ))}
             </div>

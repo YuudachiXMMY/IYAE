@@ -45,26 +45,38 @@ export function ProductCard({
             tint={12}
           />
         )}
-        <button
-          type="button"
-          aria-label="Save"
-          aria-pressed={saved}
-          onClick={(e) => {
-            e.preventDefault();
-            onToggleSave?.();
-          }}
-          className={cn(
-            "absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-background/80 text-foreground transition-colors hover:bg-background",
-            saved && "text-brand"
-          )}
-        >
-          <Heart
-            width={16}
-            height={16}
-            fill={saved ? "currentColor" : "none"}
-            aria-hidden="true"
-          />
-        </button>
+        {/* Only offer a button when there is something for it to do — a heart
+            wired to `onToggleSave?.()` with no handler swallows every click. */}
+        {onToggleSave ? (
+          <button
+            type="button"
+            aria-label="Save"
+            aria-pressed={saved}
+            onClick={(e) => {
+              e.preventDefault();
+              onToggleSave();
+            }}
+            className={cn(
+              "absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-background/80 text-foreground transition-colors hover:bg-background",
+              saved && "text-brand"
+            )}
+          >
+            <Heart
+              width={16}
+              height={16}
+              fill={saved ? "currentColor" : "none"}
+              aria-hidden="true"
+            />
+          </button>
+        ) : saved ? (
+          <span
+            aria-label="Saved"
+            role="img"
+            className="pointer-events-none absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-background/80 text-brand"
+          >
+            <Heart width={16} height={16} fill="currentColor" aria-hidden="true" />
+          </span>
+        ) : null}
       </div>
       <p className="mt-2 font-body font-medium text-[15px] text-foreground">
         {name}
