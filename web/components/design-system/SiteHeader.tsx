@@ -186,7 +186,16 @@ export function SiteHeader({ variant = "app" }: SiteHeaderProps) {
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
             >
-              <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
+              {/* `modal` must stay off: this menu opens on hover, and Radix's
+                  modal mode sets `body { pointer-events: none }` plus
+                  aria-hidden on the rest of the document — so merely resting
+                  the pointer here would make every other button on the page
+                  unclickable. */}
+              <DropdownMenu
+                open={profileOpen}
+                onOpenChange={setProfileOpen}
+                modal={false}
+              >
                 <DropdownMenuTrigger asChild>
                   <button
                     aria-label="Account menu"
