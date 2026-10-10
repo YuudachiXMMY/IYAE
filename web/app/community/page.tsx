@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
-  loadCommunityState,
-  saveCommunityState,
   getFeedByTab,
   toggleLike,
   toggleSave,
@@ -15,7 +13,12 @@ import {
   toSocialPost,
   type SocialPost,
   type CommunityTab,
+  type PersistedCommunityState,
 } from "@/lib/community-feed";
+import {
+  loadCommunityStateFor,
+  useCommunityStatePersistence,
+} from "@/lib/hooks/useCommunityState";
 import { findSocialProfile } from "@/lib/social-graph";
 import {
   posts as postsApi,
@@ -337,18 +340,11 @@ export default function CommunityPage() {
 }
 
 function CommunityFeed({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
-  const [state, setState] = useState<{
-    followedUsernames: string[];
-    posts: SocialPost[];
-  } | null>(() =>
-    user
-      ? loadCommunityState(
-          String(user.id),
-          user.name ?? "",
-          user.username ?? "",
-          (user as { styleAesthetics?: string[] }).styleAesthetics?.[0] ?? "Everyday"
-        )
-      : null
+  // Seeded through the shared loader so this surface and `useCommunityState`
+  // (the dashboard's) cannot drift apart on how a viewer maps to their stored
+  // feed — they share one storage entry.
+  const [state, setState] = useState<PersistedCommunityState | null>(() =>
+    loadCommunityStateFor(user)
   );
   const [activeTab, setActiveTab] = useState<CommunityTab>("discover");
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
@@ -367,9 +363,7 @@ function CommunityFeed({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const feedPosts = feed && feed.key === feedKey ? feed.posts : null;
   const feedLoading = feedKey !== null && feed?.key !== feedKey;
 
-  useEffect(() => {
-    if (user && state) saveCommunityState(String(user.id), state);
-  }, [state, user]);
+  useCommunityStatePersistence(user, state);
 
   // Fetch the selected server feed; degrade gracefully to the localStorage demo on error/offline.
   useEffect(() => {
