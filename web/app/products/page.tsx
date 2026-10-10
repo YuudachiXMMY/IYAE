@@ -68,9 +68,21 @@ function ProductsPageContent() {
   const loading = loadedQuery !== query;
 
   useEffect(() => {
+    // Cancelled on cleanup, so a request the user has already navigated away
+    // from writes nothing. Without this, a late page>0 response ran its append
+    // branch and dropped rows from the previous filter into the new result set
+    // — and, worse, its `finally` wrote the *old* query into `loadedQuery`.
+    // Since `loading` is derived as `loadedQuery !== query` and nothing re-runs
+    // this effect afterwards, LOAD MORE then sat disabled on "LOADING…" for as
+    // long as the user stayed on the page.
+    const controller = new AbortController();
+
     async function fetchProducts() {
       try {
-        const result = await api.get<ProductPage>(`/api/products?${query}`);
+        const result = await api.get<ProductPage>(`/api/products?${query}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         setMeta({
           totalElements: result.totalElements,
           totalPages: result.totalPages,
@@ -79,22 +91,28 @@ function ProductsPageContent() {
         // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
         setProducts((prev) => {
           if (currentPage === 0) return result.content;
-          // Append by id, never blindly: a re-run of this effect (React Strict
-          // Mode double-invokes it in dev) would otherwise append the same page
-          // twice and collide React keys.
+          // Append by id, never blindly: with `sort=createdAt,desc` a listing
+          // published between the two requests shifts the page boundary, so
+          // page 1 can repeat a row already shown from page 0.
           const seen = new Set(prev.map((p) => p.id));
           return [...prev, ...result.content.filter((p) => !seen.has(p.id))];
         });
       } catch {
+        // An abort is not a failed search: the run that superseded this one owns
+        // the grid now, and clearing it here would blank a result set that
+        // loaded fine.
+        if (controller.signal.aborted) return;
         if (currentPage === 0) {
           setProducts([]);
           setMeta(null);
         }
       } finally {
-        setLoadedQuery(query);
+        if (!controller.signal.aborted) setLoadedQuery(query);
       }
     }
+
     void fetchProducts();
+    return () => controller.abort();
   }, [query, currentPage]);
 
   const updateParams = useCallback(
