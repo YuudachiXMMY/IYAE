@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
@@ -57,30 +64,112 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── One moderation list ─────────────────────────────────────────────────────────
+
+interface AdminList<T> {
+  items: T[];
+  /**
+   * Set when the load failed. Rendered *in place of* the list, because to a
+   * moderator "nothing to review" and "we could not find out" are opposite
+   * answers and only one of them means they can stop looking.
+   */
+  error: string | null;
+  loading: boolean;
+  setItems: Dispatch<SetStateAction<T[]>>;
+  retry: () => void;
+}
+
+/**
+ * One moderation list, owned by the effect that loaded it.
+ *
+ * All four sections of this console carried their own copy of
+ * `try { setX(await …) } catch { setX([]) }`. Two faults came with it, four
+ * times over:
+ *
+ *  - A failed request — an outage, a 403 from an expired session — rendered as
+ *    "No posts." An admin reading that concludes the queue is clear.
+ *  - Nothing cancelled a superseded request. `loading` is derived as "what is
+ *    loaded is not what is wanted", so a stale reply landing *after* the current
+ *    one both showed the wrong rows and pinned the section on "Loading…", with
+ *    no further effect run left to correct it. (Same shape as the product grid's
+ *    stuck LOAD MORE.)
+ *
+ * `load` is the key: callers memoise it on whatever the request depends on (the
+ * tab), the way `useRiggingStatus` keys on its own loader.
+ */
+function useAdminList<T>(load: (signal: AbortSignal) => Promise<T[]>): AdminList<T> {
+  const [items, setItems] = useState<T[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // Identity of the request currently wanted; `retry` mints a new one.
+  const request = useMemo(() => ({ load, attempt }), [load, attempt]);
+  const [loaded, setLoaded] = useState<typeof request | null>(null);
+  const loading = loaded !== request;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const next = await request.load(controller.signal);
+        if (controller.signal.aborted) return;
+        setItems(next);
+        setError(null);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setItems([]);
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Couldn’t load this list. Check your connection and try again."
+        );
+      } finally {
+        if (!controller.signal.aborted) setLoaded(request);
+      }
+    })();
+    return () => controller.abort();
+  }, [request]);
+
+  return {
+    items,
+    error,
+    loading,
+    setItems,
+    retry: () => setAttempt((n) => n + 1),
+  };
+}
+
+function ListError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-3 rounded-card border border-destructive/40 bg-destructive/5 p-4"
+    >
+      <p className="min-w-0 flex-1 text-sm text-destructive">{message}</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
+
 // ── Catalog moderation ──────────────────────────────────────────────────────────
 
 function CatalogModeration() {
   const [tab, setTab] = useState<(typeof PRODUCT_TABS)[number]>("ALL");
-  const [products, setProducts] = useState<AdminProduct[]>([]);
-  const [loadedTab, setLoadedTab] = useState<(typeof PRODUCT_TABS)[number] | null>(null);
   const [confirm, setConfirm] = useState<AdminProduct | null>(null);
 
-  // Loading is "the listed products are not the ones this tab asked for", so
-  // switching tabs shows the spinner without a setState in the effect below.
-  const loading = loadedTab !== tab;
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const status = tab === "ALL" ? undefined : (tab as AdminProductStatus);
-        setProducts(await admin.listProducts(status));
-      } catch {
-        setProducts([]);
-      } finally {
-        setLoadedTab(tab);
-      }
-    })();
-  }, [tab]);
+  const load = useCallback(
+    (signal: AbortSignal) =>
+      admin.listProducts(tab === "ALL" ? undefined : (tab as AdminProductStatus), signal),
+    [tab]
+  );
+  const {
+    items: products,
+    error,
+    loading,
+    setItems: setProducts,
+    retry,
+  } = useAdminList(load);
 
   async function setStatus(p: AdminProduct, status: AdminProductStatus) {
     try {
@@ -110,6 +199,8 @@ function CatalogModeration() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : error ? (
+        <ListError message={error} onRetry={retry} />
       ) : products.length === 0 ? (
         <p className="text-sm text-muted-foreground">No products.</p>
       ) : (
@@ -183,24 +274,20 @@ function CatalogModeration() {
 
 function CommunityModeration() {
   const [tab, setTab] = useState<(typeof POST_TABS)[number]>("ACTIVE");
-  const [posts, setPosts] = useState<AdminPost[]>([]);
-  const [loadedTab, setLoadedTab] = useState<(typeof POST_TABS)[number] | null>(null);
   const [confirm, setConfirm] = useState<AdminPost | null>(null);
 
-  const loading = loadedTab !== tab;
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const status = tab === "ALL" ? undefined : (tab as AdminPostStatus);
-        setPosts(await admin.listPosts(status));
-      } catch {
-        setPosts([]);
-      } finally {
-        setLoadedTab(tab);
-      }
-    })();
-  }, [tab]);
+  const load = useCallback(
+    (signal: AbortSignal) =>
+      admin.listPosts(tab === "ALL" ? undefined : (tab as AdminPostStatus), signal),
+    [tab]
+  );
+  const {
+    items: posts,
+    error,
+    loading,
+    setItems: setPosts,
+    retry,
+  } = useAdminList(load);
 
   async function archive(post: AdminPost) {
     try {
@@ -240,6 +327,8 @@ function CommunityModeration() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : error ? (
+        <ListError message={error} onRetry={retry} />
       ) : posts.length === 0 ? (
         <p className="text-sm text-muted-foreground">No posts.</p>
       ) : (
@@ -310,20 +399,14 @@ function CommunityModeration() {
 // ── Promotion moderation ─────────────────────────────────────────────────────────
 
 function PromotionModeration() {
-  const [promos, setPromos] = useState<PromotionResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setPromos(await admin.listPromotions());
-      } catch {
-        setPromos([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const load = useCallback((signal: AbortSignal) => admin.listPromotions(signal), []);
+  const {
+    items: promos,
+    error,
+    loading,
+    setItems: setPromos,
+    retry,
+  } = useAdminList(load);
 
   async function setSlot(promo: PromotionResponse, slotType: PromotionSlotType) {
     try {
@@ -339,6 +422,8 @@ function PromotionModeration() {
     <div className="mt-4 flex flex-col gap-4">
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : error ? (
+        <ListError message={error} onRetry={retry} />
       ) : promos.length === 0 ? (
         <p className="text-sm text-muted-foreground">No promotions.</p>
       ) : (
@@ -376,25 +461,21 @@ function PromotionModeration() {
 
 function ReportsModeration() {
   const [tab, setTab] = useState<(typeof REPORT_TABS)[number]>("OPEN");
-  const [reports, setReports] = useState<PostReport[]>([]);
-  const [loadedTab, setLoadedTab] = useState<(typeof REPORT_TABS)[number] | null>(null);
   const [confirm, setConfirm] = useState<PostReport | null>(null);
 
-  const loading = loadedTab !== tab;
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        // adminReports.list returns Paged<PostReport> — read .content (unlike the bare-array admin.* calls).
-        const res = await adminReports.list(tab as CommunityReportStatus);
-        setReports(res.content);
-      } catch {
-        setReports([]);
-      } finally {
-        setLoadedTab(tab);
-      }
-    })();
-  }, [tab]);
+  const load = useCallback(
+    // adminReports.list returns Paged<PostReport> — read .content (unlike the bare-array admin.* calls).
+    async (signal: AbortSignal) =>
+      (await adminReports.list(tab as CommunityReportStatus, 0, 20, signal)).content,
+    [tab]
+  );
+  const {
+    items: reports,
+    error,
+    loading,
+    setItems: setReports,
+    retry,
+  } = useAdminList(load);
 
   async function resolve(
     report: PostReport,
@@ -428,6 +509,8 @@ function ReportsModeration() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : error ? (
+        <ListError message={error} onRetry={retry} />
       ) : reports.length === 0 ? (
         <p className="text-sm text-muted-foreground">No reports.</p>
       ) : (

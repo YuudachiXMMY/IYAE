@@ -112,7 +112,7 @@ function LookCard({
           ))}
         </div>
       ) : (
-        <p className="text-xs italic text-muted-foreground/60">
+        <p className="text-xs italic text-muted-foreground">
           No items recorded
         </p>
       )}
@@ -158,7 +158,7 @@ function LookCard({
             aria-label="Edit note"
           >
             {look.note || (
-              <span className="italic text-muted-foreground/40">
+              <span className="italic text-muted-foreground">
                 Add a note...
               </span>
             )}
@@ -191,7 +191,7 @@ function LookCard({
           className={`flex items-center gap-1 text-xs transition-colors disabled:opacity-40 ${
             confirmDelete
               ? "text-destructive font-medium"
-              : "text-muted-foreground/40 hover:text-destructive/70"
+              : "text-muted-foreground hover:text-destructive/70"
           }`}
           title={confirmDelete ? "Click again to confirm" : "Delete look"}
           aria-label={confirmDelete ? "Confirm delete" : "Delete look"}

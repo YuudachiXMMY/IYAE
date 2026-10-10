@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { api, AUTH_TOKEN_KEY, type RegisterRequest, type UpdateProfileRequest } from "./api";
 import { isVerificationPending } from "./auth-config";
 import { clearSavedProducts, resetSavedProductsSync } from "./saved-products";
+import { clearDemoCartItems } from "./demo-cart";
 
 interface User {
   id: number;
@@ -104,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem("clossette_demo_cart_items");
+    // Clears the *stored* demo cart. The list on screen is emptied by
+    // `CartProvider`, which owns it — this used to be the whole clear, written
+    // against a second hardcoded copy of the key, so the items stayed visible
+    // and the next add wrote them straight back.
+    clearDemoCartItems();
     // The wishlist cache is per-user. Left behind on a shared device it would
     // show the previous account's saves, and the next sign-in would replay them
     // onto the new account as if they had been tapped there.

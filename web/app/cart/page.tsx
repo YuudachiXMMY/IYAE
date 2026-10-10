@@ -135,7 +135,7 @@ function ServerItemRow({ item }: { item: CartItem }) {
       <button
         onClick={handleRemove}
         disabled={busy}
-        className="ml-2 text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-40"
+        className="ml-2 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
         aria-label="Remove item"
       >
         <RemoveIcon />
@@ -194,7 +194,7 @@ function DemoItemRow({ item }: { item: DemoCartItem }) {
 
       <button
         onClick={() => removeDemoItem(item.id)}
-        className="ml-2 text-muted-foreground/40 hover:text-destructive transition-colors"
+        className="ml-2 text-muted-foreground hover:text-destructive transition-colors"
         aria-label="Remove item"
       >
         <RemoveIcon />

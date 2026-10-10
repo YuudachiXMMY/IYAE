@@ -445,8 +445,18 @@ function CommunityFeed({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const localPosts = state
     ? getFeedByTab(fallbackTab, state.posts, state.followedUsernames)
     : [];
-  // Server feeds render REAL posts; on error/unauth they fall back to the local demo layer.
-  const filteredPosts = isServerFeed(activeTab) ? feedPosts ?? localPosts : localPosts;
+  // Server feeds render REAL posts; on error/unauth they fall back to the local
+  // demo layer. Only a *settled* fetch does, though: `feedPosts` is null while
+  // one is in flight as well, and `feedPosts ?? localPosts` could not tell the
+  // two apart — so Discover opened on fabricated demo posts, which the user
+  // could like and whose authors they could follow, and which were then swapped
+  // out from under them. It also made the "Loading feed…" branch below dead code
+  // for any viewer with a seeded local feed, which is every signed-in viewer.
+  const filteredPosts = !isServerFeed(activeTab)
+    ? localPosts
+    : feedLoading
+      ? []
+      : feedPosts ?? localPosts;
 
   const emptyConfig = EMPTY_STATE[activeTab];
   const EmptyIcon = emptyConfig.icon;

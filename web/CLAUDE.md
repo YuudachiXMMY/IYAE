@@ -35,12 +35,12 @@ app/           (37 page routes)  --> All "use client", no RSC or server actions
 app/not-found.tsx                --> Custom 404 page (static, no "use client")
 app/error.tsx                    --> Global error boundary ("use client")
 app/layout.tsx                   --> Root layout (AuthProvider -> CartProvider, fonts, metadata)
-components/    (94 total)        --> 75 app-specific + 19 shadcn/ui primitives
+components/    (96 total)        --> 77 app-specific (74 .tsx + 3 .ts) + 19 shadcn/ui primitives
 components/register/ (7)         --> Multi-step registration wizard components
 components/community/ (1)        --> PostMedia (community post media rendering)
-components/profile/ (9)          --> Profile page components (header, stats, settings, posts, actions)
-components/home/ (18)            --> Landing page sections + shared motion presets (hero, designers, how-it-works, sustainability, CTA, community, nav, footer, immersive-homepage, ai-stylist, social-proof, trust-bar, try-on, try-on-viewer, lifestyle-grid, photo-strip, magnetic-cta-link, motion-presets)
-components/outfits/ (6)          --> Manual outfit builder (OutfitSlotCard, ProductPickerDialog, ProductSelectCard, OutfitDetailsForm, OutfitBuilderPreview, OutfitSlotSidebarItem)
+components/profile/ (9)          --> Profile page components (settings, post creation, image picker; 6 of the 9 have no importer -- see the table below)
+components/home/ (6)             --> Landing page sections + shared motion presets (immersive-homepage, hero, about, nav, footer, motion-presets)
+components/outfits/ (5)          --> Manual outfit builder (ProductPickerDialog, ProductSelectCard, OutfitDetailsForm, OutfitBuilderPreview, OutfitSlotSidebarItem)
 components/designer/ (2)         --> Designer studio (PromotionList, PromotionForm)
 components/ui/ (19)              --> shadcn/ui (Radix-based, CLI-generated, DO NOT edit)
 lib/api.ts                       --> Typed fetch wrapper with auto JWT injection + AbortSignal + auth/rigging/avatar/sizing helpers + outfit types
@@ -141,7 +141,7 @@ e2e/                             --> Playwright E2E specs
 | NavBar | Top navigation with auth-aware menu, Community/Style Lab/Orders links, mobile hamburger Sheet |
 | PageShell | Consistent page layout wrapper |
 | ProductForm | Product creation/editing (designer); the per-size "Size chart (cm)" grid writes `product_size_measurements`, which now drives the PDP `MEASUREMENT_CHART` recommended-size hint via `SizeRecommendationService` |
-| ProductList / ProductListItem | Product catalog display |
+| ProductListItem | Product catalog row. **The module survives for its exported `Product` type, which five call sites import; the `ProductListItem` component itself now has no importer** — its only consumer was `ProductList`, deleted 2026-10-10 as dead. The catalog renders `design-system/ProductCard`. |
 | SearchFilterBar | Catalog search, dynamic category filtering (fetches from `/api/products/categories` via AbortController), and sort |
 | ChatSidebar | Session list for AI chat |
 | ChatMessageBubble | Individual chat message display |
@@ -157,7 +157,6 @@ e2e/                             --> Playwright E2E specs
 | RecommendedSizeHint | Presentational recommended-size hint ("Your recommended size: M"); renders nothing when basis is NONE; "based on your saved sizes" caption for SELF_REPORTED |
 | Footer | Site footer |
 | theme-provider | next-themes ThemeProvider wrapper |
-| theme-toggle | Dark/light mode toggle button |
 | floating-ai-stylist | Floating AI assistant chat widget (hidden on /login, /register, /chat) |
 | PostDetailDialog | Community post detail modal with comments and replies |
 | ViewerErrorBoundary | Error boundary for 3D viewer components |
@@ -170,27 +169,23 @@ e2e/                             --> Playwright E2E specs
 | ARViewer | WebXR AR session with hit testing |
 | SmartARViewer | Auto-detects device capability, routes to appropriate viewer; passes `previewImageUrl` through to the desktop AvatarViewer |
 
-### Home (`components/home/`, 18)
+### Home (`components/home/`, 6)
+
+`app/page.tsx` renders `ImmersiveHomepage`, which composes exactly
+`HeroSection` + `AboutSection` + `LandingFooter`. The eleven sections of the
+homepage it replaced (DesignersSection, HowItWorks, SustainabilitySection,
+CTASection, CommunitySection, AIStylistSection, SocialProofSection, TrustBar,
+TryOnSection, LifestyleGrid, PhotoStrip) plus TryOnViewer and MagneticCTALink
+were deleted on 2026-10-10 — they had no importer anywhere in the tree. Recover
+them from history if the sections are wanted back.
 
 | Component | Purpose |
 |-----------|---------|
 | immersive-homepage | Full-screen landing page with editorial layout |
 | HeroSection | Landing hero with animated headline and CTA |
-| DesignersSection | Featured designers showcase |
-| HowItWorks | Step-by-step feature walkthrough |
-| SustainabilitySection | Sustainability messaging block |
-| CTASection | Call-to-action conversion block |
-| CommunitySection | Community preview for landing |
-| LandingNav | Landing page dedicated navigation |
+| AboutSection | Editorial about block on the immersive homepage |
+| LandingNav | Landing page dedicated navigation (used by `app/design`) |
 | LandingFooter | Landing page dedicated footer |
-| AIStylistSection | AI stylist iPhone mockup showcase with avatar flow |
-| SocialProofSection | Social proof stats and testimonials |
-| TrustBar | Trust badges and partner logos |
-| TryOnSection | Interactive 3D try-on demo with scroll-driven parallax |
-| TryOnViewer | Embedded 3D viewer for try-on section |
-| LifestyleGrid | Masonry photo grid with motion animations |
-| PhotoStrip | Infinite-scroll photo strip with CSS animation |
-| MagneticCTALink | Spring-physics magnetic hover CTA button |
 | motion-presets | Shared motion presets: CTA_SPRING, SOFT_SPRING, EASE_OUT_EXPO, textStagger, textChild, fadeUp |
 
 ### Community (`components/community/`, 1)
@@ -201,23 +196,28 @@ e2e/                             --> Playwright E2E specs
 
 ### Profile (`components/profile/`, 9)
 
+**Six of these nine have no importer** (marked UNWIRED below). Unlike the deleted
+home sections they are not superseded by anything live — `app/profile/[username]`
+and `app/dashboard` build their own headers and tab bars inline — so they read as
+a profile redesign that was built and never mounted. They are kept deliberately;
+decide whether to wire them up or drop them.
+
 | Component | Purpose |
 |-----------|---------|
-| ProfileHeader | User profile hero with avatar, banner, bio |
-| ProfileStatsBar | Posts/followers/following stats display |
-| ProfileActionBar | Follow/message/settings action buttons |
-| ProfileContentTabs | Tab navigation for profile content (posts/saved/reposted/tagged/archives) |
-| ProfilePostGrid | Grid layout for profile post cards |
+| ProfileHeader | UNWIRED. User profile hero with avatar, banner, bio |
+| ProfileStatsBar | UNWIRED. Posts/followers/following stats display; `onClickFollowers`/`onClickFollowing` are the intended entry point for StyleCircleDialog |
+| ProfileActionBar | UNWIRED. Follow/message/settings action buttons |
+| ProfileContentTabs | UNWIRED. Tab navigation for profile content (posts/saved/reposted/tagged/archives) |
+| ProfilePostGrid | UNWIRED. Grid layout for profile post cards |
 | ProfileSettingsDialog | Profile settings modal (3 tabs: edit profile, style preferences, body measurements); one-tap "Delete my avatar & body data" button (two-step confirm -> `avatar.delete()` -> toast -> refresh) |
 | CreateFashionPostDialog | New fashion post creation dialog |
-| StyleCircleDialog | Style circle management dialog (followers/following with humanized counts) |
+| StyleCircleDialog | UNWIRED. Followers/following dialog, reading the real graph from `GET /api/follows/{followers,following}` with optimistic follow write-through |
 | LocalImagePicker | Client-side image picker for avatar/banner uploads |
 
-### Outfit Builder (`components/outfits/`, 6)
+### Outfit Builder (`components/outfits/`, 5)
 
 | Component | Purpose |
 |-----------|---------|
-| OutfitSlotCard | Slot card for manual outfit builder (displays selected product per slot) |
 | ProductPickerDialog | Dialog for browsing and selecting products to fill outfit slots |
 | ProductSelectCard | Compact product card used within ProductPickerDialog |
 | OutfitDetailsForm | Occasion and note input form for outfit metadata |
@@ -355,7 +355,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Test directory**: `__tests__/` (not `__tests__` inside `app/` or `lib/`)
 - **Pattern**: `__tests__/**/*.test.{ts,tsx}`
 - **Lint**: ESLint via `npm run lint`
-- **Current state**: 39 test files, 404 test cases (measured — `npx vitest run`). The inventory below lists 22 of those files; it has never been complete, so treat a missing row as undocumented, not as a missing test.
+- **Current state**: 43 test files, 435 test cases (measured — `npx vitest run`). The inventory below lists 22 of those files; it has never been complete, so treat a missing row as undocumented, not as a missing test.
 
 ### Test Inventory
 
@@ -414,10 +414,14 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **API proxy**: `API_PROXY_TARGET` is a runtime env var for local `npm run dev` (proxies to `:3001`), but a build-time `ARG` in the Docker container (baked in at image build). `NEXT_PUBLIC_API_URL` defaults to `""` -- requests hit same origin, proxied to the server in dev
 - **Token lifecycle**: 401 from API -> auto-clear token -> redirect to `/login` (handled in `lib/api.ts`)
 - **shadcn/ui components** live in `components/ui/` -- generated by CLI, do not edit manually
-- **Demo items** use negative IDs in localStorage key `clossette_demo_cart_items` (the rebrand has not reached the storage keys — see the key gotcha further down)
+- **Demo items** use negative IDs in localStorage key `clossette_demo_cart_items`, which lives in `lib/demo-cart.ts` along with its load/save/clear (the rebrand has not reached the storage keys — see the key gotcha further down)
 - **An effect that starts something owns stopping it.** Two fixed instances to pattern-match against: `verify-email/page.tsx` left its 3s `router.push` timer uncleared (verify, navigate away, and the timer still yanks you to `/dashboard`), and `products/page.tsx` never cancelled its fetch, so a late response from a filter the user had already left appended its rows *and* wrote its own stale query into `loadedQuery` — with `loading` derived as `loadedQuery !== query`, LOAD MORE then sat on "LOADING…" with no further effect run to correct it. Derived loading flags make a missing cleanup permanent rather than transient.
 - **A single-use endpoint cannot be called straight from an effect.** `POST /api/auth/verify-email` clears the token on first success, and dev StrictMode replays effects — so the second POST returned `Invalid verification token` and it was the *surviving* effect instance holding that failure, telling a verified user they had failed. Keep the request itself in a ref (`verification.current ??= api.post(...)`) so a replay attaches handlers to the same in-flight promise. Gating only the state commit is not enough when the call is what must not repeat.
 - **Never persist from inside a `setState` updater.** `cart-context.tsx` used to call `saveDemoItems()` inside the `setDemoItems` updater; React double-invokes an updater under StrictMode and replays it whenever a pending queue is re-processed, so the write fired twice per change and could fire for a render React then discarded. Persist from an effect keyed on the committed value instead. **ESLint does not catch this** — a side effect in a callback handed to `setState` is not flagged by the `react-hooks` rules that gate CI, so it has to be caught by reading. Demo ids are derived from the list (`nextDemoId`), not the clock, for the same purity reason.
+- **`catch { setItems([]) }` is a lie, not a fallback.** All four sections of `/admin` did exactly that, so a backend outage — or the 403 an expired admin session returns — rendered as "No posts." A moderator reads that as a clear queue and stops looking. Keep an `error` next to the list and render it instead; `useAdminList` in `app/admin/page.tsx` is the shape to copy. The same handler must also skip aborts, or cleanup blanks a list the surviving request filled (`StyleCircleDialog` had that too).
+- **One storage entry needs one owner.** Three defects in a row came from two places writing the same key. `logout()` deleted the demo cart's storage key against its own copy of the string while `CartProvider` kept the list in state — the clear was invisible and the next add wrote the stale list back. `/profile/[username]` persisted on follow but not on a post update, so a like left from its detail dialog was the one interaction in the app that vanished on reload. And `useCommunityState` and `/community` carried the same four-argument seeding call verbatim. The fix is always the same: one module owns the key (`lib/demo-cart.ts`), one hook owns the mirroring (`useCommunityStatePersistence`), and callers stop remembering.
+- **`loading` derived as "loaded ≠ wanted" needs cancellation to go with it.** The pattern is good — it keeps a fetch effect free of synchronous `setState` and so clears `react-hooks/set-state-in-effect` — but it turns a missing cleanup from transient into *permanent*: a superseded response writing its own key into the "loaded" slot leaves the flag stuck with no further effect run to correct it. Seen in `products/page.tsx` (LOAD MORE pinned on "LOADING…") and all four `/admin` sections. Gate the commit **and** the `finally` on `signal.aborted`.
+- **`text-<token>/<alpha>` produces a colour no token defines and nothing was checking.** `__tests__/a11y/token-contrast.test.ts` scans for it and fails on any new sub-AA use. Nine are recorded as debt, each with the reason it is exempt (decorative glyph, or a disabled control); everything that carries text or is an icon-only control has been moved to the plain token. If you need de-emphasis beyond `text-muted-foreground`, add a token rather than an opacity modifier.
 - **Fonts**: Display (Cormorant Garamond, `next/font/google`) and body (DM Sans, `next/font/google`) loaded in `layout.tsx`; body carries `--tracking-body` (0.01em), headings carry `--tracking-display` (0, per FORME Figma serif rule)
 - **Suspense required for useSearchParams**: Any page calling `useSearchParams()` must wrap its content in a `<Suspense>` boundary or Next.js 16 will bail out to full client-side rendering
 - **Vitest path alias**: Tests use `@/` alias resolved to project root (configured in `vitest.config.ts`)
@@ -474,9 +478,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `components/SizeSelector.tsx` | Cloth size selection button group |
 | `components/RecommendedSizeHint.tsx` | Presentational recommended-size hint (renders nothing when basis is NONE) |
 | `components/home/motion-presets.ts` | Shared spring/easing presets for landing animations |
-| `components/home/LifestyleGrid.tsx` | Masonry photo grid with motion animations |
-| `components/home/PhotoStrip.tsx` | Infinite-scroll photo strip |
-| `components/home/MagneticCTALink.tsx` | Spring-physics magnetic hover CTA |
+| `lib/demo-cart.ts` | The demo cart's storage key + load/save/clear. Its own module because `cart-context` imports `auth-context` and both need the key |
 | `middleware.ts` | CSP headers and camera permissions |
 | `next.config.ts` | API proxy configuration |
 | `vitest.config.ts` | Vitest test configuration |
@@ -510,3 +512,4 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | 2026-09-08 | Tech-debt cleanup: aligned the mocked `ApiError` in `__tests__/lib/hooks/useGenerationStatus.test.ts` to the real `(status, message)` constructor (was `(message, status)`) + swapped the two call-site args — clears the 2 pre-existing `TS2345` errors; `tsc --noEmit` now fully clean. No runtime/behavior change (hook 11/11, suite 301 green). |
 | 2026-09-10 | Drape-realism Phase 2 (C2 slot normal maps + D3 tone mapping): new `lib/fabric-textures.ts` (`getFabricNormalConfig(slot)` → slot-keyed tileable normal-map url/repeat/normalScale; always returns a config) + tangent-space assets under `public/textures/fabric/` (`weave-normal.png`, `denim-normal.png`, procedurally generated, README provenance). `FittingHelper` gains `applyGarmentNormalMap`/`applyGarmentNormalMapToScene` (C2): assigns a tiled slot-keyed normal map to garment `MeshStandardMaterial`s **without** an existing `normalMap` (never clobbers a Meshy-PBR map), via a module-level memoized `TextureLoader` cache; mutated in place (SkinnedMesh binding preserved); relief needs UV (B1 garments + Meshy GLBs have it). `AvatarViewer` `GarmentModel`/`BoundGarmentModel` call it (threading `slot`); `<Canvas gl={{ toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.0 }}>` + `<Environment environmentIntensity={0.6}>` (D3) → matte fabric, plastic highlights gone. Tests: `FittingHelper.test.ts` +4, new `fabric-textures.test.ts` +7; web 33→34 files / 324→335. |
 | 2026-09-10 | Drape-realism Phase 1 (D1 contact shadows + D2 fabric fallback): `AvatarViewer` gains `<Canvas shadows>`, `castShadow` on the key directional light, drei `<ContactShadows>` grounding the avatar at y=0, and `castShadow`/`receiveShadow` on avatar meshes — kills the "floating" read. `FittingHelper` gains `fabricizeMaterial`/`fabricizeScene` (D2): untextured `MeshStandardMaterial` (`.map==null`) forced to metalness=0/roughness=0.85 so pre-B1 / non-PBR garments read as matte fabric, not plastic; textured (B1) garments untouched; every garment mesh gets castShadow. `BoundGarmentModel` + `GarmentModel` run scenes through `fabricizeScene`. `FittingHelper.test.ts` 13→19. |
+| 2026-10-10 | Last of the #40 carry-forward list, cleared in one pass. **`useRiggingStatus`** built an `AbortController` per load and never aborted it, so a status reply for a product the user had left overwrote the one on screen (PDP→PDP is the same route, so no unmount, and it polls every 3s while PENDING/RUNNING); each loader now takes the signal of whatever started it. **`/admin`** had four copies of `catch { setX([]) }`, rendering an outage or an expired-session 403 as "No posts." — plus the stuck-`loading` race from the product grid, four more times; now one `useAdminList` with an `AbortController` and a `role="alert"` + Try again. **`/community`** could not tell "fetch in flight" from "fell back to local" (both gave `feedPosts === null`), so Discover opened on fabricated demo posts and its own "Loading feed…" branch was unreachable for every signed-in viewer. **`/profile/[username]`** persisted a follow but not a post update, so a like from its detail dialog was the only interaction in the app that vanished on reload; it now goes through `useCommunityStatePersistence` like the other two surfaces. **Signing out** deleted the demo cart's storage key against a hardcoded second copy of it while `CartProvider` kept the list — invisible clear, and the next add wrote the stale list back; key + load/save/clear moved to `lib/demo-cart.ts`. **16 components nothing imports deleted** (-3278 lines): 11 sections of the homepage `ImmersiveHomepage` replaced, TryOnViewer, MagneticCTALink, OutfitSlotCard, ProductList, theme-toggle. Six unwired `profile/` components were kept and marked UNWIRED instead, since nothing live supersedes them. **The contrast debt was classified rather than deferred**: of the 28 recorded sub-AA `text-muted-foreground/*` uses, 15 carried real text and 3 were icon-only controls — all 18 moved to the plain token, which the guard already proves clears 4.5:1; the 9 that remain are decorative glyphs or a disabled state, each now recorded with its reason. A `react-reviewer` pass over the branch then turned up three more, all fixed here rather than deferred: `/profile/[username]` was keying its reseed on the `user` *object* (and `refreshUser` hands out a new one on every save, from a dialog this page's own header mounts) — it now just calls `useCommunityState(user)`, which supplies exactly what it needed plus the cross-tab listener; `useRiggingStatus` shared one AbortController across polling ticks, so two overlapping ticks at the same status could walk `attemptCount` backwards; and it did not drop `status` on a `productId` change, so the previous product's READY panel flashed against the new one — a gap my own regression test had, since it asserted only after both responses had settled. Web tests 404→435 / 39→43 files across 4 new files; **18 of the new cases were measured failing against the old implementations** (6 rigging-status, 7 admin, 1 community, 2 profile, 2 cart), the rest are baselines. The totals are not a clean sum: the contrast guard's `it.each` over non-exempt occurrences shrank as the sub-AA uses were fixed. eslint 0 errors (29→15 warnings). |

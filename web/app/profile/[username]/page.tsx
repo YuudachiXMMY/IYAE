@@ -5,13 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, BadgeCheck, Globe2, Heart, MessageCircleMore } from "lucide-react";
 import { findSocialProfile } from "@/lib/social-graph";
-import {
-  loadCommunityState,
-  saveCommunityState,
-  toggleFollow,
-  updatePostInState,
-  type SocialPost,
-} from "@/lib/community-feed";
+import { type SocialPost } from "@/lib/community-feed";
+import { useCommunityState } from "@/lib/hooks/useCommunityState";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { useAuth } from "@/lib/auth-context";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
@@ -129,29 +124,24 @@ export default function ProfilePage() {
         isVerified: false,
       };
 
-  const [state, setState] = useState<{
-    followedUsernames: string[];
-    posts: SocialPost[];
-  } | null>(null);
-  const [loadedFor, setLoadedFor] = useState<typeof user>(null);
+  // This is the third surface reading and writing the one
+  // `clossette-community-state-<id>` entry, and it used to do it by hand: its own
+  // copy of the four-argument seeding call, and a `saveCommunityState` on follow
+  // but not on a post update, so a like left in the detail dialog here was the one
+  // interaction in the app that vanished on reload.
+  //
+  // It goes through the shared hook rather than through the two shared helpers,
+  // because it needs exactly what the hook already provides. Re-deriving it meant
+  // keying the reseed on the `user` *object*, and `refreshUser()` hands out a new
+  // object every time — and SiteHeader, which this page renders, triggers it from
+  // ProfileSettingsDialog's save. Saving your own bio while looking at someone
+  // else's profile would reseed this page's whole state from storage for no
+  // reason. The hook keys on a value signature instead, and brings the cross-tab
+  // `storage` listener with it.
+  const { state, handlePostUpdate, handleToggleFollow: toggleFollowFor } =
+    useCommunityState(user);
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [outfitTab, setOutfitTab] = useState<"posts" | "tagged">("posts");
-
-  // `user` arrives asynchronously from AuthContext, so the stored community
-  // state is read during the render it appears in (React's adjust-state-when-a-
-  // prop-changes pattern) rather than from an effect, which would commit an
-  // empty-profile pass first.
-  if (user && user !== loadedFor) {
-    setLoadedFor(user);
-    setState(
-      loadCommunityState(
-        String(user.id),
-        user.name ?? "",
-        user.username ?? "",
-        user.styleAesthetics?.[0] ?? "Everyday"
-      )
-    );
-  }
 
   const userPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
   const taggedPosts =
@@ -163,9 +153,7 @@ export default function ProfilePage() {
   const isFollowing = state?.followedUsernames.includes(username) ?? false;
 
   function handleToggleFollow() {
-    const next = state ? toggleFollow(state, username) : state;
-    setState(next);
-    if (user && next) saveCommunityState(String(user.id), next);
+    toggleFollowFor(username);
   }
 
   if (profileNotFound) {
@@ -397,9 +385,7 @@ export default function ProfilePage() {
             }}
             onUpdate={(updated) => {
               setSelectedPost(updated);
-              setState((prev) =>
-                prev ? updatePostInState(prev, updated) : prev
-              );
+              handlePostUpdate(updated); // persists — the hook mirrors to storage
             }}
             currentUserName={user?.name ?? undefined}
             currentUserHandle={user?.username ?? undefined}

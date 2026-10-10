@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { AuthProvider } from '@/lib/auth-context'
+import { AuthProvider, useAuth } from '@/lib/auth-context'
 import { CartProvider, useCart } from '@/lib/cart-context'
 import { StrictMode, type ReactNode } from 'react'
 
@@ -43,6 +43,9 @@ function createWrapper() {
 
 describe('CartContext', () => {
   beforeEach(() => {
+    // `mockReset`, not `mockClear`: an unconsumed `mockResolvedValueOnce` left
+    // over from a previous test would answer the next test's first request.
+    mockFetch.mockReset()
     vi.stubGlobal('fetch', mockFetch)
     localStorage.clear()
   })
@@ -348,6 +351,100 @@ describe('CartContext', () => {
       await waitFor(() => expect(result.current.loading).toBe(false))
 
       expect(result.current.serverItems).toHaveLength(0)
+    })
+  })
+
+  describe('signing out', () => {
+    // `logout()` deleted the demo-cart storage key directly — its own second
+    // copy of DEMO_STORAGE_KEY — while `demoItems` in CartProvider kept the
+    // list. The clear was therefore invisible: the badge went on counting the
+    // items, /cart went on listing them, and the next add or remove wrote the
+    // whole stale list back, resurrecting a cart that was meant to be gone. On
+    // a shared device the next account saw it.
+    async function signedInWithDemoItems() {
+      localStorage.setItem('clossette_token', 'valid')
+      localStorage.setItem(
+        'clossette_demo_cart_items',
+        JSON.stringify([
+          { id: -1, name: 'Demo Dress', price: 99, quantity: 1, imageUrl: null, selectedSize: 'M' },
+        ])
+      )
+      // Keyed on the URL rather than on call order: the providers also fetch
+      // `/api/saved-products`, so a `mockResolvedValueOnce` chain is not stable.
+      mockFetch.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.includes("/api/cart")
+            ? makeResponse(mockCartResponse)
+            : url.includes("/api/auth/me")
+              ? makeResponse(mockUser)
+              : makeResponse([], 404)
+        )
+      )
+
+      const { result } = renderHook(
+        () => ({ cart: useCart(), auth: useAuth() }),
+        { wrapper: createWrapper() }
+      )
+      await waitFor(() => expect(result.current.cart.serverItems).toHaveLength(1))
+      expect(result.current.cart.demoItems).toHaveLength(1)
+      return result
+    }
+
+    it('empties the demo cart that is on screen, not just the stored copy', async () => {
+      const result = await signedInWithDemoItems()
+
+      await act(async () => {
+        result.current.auth.logout()
+      })
+
+      expect(result.current.cart.demoItems).toHaveLength(0)
+      expect(result.current.cart.totalCount).toBe(0)
+    })
+
+    it('does not let the next demo add resurrect the signed-out cart', async () => {
+      const result = await signedInWithDemoItems()
+
+      await act(async () => {
+        result.current.auth.logout()
+      })
+      await act(async () => {
+        result.current.cart.addDemoItem({
+          name: 'Fresh Demo Top',
+          price: 40,
+          quantity: 1,
+          imageUrl: null,
+          selectedSize: 'S',
+        })
+      })
+
+      expect(result.current.cart.demoItems).toHaveLength(1)
+      expect(result.current.cart.demoItems[0].name).toBe('Fresh Demo Top')
+      const stored = JSON.parse(localStorage.getItem('clossette_demo_cart_items') ?? '[]')
+      expect(stored).toHaveLength(1)
+      expect(stored[0].name).toBe('Fresh Demo Top')
+    })
+
+    it('keeps a guest demo cart across signing in', async () => {
+      localStorage.setItem(
+        'clossette_demo_cart_items',
+        JSON.stringify([
+          { id: -1, name: 'Guest Pick', price: 20, quantity: 1, imageUrl: null, selectedSize: 'L' },
+        ])
+      )
+      mockFetch.mockResolvedValue(makeResponse(mockCartResponse))
+
+      const { result } = renderHook(
+        () => ({ cart: useCart(), auth: useAuth() }),
+        { wrapper: createWrapper() }
+      )
+      await waitFor(() => expect(result.current.cart.demoItems).toHaveLength(1))
+
+      await act(async () => {
+        await result.current.auth.login('buyer@example.com', 'pw')
+      })
+
+      expect(result.current.cart.demoItems).toHaveLength(1)
+      expect(result.current.cart.demoItems[0].name).toBe('Guest Pick')
     })
   })
 })

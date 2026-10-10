@@ -2,11 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 import { apiAs, signIn } from './session';
 
 /**
- * The default Discover tab is a SERVER feed, and `feedPosts ?? localPosts` does
- * not fall back on a *successful empty* response — so with no posts on the
- * server `/community` renders its empty state and every interaction test here
- * silently skips. This spec therefore seeds its own post through the API and
- * removes it afterwards, instead of hoping the database happens to hold one.
+ * The default Discover tab is a SERVER feed, and it does not fall back to the
+ * local demo layer on a *successful empty* response — nor while the fetch is
+ * still in flight. So with no posts on the server `/community` renders its empty
+ * state and every interaction test here silently skips. This spec therefore
+ * seeds its own post through the API and removes it afterwards, instead of
+ * hoping the database happens to hold one.
  *
  * The post is authored by the designer so the shopper sees a post they do not
  * own: `ownedByCurrentUser` gates the Follow button.
