@@ -6,12 +6,15 @@ import Link from "next/link";
 import { ArrowLeft, BadgeCheck, Globe2, Heart, MessageCircleMore } from "lucide-react";
 import { findSocialProfile } from "@/lib/social-graph";
 import {
-  loadCommunityState,
-  saveCommunityState,
   toggleFollow,
   updatePostInState,
   type SocialPost,
+  type PersistedCommunityState,
 } from "@/lib/community-feed";
+import {
+  loadCommunityStateFor,
+  useCommunityStatePersistence,
+} from "@/lib/hooks/useCommunityState";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { useAuth } from "@/lib/auth-context";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
@@ -129,11 +132,14 @@ export default function ProfilePage() {
         isVerified: false,
       };
 
-  const [state, setState] = useState<{
-    followedUsernames: string[];
-    posts: SocialPost[];
-  } | null>(null);
-  const [loadedFor, setLoadedFor] = useState<typeof user>(null);
+  // Seeded and mirrored through the shared helpers: this is the third surface
+  // reading and writing the one `clossette-community-state-<id>` entry, and the
+  // only one that used to write it by hand — and only on follow, never on a post
+  // update (see `onUpdate` below).
+  const [state, setState] = useState<PersistedCommunityState | null>(() =>
+    loadCommunityStateFor(user)
+  );
+  const [loadedFor, setLoadedFor] = useState<typeof user>(user);
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [outfitTab, setOutfitTab] = useState<"posts" | "tagged">("posts");
 
@@ -143,15 +149,10 @@ export default function ProfilePage() {
   // empty-profile pass first.
   if (user && user !== loadedFor) {
     setLoadedFor(user);
-    setState(
-      loadCommunityState(
-        String(user.id),
-        user.name ?? "",
-        user.username ?? "",
-        user.styleAesthetics?.[0] ?? "Everyday"
-      )
-    );
+    setState(loadCommunityStateFor(user));
   }
+
+  useCommunityStatePersistence(user, state);
 
   const userPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
   const taggedPosts =
@@ -163,9 +164,7 @@ export default function ProfilePage() {
   const isFollowing = state?.followedUsernames.includes(username) ?? false;
 
   function handleToggleFollow() {
-    const next = state ? toggleFollow(state, username) : state;
-    setState(next);
-    if (user && next) saveCommunityState(String(user.id), next);
+    setState((prev) => (prev ? toggleFollow(prev, username) : prev));
   }
 
   if (profileNotFound) {
