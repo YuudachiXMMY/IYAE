@@ -2,10 +2,13 @@
 
 This is the "validated metric" deliverable for the author-flagged linear beta map:
 a dependency-free ground-truth set + threshold assertions over the pure scorer and
-validator, plus an optional real-model check that runs only when SMPL-X is installed
-(it skips cleanly in CI/this env where the heavy deps are absent).
+validator, plus an optional real-model check that runs only when the licensed
+SMPL-X weights are actually present under SMPLX_MODELS_PATH. The library itself
+is a declared dependency and is therefore always importable, so its presence is
+not the thing to gate on.
 """
 import importlib.util
+import os
 
 import pytest
 
@@ -16,7 +19,28 @@ from providers.fit_accuracy import (
 )
 from providers.smplx_provider import SmplxProvider, BETA_MIN, BETA_MAX
 
-_smplx_available = importlib.util.find_spec("smplx") is not None
+_SMPLX_MODELS_PATH = os.environ.get("SMPLX_MODELS_PATH", "./smplx_models")
+
+
+def _real_smplx_models_available() -> bool:
+    """Whether the licensed SMPL-X *weights* are on disk, not just the library.
+
+    `smplx` is listed in requirements.txt, so `find_spec` succeeds in every
+    environment including CI — guarding on that alone made this test run
+    wherever the package was installed and then fail inside
+    `smplx.create()` looking for SMPLX_NEUTRAL.npz. The weights are licensed
+    and deliberately absent from the repo (SMPLX_MODELS_PATH mounts them).
+    """
+    if importlib.util.find_spec("smplx") is None:
+        return False
+    for root, _dirs, files in os.walk(_SMPLX_MODELS_PATH):
+        del root
+        if any(f.startswith("SMPLX_") and f.endswith((".npz", ".pkl")) for f in files):
+            return True
+    return False
+
+
+_smplx_available = _real_smplx_models_available()
 
 
 # ---------------------------------------------------------------------------
@@ -196,14 +220,20 @@ class TestValidateFitAccuracy:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not _smplx_available, reason="smplx not installed")
+@pytest.mark.skipif(
+    not _smplx_available,
+    reason=f"SMPL-X weights not found under {_SMPLX_MODELS_PATH}",
+)
 class TestRealModelFitAccuracy:
     def test_ground_truth_height_error_within_threshold(self, tmp_path):
         """With a real SMPL-X install, every ground-truth row reconstructs its
         height within the documented threshold."""
+        # The real weights directory, not an empty tmp_path: pointing the
+        # provider at a scratch dir meant this test could not have passed even
+        # with the models installed.
         provider = SmplxProvider(
             output_base_dir=str(tmp_path),
-            model_path=str(tmp_path / "smplx_models"),
+            model_path=_SMPLX_MODELS_PATH,
         )
         for measurements, gender, _ in GROUND_TRUTH:
             payload = dict(measurements)

@@ -6,6 +6,13 @@ pytest>=7.4.0
 torch>=2.0.0; python_version>="3.10"
 smplx>=0.1.28
 trimesh>=4.0.0
+# Pillow is how trimesh surfaces GLB baseColor textures — it decodes them into
+# PIL images, which python_rigging_provider reads back and re-encodes to PNG.
+# Without it trimesh leaves baseColorTexture unset, so rigging silently drops
+# garment textures rather than failing. It was previously installed unpinned in
+# Dockerfile.rigging only, which left the plain worker image without it and
+# every test that builds a textured GLB failing on a clean checkout.
+Pillow>=10.0.0
 numpy>=1.24.0
 # libigl and robust-laplacian are rigging-only — installed in Dockerfile.rigging
 scipy>=1.11.0; python_version>="3.10"
