@@ -200,6 +200,63 @@ describe("useRiggingStatus", () => {
     expect(pending[1].productId).toBe(42);
   });
 
+  it("clears the status while the new product's own request is in flight", async () => {
+    // Without this, `status` still holds product 1's value during product 2's
+    // load, and RiggingStatusCard renders `status ?? "NONE"` without waiting on
+    // `isLoading` — so product 1's READY panel and its actions flash against
+    // product 2.
+    const { result, rerender } = renderHook(
+      ({ productId }) => useRiggingStatus(productId),
+      { initialProps: { productId: 1 } }
+    );
+    await settle();
+    await act(async () => {
+      pending[0].resolve(makeStatus({ status: "READY", riggedGlbUrl: "/assets/1.glb" }));
+    });
+    expect(result.current.status).toBe("READY");
+
+    await act(async () => {
+      rerender({ productId: 2 });
+    });
+
+    expect(result.current.status).toBeNull();
+    expect(result.current.riggedGlbUrl).toBeNull();
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it("lets the newest poll tick win when two are in flight", async () => {
+    // At a 3s cadence against a slow endpoint two ticks can overlap. The
+    // overlapping-tick window is narrower than it looks, because the polling
+    // effect is keyed on `status?.status`: a tick that *changes* the status tears
+    // the effect down and aborts whatever else was in flight. What that does not
+    // cover is two ticks reporting the same status with different everything
+    // else — the effect never re-runs, so the older reply lands last and
+    // `attemptCount` walks backwards.
+    const { result } = renderHook(() => useRiggingStatus(42));
+    await settle();
+    await act(async () => {
+      pending[0].resolve(makeStatus({ status: "RUNNING", attemptCount: 1 }));
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000); // tick 1, left in flight
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000); // tick 2
+    });
+    expect(mockGetStatus).toHaveBeenCalledTimes(3);
+
+    // Tick 2 answers, then the older tick 1 comes back with the earlier count.
+    await act(async () => {
+      pending[2].resolve(makeStatus({ status: "RUNNING", attemptCount: 3 }));
+    });
+    await act(async () => {
+      pending[1].resolve(makeStatus({ status: "RUNNING", attemptCount: 2 }));
+    });
+
+    expect(result.current.attemptCount).toBe(3);
+  });
+
   it("surfaces a trigger failure through actionError", async () => {
     const { ApiError } = await import("@/lib/api");
     mockTrigger.mockRejectedValue(new ApiError(503, "Rigging queue is full"));

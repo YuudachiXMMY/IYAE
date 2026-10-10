@@ -53,6 +53,19 @@ export function useRiggingStatus(productId: number | null) {
 
   useEffect(() => () => manualLoad.current?.abort(), []);
 
+  // Cancelling the previous product's request is not enough on its own: `status`
+  // would still hold its value while the new product's request is in flight, and
+  // `RiggingStatusCard` renders `status ?? "NONE"` without waiting on
+  // `isLoading` — so the old product's READY panel and its actions flash against
+  // the new one. Dropped during render rather than from an effect, so no commit
+  // ever shows the mismatch.
+  const [statusFor, setStatusFor] = useState(productId);
+  if (statusFor !== productId) {
+    setStatusFor(productId);
+    setStatus(null);
+    setIsLoading(Boolean(productId));
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     loadStatus(controller.signal).finally(() => {
@@ -63,15 +76,25 @@ export function useRiggingStatus(productId: number | null) {
 
   useEffect(() => {
     if (status?.status !== "PENDING" && status?.status !== "RUNNING") return;
-    // One controller for the whole polling run: a tick still in flight when the
-    // status leaves PENDING/RUNNING — or when the hook goes away — is cancelled
-    // with it rather than landing afterwards. The poll is silent, so it drives
-    // `loadStatus` directly instead of going through `fetchStatus`.
-    const controller = new AbortController();
-    const interval = setInterval(() => void loadStatus(controller.signal), 3000);
+    // One controller per tick, with the previous one aborted as the next fires,
+    // so the newest reply always wins. A single controller for the whole run
+    // would *mostly* work — this effect is keyed on `status?.status`, so a tick
+    // that changes the status tears it down and cancels everything else in
+    // flight — but two ticks reporting the same status with a different
+    // `attemptCount` or `errorMessage` never re-run it, and then the older reply
+    // lands last and the count walks backwards.
+    //
+    // The poll is silent, so it drives `loadStatus` directly rather than going
+    // through `fetchStatus` and its `isLoading`.
+    let inFlight: AbortController | null = null;
+    const interval = setInterval(() => {
+      inFlight?.abort();
+      inFlight = new AbortController();
+      void loadStatus(inFlight.signal);
+    }, 3000);
     return () => {
       clearInterval(interval);
-      controller.abort();
+      inFlight?.abort();
     };
   }, [loadStatus, status?.status]);
 

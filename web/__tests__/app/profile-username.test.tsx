@@ -4,12 +4,15 @@ import type { SocialPost, PersistedCommunityState } from "@/lib/community-feed";
 
 // Hoisted mocks — vi.mock factories are hoisted above the module body, so the
 // fns they close over must be created with vi.hoisted (not plain top-level consts).
-const { mockApiGet, mockCounts, onUpdateRef } = vi.hoisted(() => ({
+const { mockApiGet, mockCounts, onUpdateRef, viewer } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
   mockCounts: vi.fn(),
   // The page hands `onUpdate` to PostDetailDialog; the mock below parks it here
   // so a test can fire the exact callback the dialog would.
   onUpdateRef: { current: null as ((post: SocialPost) => void) | null },
+  // Mutable so a test can hand the page a *new* user object with identical
+  // values, which is what `refreshUser()` does.
+  viewer: { current: null as Record<string, unknown> | null },
 }));
 
 const VIEWER = {
@@ -26,7 +29,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({ user: VIEWER, loading: false }),
+  useAuth: () => ({ user: viewer.current, loading: false }),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -87,6 +90,7 @@ describe("public profile page", () => {
   beforeEach(() => {
     localStorage.clear();
     onUpdateRef.current = null;
+    viewer.current = { ...VIEWER };
     mockApiGet.mockReset();
     mockCounts.mockReset();
     mockApiGet.mockResolvedValue({
@@ -152,5 +156,35 @@ describe("public profile page", () => {
     });
 
     expect(stored().followedUsernames).toContain("mila");
+  });
+
+  // `refreshUser()` always calls `setUser` with a brand-new object, and this page
+  // renders SiteHeader, which triggers it from ProfileSettingsDialog's save. A
+  // reseed keyed on the user *object* would therefore throw away in-memory state
+  // every time the viewer saved their own bio — which is why this page uses the
+  // hook's value-signature key rather than re-deriving the reseed by hand.
+  it("does not reseed when refreshUser hands over an identical user object", async () => {
+    const { rerender } = render(<ProfilePage />);
+    await settle();
+
+    const follow = screen.getByRole("button", { name: "Follow mila" });
+    await act(async () => {
+      follow.click();
+    });
+    expect(screen.getByRole("button", { name: "Unfollow mila" })).toBeInTheDocument();
+
+    // Storage is wound back to the pre-follow state, so a reseed from disk would
+    // be visible as the Follow button reverting.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: 4, followedUsernames: [], posts: [milaPost()] })
+    );
+
+    viewer.current = { ...VIEWER }; // same values, new reference
+    await act(async () => {
+      rerender(<ProfilePage />);
+    });
+
+    expect(screen.getByRole("button", { name: "Unfollow mila" })).toBeInTheDocument();
   });
 });
