@@ -617,7 +617,7 @@ export default function ChatPage() {
 
                       <div className="mt-8 flex flex-col gap-4 text-left">
                         <div className="flex flex-col gap-2">
-                          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
                             Occasion
                           </span>
                           <SuggestionChips
@@ -627,7 +627,7 @@ export default function ChatPage() {
                           />
                         </div>
                         <div className="flex flex-col gap-2">
-                          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
                             Mood
                           </span>
                           <SuggestionChips
@@ -638,7 +638,7 @@ export default function ChatPage() {
                         </div>
                       </div>
 
-                      <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground/60">
+                      <div className="mt-8 flex items-center gap-3 text-xs text-muted-foreground">
                         <div className="h-px flex-1 bg-border" />
                         <span>or type your own question below</span>
                         <div className="h-px flex-1 bg-border" />

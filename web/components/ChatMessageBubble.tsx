@@ -56,7 +56,7 @@ export function ChatMessageBubble({ message, avatarUrl }: ChatMessageBubbleProps
             dangerouslySetInnerHTML={{ __html: sanitizedContent }}
           />
         )}
-        <span className="text-[10px] text-muted-foreground/40 px-1">
+        <span className="text-[10px] text-muted-foreground px-1">
           {formatTimestamp(message.createdAt)}
         </span>
       </div>
@@ -86,7 +86,7 @@ export function ChatMessageBubble({ message, avatarUrl }: ChatMessageBubbleProps
             avatarUrl={avatarUrl}
           />
         )}
-        <span className="text-[10px] text-muted-foreground/40 px-1">
+        <span className="text-[10px] text-muted-foreground px-1">
           {formatTimestamp(message.createdAt)}
         </span>
       </div>

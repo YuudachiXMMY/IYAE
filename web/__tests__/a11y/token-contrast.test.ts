@@ -118,12 +118,23 @@ describe('globals.css light-mode token contrast (WCAG 2.1 AA)', () => {
 // resolves to light greys from #c7c5c3 (1.53:1) to #8c8b8a (3.03:1). By
 // contrast all four ink/primary uses pass comfortably: 6.63, 9.53 and 5.29:1.
 //
-// Fixing those 28 is a separate piece of work, not this guard's job: some are
-// probably decorative or large-text, where the bar is 3:1 or nothing, and the
-// rest need a design call on what the faded-muted variants should become. They
-// are recorded below with exact counts rather than quietly skipped, so the
-// guard is honest about what it is not yet enforcing — and so that adding a
-// 29th fails this test.
+// All 28 have since been read in place and classified. 19 are gone:
+//
+//   • 15 carried real text — the "Occasion"/"Mood" labels on /chat, chat
+//     timestamps, ChatSidebar's date labels and group headings,
+//     SavedPiecesPanel's "No items recorded" and "Add a note…", the avatar
+//     page's overlay caption and drag hint. WCAG 1.4.3 applies to those with
+//     no get-out, so they dropped the modifier and use the token itself,
+//     which the block above already proves clears 4.5:1 on bg-muted.
+//   • 3 were icon-only controls (two "Remove item" buttons in the cart, the
+//     "Delete look" button) where the icon is the sole indicator, so 1.4.11
+//     wants 3:1 and /40 gave 1.79:1. Same fix.
+//   • 1 went with the dead home sections deleted in the same pass.
+//
+// The 9 below are the ones where the exemption is real rather than convenient,
+// and each entry now says which. They are recorded with exact counts rather
+// than quietly skipped, so the guard stays honest about what it is not
+// enforcing — and so that a 10th fails this test.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SOURCE_ROOTS = ['../../app', '../../components'];
@@ -133,15 +144,26 @@ const SOURCE_EXTENSIONS = ['.tsx', '.ts'];
 // not token-derived, and this guard is about tokens drifting below AA.
 const OPACITY_CLASS = /\btext-((?:[a-z]+-)*foreground)\/(\d{1,3})\b/g;
 
-// Known debt, as `text-<token>/<alpha>` → number of occurrences. An entry here
-// is a measured AA failure that predates this guard. Reducing a count is a
-// bug fix; raising one needs a deliberate edit to this map.
+// Known debt, as `text-<token>/<alpha>` → number of occurrences. Every entry
+// below 4.5:1 that is still here is non-text: a decorative glyph, or a
+// disabled control, both of which WCAG exempts. Reducing a count is a bug fix;
+// raising one needs a deliberate edit to this map AND a reason that survives
+// reading the markup.
 const KNOWN_BELOW_AA: Record<string, number> = {
-  'text-muted-foreground/30': 1, // 1.53:1
-  'text-muted-foreground/40': 12, // 1.79:1
-  'text-muted-foreground/50': 4, // 2.11:1 (was 5; one went with the dead home sections)
-  'text-muted-foreground/60': 6, // 2.51:1
-  'text-muted-foreground/70': 4, // 3.03:1
+  // 1.79:1. All five are no-image placeholder glyphs sitting behind real text:
+  // cart/page ImagePlaceholder, designer/products' <Package/> thumbnail
+  // fallback, OutfitCard's empty slot tile, ProductListItem and
+  // ResaleListingCard. Non-text, and the name/price next to them carries the
+  // information.
+  'text-muted-foreground/40': 5,
+  // 2.11:1. community/page's empty-state <EmptyIcon/> above its own title and
+  // description; style-lab's decorative <ArrowRight/> chevron; and
+  // SuggestionChips' *disabled* branch, which 1.4.3 exempts outright
+  // ("inactive user interface components").
+  'text-muted-foreground/50': 3,
+  // 2.51:1. ar-visualization's <PlatformIcon/>, between the feature title and
+  // a text pill that already names the platform.
+  'text-muted-foreground/60': 1,
 };
 
 type AdHocOpacity = { file: string; token: string; alpha: number };

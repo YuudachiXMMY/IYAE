@@ -61,7 +61,7 @@ function MeasurementRow({
         {value !== null ? (
           `${value} ${unit}`
         ) : (
-          <span className="text-muted-foreground/30">&mdash;</span>
+          <span className="text-muted-foreground">&mdash;</span>
         )}
       </span>
     </div>
@@ -291,7 +291,7 @@ export default function AvatarPage() {
             >
               Profile
             </Link>
-            <span className="text-muted-foreground/50">/</span>
+            <span className="text-muted-foreground">/</span>
             <span className="text-foreground font-medium">Avatar</span>
           </nav>
 
@@ -342,7 +342,7 @@ export default function AvatarPage() {
                     <>
                       <AvatarViewerPanel glbUrl={DEFAULT_AVATAR_URL} />
                       <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
-                        <p className="text-xs text-muted-foreground/70 bg-card/60 backdrop-blur-sm inline-block px-3 py-1 rounded-full">
+                        <p className="text-xs text-muted-foreground bg-card/60 backdrop-blur-sm inline-block px-3 py-1 rounded-full">
                           {hasProfile
                             ? "Generate to create your personalized avatar"
                             : "Add measurements to personalize"}
@@ -428,7 +428,7 @@ export default function AvatarPage() {
 
               {/* Interaction hints */}
               {isReady && glbUrl && (
-                <p className="text-center text-xs text-muted-foreground/70 tracking-wide">
+                <p className="text-center text-xs text-muted-foreground tracking-wide">
                   Drag to rotate &middot; Scroll to zoom &middot; Right-click to pan
                 </p>
               )}

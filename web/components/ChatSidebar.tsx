@@ -96,7 +96,7 @@ export function ChatSidebar({
           {sessions.length === 0 && (
             <div className="px-2 py-8 text-center">
               <p className="text-xs text-muted-foreground">No conversations yet.</p>
-              <p className="mt-1 text-[11px] text-muted-foreground/60">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 Start one to get styled.
               </p>
             </div>
@@ -104,7 +104,7 @@ export function ChatSidebar({
 
           {grouped.map(([group, groupSessions]) => (
             <div key={group} className="mb-1" role="list" aria-label={group}>
-              <p className="px-2 pt-3 pb-1.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/60" aria-hidden="true">
+              <p className="px-2 pt-3 pb-1.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground" aria-hidden="true">
                 {group}
               </p>
               {groupSessions.map((session) => {
@@ -135,10 +135,10 @@ export function ChatSidebar({
                     />
                     <div className="flex flex-1 flex-col gap-0.5 min-w-0">
                       <span className="text-sm font-medium truncate">Conversation</span>
-                      <span className="text-[11px] text-muted-foreground/60">
+                      <span className="text-[11px] text-muted-foreground">
                         {formatSessionLabel(session.createdAt)}
                         {session.status === "COMPLETED" && (
-                          <span className="ml-1.5 text-muted-foreground/40">
+                          <span className="ml-1.5 text-muted-foreground">
                             &middot; ended
                           </span>
                         )}
