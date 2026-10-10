@@ -35,12 +35,12 @@ app/           (37 page routes)  --> All "use client", no RSC or server actions
 app/not-found.tsx                --> Custom 404 page (static, no "use client")
 app/error.tsx                    --> Global error boundary ("use client")
 app/layout.tsx                   --> Root layout (AuthProvider -> CartProvider, fonts, metadata)
-components/    (94 total)        --> 75 app-specific + 19 shadcn/ui primitives
+components/    (96 total)        --> 77 app-specific (74 .tsx + 3 .ts) + 19 shadcn/ui primitives
 components/register/ (7)         --> Multi-step registration wizard components
 components/community/ (1)        --> PostMedia (community post media rendering)
-components/profile/ (9)          --> Profile page components (header, stats, settings, posts, actions)
-components/home/ (18)            --> Landing page sections + shared motion presets (hero, designers, how-it-works, sustainability, CTA, community, nav, footer, immersive-homepage, ai-stylist, social-proof, trust-bar, try-on, try-on-viewer, lifestyle-grid, photo-strip, magnetic-cta-link, motion-presets)
-components/outfits/ (6)          --> Manual outfit builder (OutfitSlotCard, ProductPickerDialog, ProductSelectCard, OutfitDetailsForm, OutfitBuilderPreview, OutfitSlotSidebarItem)
+components/profile/ (9)          --> Profile page components (settings, post creation, image picker; 6 of the 9 have no importer -- see the table below)
+components/home/ (6)             --> Landing page sections + shared motion presets (immersive-homepage, hero, about, nav, footer, motion-presets)
+components/outfits/ (5)          --> Manual outfit builder (ProductPickerDialog, ProductSelectCard, OutfitDetailsForm, OutfitBuilderPreview, OutfitSlotSidebarItem)
 components/designer/ (2)         --> Designer studio (PromotionList, PromotionForm)
 components/ui/ (19)              --> shadcn/ui (Radix-based, CLI-generated, DO NOT edit)
 lib/api.ts                       --> Typed fetch wrapper with auto JWT injection + AbortSignal + auth/rigging/avatar/sizing helpers + outfit types
@@ -141,7 +141,7 @@ e2e/                             --> Playwright E2E specs
 | NavBar | Top navigation with auth-aware menu, Community/Style Lab/Orders links, mobile hamburger Sheet |
 | PageShell | Consistent page layout wrapper |
 | ProductForm | Product creation/editing (designer); the per-size "Size chart (cm)" grid writes `product_size_measurements`, which now drives the PDP `MEASUREMENT_CHART` recommended-size hint via `SizeRecommendationService` |
-| ProductList / ProductListItem | Product catalog display |
+| ProductListItem | Product catalog row. **The module survives for its exported `Product` type, which five call sites import; the `ProductListItem` component itself now has no importer** — its only consumer was `ProductList`, deleted 2026-10-10 as dead. The catalog renders `design-system/ProductCard`. |
 | SearchFilterBar | Catalog search, dynamic category filtering (fetches from `/api/products/categories` via AbortController), and sort |
 | ChatSidebar | Session list for AI chat |
 | ChatMessageBubble | Individual chat message display |
@@ -157,7 +157,6 @@ e2e/                             --> Playwright E2E specs
 | RecommendedSizeHint | Presentational recommended-size hint ("Your recommended size: M"); renders nothing when basis is NONE; "based on your saved sizes" caption for SELF_REPORTED |
 | Footer | Site footer |
 | theme-provider | next-themes ThemeProvider wrapper |
-| theme-toggle | Dark/light mode toggle button |
 | floating-ai-stylist | Floating AI assistant chat widget (hidden on /login, /register, /chat) |
 | PostDetailDialog | Community post detail modal with comments and replies |
 | ViewerErrorBoundary | Error boundary for 3D viewer components |
@@ -170,27 +169,23 @@ e2e/                             --> Playwright E2E specs
 | ARViewer | WebXR AR session with hit testing |
 | SmartARViewer | Auto-detects device capability, routes to appropriate viewer; passes `previewImageUrl` through to the desktop AvatarViewer |
 
-### Home (`components/home/`, 18)
+### Home (`components/home/`, 6)
+
+`app/page.tsx` renders `ImmersiveHomepage`, which composes exactly
+`HeroSection` + `AboutSection` + `LandingFooter`. The eleven sections of the
+homepage it replaced (DesignersSection, HowItWorks, SustainabilitySection,
+CTASection, CommunitySection, AIStylistSection, SocialProofSection, TrustBar,
+TryOnSection, LifestyleGrid, PhotoStrip) plus TryOnViewer and MagneticCTALink
+were deleted on 2026-10-10 — they had no importer anywhere in the tree. Recover
+them from history if the sections are wanted back.
 
 | Component | Purpose |
 |-----------|---------|
 | immersive-homepage | Full-screen landing page with editorial layout |
 | HeroSection | Landing hero with animated headline and CTA |
-| DesignersSection | Featured designers showcase |
-| HowItWorks | Step-by-step feature walkthrough |
-| SustainabilitySection | Sustainability messaging block |
-| CTASection | Call-to-action conversion block |
-| CommunitySection | Community preview for landing |
-| LandingNav | Landing page dedicated navigation |
+| AboutSection | Editorial about block on the immersive homepage |
+| LandingNav | Landing page dedicated navigation (used by `app/design`) |
 | LandingFooter | Landing page dedicated footer |
-| AIStylistSection | AI stylist iPhone mockup showcase with avatar flow |
-| SocialProofSection | Social proof stats and testimonials |
-| TrustBar | Trust badges and partner logos |
-| TryOnSection | Interactive 3D try-on demo with scroll-driven parallax |
-| TryOnViewer | Embedded 3D viewer for try-on section |
-| LifestyleGrid | Masonry photo grid with motion animations |
-| PhotoStrip | Infinite-scroll photo strip with CSS animation |
-| MagneticCTALink | Spring-physics magnetic hover CTA button |
 | motion-presets | Shared motion presets: CTA_SPRING, SOFT_SPRING, EASE_OUT_EXPO, textStagger, textChild, fadeUp |
 
 ### Community (`components/community/`, 1)
@@ -201,23 +196,28 @@ e2e/                             --> Playwright E2E specs
 
 ### Profile (`components/profile/`, 9)
 
+**Six of these nine have no importer** (marked UNWIRED below). Unlike the deleted
+home sections they are not superseded by anything live — `app/profile/[username]`
+and `app/dashboard` build their own headers and tab bars inline — so they read as
+a profile redesign that was built and never mounted. They are kept deliberately;
+decide whether to wire them up or drop them.
+
 | Component | Purpose |
 |-----------|---------|
-| ProfileHeader | User profile hero with avatar, banner, bio |
-| ProfileStatsBar | Posts/followers/following stats display |
-| ProfileActionBar | Follow/message/settings action buttons |
-| ProfileContentTabs | Tab navigation for profile content (posts/saved/reposted/tagged/archives) |
-| ProfilePostGrid | Grid layout for profile post cards |
+| ProfileHeader | UNWIRED. User profile hero with avatar, banner, bio |
+| ProfileStatsBar | UNWIRED. Posts/followers/following stats display; `onClickFollowers`/`onClickFollowing` are the intended entry point for StyleCircleDialog |
+| ProfileActionBar | UNWIRED. Follow/message/settings action buttons |
+| ProfileContentTabs | UNWIRED. Tab navigation for profile content (posts/saved/reposted/tagged/archives) |
+| ProfilePostGrid | UNWIRED. Grid layout for profile post cards |
 | ProfileSettingsDialog | Profile settings modal (3 tabs: edit profile, style preferences, body measurements); one-tap "Delete my avatar & body data" button (two-step confirm -> `avatar.delete()` -> toast -> refresh) |
 | CreateFashionPostDialog | New fashion post creation dialog |
-| StyleCircleDialog | Style circle management dialog (followers/following with humanized counts) |
+| StyleCircleDialog | UNWIRED. Followers/following dialog, reading the real graph from `GET /api/follows/{followers,following}` with optimistic follow write-through |
 | LocalImagePicker | Client-side image picker for avatar/banner uploads |
 
-### Outfit Builder (`components/outfits/`, 6)
+### Outfit Builder (`components/outfits/`, 5)
 
 | Component | Purpose |
 |-----------|---------|
-| OutfitSlotCard | Slot card for manual outfit builder (displays selected product per slot) |
 | ProductPickerDialog | Dialog for browsing and selecting products to fill outfit slots |
 | ProductSelectCard | Compact product card used within ProductPickerDialog |
 | OutfitDetailsForm | Occasion and note input form for outfit metadata |
@@ -474,9 +474,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `components/SizeSelector.tsx` | Cloth size selection button group |
 | `components/RecommendedSizeHint.tsx` | Presentational recommended-size hint (renders nothing when basis is NONE) |
 | `components/home/motion-presets.ts` | Shared spring/easing presets for landing animations |
-| `components/home/LifestyleGrid.tsx` | Masonry photo grid with motion animations |
-| `components/home/PhotoStrip.tsx` | Infinite-scroll photo strip |
-| `components/home/MagneticCTALink.tsx` | Spring-physics magnetic hover CTA |
+| `lib/demo-cart.ts` | The demo cart's storage key + load/save/clear. Its own module because `cart-context` imports `auth-context` and both need the key |
 | `middleware.ts` | CSP headers and camera permissions |
 | `next.config.ts` | API proxy configuration |
 | `vitest.config.ts` | Vitest test configuration |

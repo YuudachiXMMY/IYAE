@@ -139,7 +139,7 @@ const OPACITY_CLASS = /\btext-((?:[a-z]+-)*foreground)\/(\d{1,3})\b/g;
 const KNOWN_BELOW_AA: Record<string, number> = {
   'text-muted-foreground/30': 1, // 1.53:1
   'text-muted-foreground/40': 12, // 1.79:1
-  'text-muted-foreground/50': 5, // 2.11:1
+  'text-muted-foreground/50': 4, // 2.11:1 (was 5; one went with the dead home sections)
   'text-muted-foreground/60': 6, // 2.51:1
   'text-muted-foreground/70': 4, // 3.03:1
 };

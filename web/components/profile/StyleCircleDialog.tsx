@@ -15,8 +15,13 @@ interface StyleCircleDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Current user's numeric id — used to load the REAL follower/following graph. */
   currentUserId: number;
-  /** Local demo follow graph (kept in sync on toggle; not the source of truth for counts). */
-  followedUsernames: string[];
+  /**
+   * Called on every toggle so the caller can keep its local demo follow graph in
+   * step. There is deliberately no `followedUsernames` prop to go with it: who
+   * the viewer follows is read from `GET /api/follows/following`, and the
+   * declared-but-never-destructured prop this replaces invited a caller to pass
+   * the local list as if it were the source of truth for the Follow buttons.
+   */
   onToggleFollow: (username: string) => void;
   initialTab?: "followers" | "following";
 }
@@ -244,10 +249,15 @@ function CircleBody({
   // Load the REAL follower/following graph (replaces the old SOCIAL_PROFILES.slice(0,5) fabrication).
   useEffect(() => {
     const ctrl = new AbortController();
+    // The `catch` empties the list, so it has to skip aborts: on cleanup both
+    // requests reject, and clearing then would write state for a dialog that is
+    // already closed — and blank a list the next open had just filled.
     follows
       .followers(currentUserId, 0, 50, ctrl.signal)
       .then((p) => setFollowers(p.content.map(fromUserResponse)))
-      .catch(() => setFollowers([]));
+      .catch(() => {
+        if (!ctrl.signal.aborted) setFollowers([]);
+      });
     follows
       .following(currentUserId, 0, 50, ctrl.signal)
       .then((p) => {
@@ -255,7 +265,9 @@ function CircleBody({
         setFollowing(mapped);
         setFollowedIds(new Set(mapped.map((u) => u.id)));
       })
-      .catch(() => setFollowing([]));
+      .catch(() => {
+        if (!ctrl.signal.aborted) setFollowing([]);
+      });
     return () => ctrl.abort();
   }, [currentUserId]);
 

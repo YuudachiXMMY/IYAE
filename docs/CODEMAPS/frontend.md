@@ -55,10 +55,10 @@ app/api/internal/mail/send/route.ts          # Resend email delivery (server→w
 ## Component Hierarchy
 
 ### Layout & Navigation
-NavBar, PageShell, Footer, theme-provider, theme-toggle
+NavBar, PageShell, Footer, theme-provider
 
 ### Product & Catalog
-ProductList, ProductListItem, ProductForm, SearchFilterBar (AbortController categories), ImageUploader, SizeSelector
+ProductListItem (kept for its `Product` type; the component itself is now unused), design-system/ProductCard (what the catalog renders), ProductForm, SearchFilterBar (AbortController categories), ImageUploader, SizeSelector
 
 ### Chat & AI
 ChatSidebar, ChatMessageBubble, TypingIndicator, SuggestionChips (XSS-safe chip buttons), floating-ai-stylist (persistent widget)
@@ -70,16 +70,18 @@ AvatarViewer (R3F), ARViewer (WebXR), SmartARViewer, ModelViewer (model-viewer),
 GenerationStatusBadge, GenerationStatusCard, RiggingStatusBadge, RiggingStatusCard
 
 ### Outfit Builder (split-screen layout + 3D preview)
-OutfitCard, OutfitSlotCard, OutfitSlotSidebarItem, OutfitBuilderPreview, OutfitDetailsForm, ProductPickerDialog, ProductSelectCard
+OutfitCard, OutfitSlotSidebarItem, OutfitBuilderPreview, OutfitDetailsForm, ProductPickerDialog, ProductSelectCard
 
 ### Registration Wizard (7 components)
 WizardProgress, StepBasics, StepStylePrefs, StepColors, StepMeasurements, StepAvatar, StepComplete
 
 ### Community & Profile
-PostDetailDialog, PostMedia (community/), ProfileHeader, ProfileStatsBar, ProfileActionBar, ProfileContentTabs, ProfilePostGrid, ProfileSettingsDialog, CreateFashionPostDialog, StyleCircleDialog, LocalImagePicker
+PostDetailDialog, PostMedia (community/), ProfileSettingsDialog, CreateFashionPostDialog, LocalImagePicker.
+Unwired (built, never mounted): ProfileHeader, ProfileStatsBar, ProfileActionBar, ProfileContentTabs, ProfilePostGrid, StyleCircleDialog
 
-### Home / Landing (17 components)
-immersive-homepage, HeroSection, DesignersSection, HowItWorks, SustainabilitySection, CTASection, CommunitySection, LandingNav, LandingFooter, AIStylistSection, LifestyleGrid, MagneticCTALink, PhotoStrip, SocialProofSection, TrustBar, TryOnSection, TryOnViewer
+### Home / Landing (6 components)
+immersive-homepage (= HeroSection + AboutSection + LandingFooter), HeroSection, AboutSection, LandingNav (app/design only), LandingFooter, motion-presets.
+The 13 sections of the superseded homepage were deleted 2026-10-10 as dead code.
 
 ### Designer
 PromotionList, PromotionForm
