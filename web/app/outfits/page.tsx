@@ -156,7 +156,7 @@ function OutfitGridCard({
         <Button
           asChild
           size="sm"
-          className="flex-1 rounded-full bg-brand hover:bg-brand-hover text-white text-xs
+          className="flex-1 rounded-full bg-brand hover:bg-brand-hover text-primary-foreground text-xs
                      active:scale-[0.97] transition-transform"
         >
           <Link href={`/outfits/${outfit.id}/view`}>
@@ -302,7 +302,7 @@ export default function OutfitsPage() {
               </Button>
               <Button
                 asChild
-                className="rounded-full bg-brand text-white hover:bg-brand-hover
+                className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover
                            active:scale-[0.97] transition-all"
               >
                 <Link href="/chat">Generate new</Link>
@@ -364,7 +364,7 @@ export default function OutfitsPage() {
               <Button
                 asChild
                 size="lg"
-                className="rounded-full bg-brand text-white hover:bg-brand-hover
+                className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover
                            active:scale-[0.97] transition-all px-8"
               >
                 <Link href="/chat">Generate your first outfit</Link>

@@ -167,3 +167,120 @@ test.describe('Accessibility (axe) — authenticated routes', () => {
     await expectNoSeriousA11yViolations(page, 'try-on');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The same scans against the dark palette.
+//
+// Every block above ran in light mode only, which until 2026-10-10 was the only
+// mode that existed at runtime: `@theme` baked the light values into the
+// generated utilities, no toggle was mounted, and `enableSystem` was false. The
+// dark tokens were therefore never rendered by anything — and had accumulated
+// five AA failures nobody could see.
+//
+// `__tests__/a11y/token-contrast.test.ts` now pins the dark token *values*, and
+// `dark-mode-plumbing.test.ts` pins the compiled *shape*. Neither can see a
+// component that hardcodes a colour instead of using a token — which is what
+// axe on a real dark page catches, on the authenticated routes especially,
+// since those are the ones no static scan of globals.css reaches.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// next-themes persists under the `theme` key by default; seeding it before any
+// script runs avoids a light-mode first paint that axe might sample.
+async function useDarkTheme(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('theme', 'dark');
+    } catch {
+      /* storage blocked — the assertion below will catch it */
+    }
+  });
+}
+
+// Asserted rather than assumed, for the same reason as `expectReducedMotion`:
+// if the class stops arriving, these tests would quietly re-scan light mode and
+// keep passing while covering nothing.
+async function expectDarkApplied(page: Page) {
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+}
+
+test.describe('Accessibility (axe) — dark mode', () => {
+  test.beforeEach(async ({ page }) => {
+    await useDarkTheme(page);
+  });
+
+  test('home / (dark)', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await expectDarkApplied(page);
+    await expectNoSeriousA11yViolations(page, 'home-dark');
+  });
+
+  test('catalog /products (dark)', async ({ page }) => {
+    await page.goto('/products');
+    await page.waitForLoadState('networkidle');
+    await expectDarkApplied(page);
+    await expectNoSeriousA11yViolations(page, 'products-dark');
+  });
+
+  // The `text-destructive on bg-destructive/10` pattern in 27 files. In dark the
+  // tint resolves against the dark page, so it is a different computation from
+  // the light-mode case above — and at the old #ef4444 it was 4.33:1.
+  test('login error banner /login (dark)', async ({ page }) => {
+    await page.goto('/login');
+    await expectDarkApplied(page);
+    await page.getByLabel('Email').fill('nobody@iyae.ca');
+    await page.getByLabel('Password').fill('definitely-wrong');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.locator('#login-error').waitFor({ state: 'visible', timeout: 15000 });
+    await expectNoSeriousA11yViolations(page, 'login-error-banner-dark', {
+      include: '#login-error',
+    });
+  });
+
+  test('cart /cart (dark)', async ({ page }) => {
+    await login(page);
+    await page.goto('/cart');
+    await page.waitForLoadState('networkidle');
+    await expectDarkApplied(page);
+    await expectNoSeriousA11yViolations(page, 'cart-dark');
+  });
+
+  test('checkout /checkout (dark)', async ({ page }) => {
+    await login(page);
+    await page.goto('/checkout');
+    await page.waitForLoadState('networkidle');
+    await expectDarkApplied(page);
+    await expectNoSeriousA11yViolations(page, 'checkout-dark');
+  });
+
+  test('dashboard /dashboard (dark)', async ({ page }) => {
+    await login(page);
+    await page.waitForLoadState('networkidle');
+    await expectDarkApplied(page);
+    await expectNoSeriousA11yViolations(page, 'dashboard-dark');
+  });
+});
+
+test.describe('Theme toggle', () => {
+  // The palette existed for months with no way to reach it. This is the control
+  // that makes it reachable, so its presence is worth a test of its own.
+  test('switches the document class and survives a navigation', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const toggle = page.getByRole('button', { name: /switch to (dark|light) mode/i });
+    await expect(toggle).toBeVisible();
+
+    const wasDark = await page
+      .locator('html')
+      .evaluate((el) => el.classList.contains('dark'));
+    await toggle.click();
+    await expect(page.locator('html')).toHaveClass(wasDark ? /^(?!.*\bdark\b)/ : /\bdark\b/);
+
+    // next-themes persists the choice; a reload that lost it would mean the
+    // toggle only ever worked for the page it was clicked on.
+    await page.goto('/products');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('html')).toHaveClass(wasDark ? /^(?!.*\bdark\b)/ : /\bdark\b/);
+  });
+});
