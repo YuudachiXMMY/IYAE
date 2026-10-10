@@ -502,15 +502,20 @@ export interface AdminPost {
 }
 
 export const admin = {
-  listProducts: (status?: AdminProductStatus) =>
-    api.get<AdminProduct[]>(`/api/admin/products${status ? `?status=${status}` : ""}`),
+  // The list calls take a signal: the moderation console switches tabs faster
+  // than the API answers, and a superseded response must not land.
+  listProducts: (status?: AdminProductStatus, signal?: AbortSignal) =>
+    api.get<AdminProduct[]>(`/api/admin/products${status ? `?status=${status}` : ""}`, {
+      signal,
+    }),
   setProductStatus: (id: number, status: AdminProductStatus) =>
     api.put<AdminProduct>(`/api/admin/products/${id}/status`, { status }),
-  listPosts: (status?: AdminPostStatus) =>
-    api.get<AdminPost[]>(`/api/admin/posts${status ? `?status=${status}` : ""}`),
+  listPosts: (status?: AdminPostStatus, signal?: AbortSignal) =>
+    api.get<AdminPost[]>(`/api/admin/posts${status ? `?status=${status}` : ""}`, { signal }),
   archivePost: (id: number) => api.put<AdminPost>(`/api/admin/posts/${id}/archive`),
   removePost: (id: number) => api.put<AdminPost>(`/api/admin/posts/${id}/remove`),
-  listPromotions: () => api.get<PromotionResponse[]>("/api/admin/promotions"),
+  listPromotions: (signal?: AbortSignal) =>
+    api.get<PromotionResponse[]>("/api/admin/promotions", { signal }),
   setPromotionSlot: (id: number, slotType: PromotionSlotType) =>
     api.put<PromotionResponse>(`/api/admin/promotions/${id}/slot`, { slotType }),
 };
@@ -639,9 +644,10 @@ export const follows = {
 // ── Admin: community reports (Phase 6) ──────────────────────────────────────────
 
 export const adminReports = {
-  list: (status?: CommunityReportStatus, page = 0, size = 20) =>
+  list: (status?: CommunityReportStatus, page = 0, size = 20, signal?: AbortSignal) =>
     api.get<Paged<PostReport>>(
-      `/api/admin/reports?${status ? `status=${status}&` : ""}page=${page}&size=${size}`),
+      `/api/admin/reports?${status ? `status=${status}&` : ""}page=${page}&size=${size}`,
+      { signal }),
   resolve: (id: number, status: CommunityReportStatus = "RESOLVED", removePost = false) =>
     api.put<PostReport>(`/api/admin/reports/${id}/resolve?status=${status}&removePost=${removePost}`),
   removeComment: (commentId: number) =>
