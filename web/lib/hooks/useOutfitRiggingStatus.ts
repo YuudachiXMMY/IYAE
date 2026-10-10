@@ -22,24 +22,24 @@ export function useOutfitRiggingStatus(
   // legitimately pass an unstable array (e.g. `outfit?.items ?? []`, which is a
   // fresh [] every render while the outfit is still loading). Depending on the
   // raw reference here caused an infinite setItems→render→new-[]→effect loop
-  // (hung the outfit viewer and the unit test).
+  // (hung the outfit viewer and the unit test). The sync happens during render
+  // (React's "adjust state when a prop changes") rather than in an effect, so it
+  // costs no extra commit.
   const initialItemsKey = initialItems
     .map((item) => `${item.productId}:${item.riggedGlbUrl ?? ""}`)
     .join("|");
-  useEffect(() => {
+  const [syncedKey, setSyncedKey] = useState(initialItemsKey);
+  if (syncedKey !== initialItemsKey) {
+    setSyncedKey(initialItemsKey);
     setItems(initialItems);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialItemsKey]);
+  }
 
   useEffect(() => {
     const candidateItems = items.filter(
       (item) => !item.riggedGlbUrl && item.productId > 0
     );
 
-    if (candidateItems.length === 0) {
-      setActiveRigging(new Set());
-      return;
-    }
+    if (candidateItems.length === 0) return;
 
     const poll = async () => {
       const controller = new AbortController();
@@ -105,8 +105,12 @@ export function useOutfitRiggingStatus(
       .join(","),
   ]);
 
-  // Only count items confirmed to be actively rigging (PENDING/RUNNING)
-  const pendingCount = activeRigging.size;
+  // Only count items confirmed to be actively rigging (PENDING/RUNNING). Read
+  // through the current items so an item that has since resolved (or left the
+  // outfit) drops out without the effect above having to reset the set.
+  const pendingCount = items.filter(
+    (item) => !item.riggedGlbUrl && activeRigging.has(item.productId)
+  ).length;
 
   return { items, pendingCount };
 }

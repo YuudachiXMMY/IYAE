@@ -233,23 +233,32 @@ function LoadingSkeleton() {
 export default function OutfitsPage() {
   const { user, loading: authLoading } = useRequireAuth();
 
-  const [outfits, setOutfits] = useState<OutfitRecommendation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // One settled fetch per viewer. "Loading" is the absence of a result for the
+  // current viewer, which is what keeps the effect free of a synchronous reset.
+  const [loaded, setLoaded] = useState<{
+    viewer: typeof user;
+    outfits: OutfitRecommendation[];
+    error: string | null;
+  } | null>(null);
+
+  const settled = loaded?.viewer === user ? loaded : null;
+  const outfits = settled?.outfits ?? [];
+  const error = settled?.error ?? null;
+  const loading = settled === null;
 
   useEffect(() => {
     if (authLoading || !user) return;
 
-    setLoading(true);
-    setError(null);
-
     api
       .get<OutfitRecommendation[]>("/api/outfits")
-      .then(setOutfits)
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Failed to load outfits");
-      })
-      .finally(() => setLoading(false));
+      .then((data) => setLoaded({ viewer: user, outfits: data, error: null }))
+      .catch((err: unknown) =>
+        setLoaded((prev) => ({
+          viewer: user,
+          outfits: prev?.outfits ?? [],
+          error: err instanceof ApiError ? err.message : "Failed to load outfits",
+        }))
+      );
   }, [authLoading, user]);
 
   if (authLoading) {

@@ -233,7 +233,9 @@ export default function TryOnSection() {
     actionError: avatarActionError,
   } = useAvatarStatus();
 
-  const [step, setStep] = useState<WidgetStep>("input");
+  // What this widget last decided on its own (Generate clicked, guest task
+  // settled, Reset). The avatar pipeline is overlaid on it in `step` below.
+  const [localStep, setLocalStep] = useState<WidgetStep>("input");
   const [inputStep, setInputStep] = useState<1 | 2>(1);
   const [bodyType, setBodyType] = useState<BodyType>("neutral");
   const [heightCm, setHeightCm] = useState(HEIGHT_RANGE.default);
@@ -243,10 +245,17 @@ export default function TryOnSection() {
   const [hipsCm, setHipsCm] = useState(HIPS_RANGE.default);
   const [shoulderWidthCm, setShoulderWidthCm] = useState(SHOULDER_RANGE.default);
   const [inseamCm, setInseamCm] = useState(INSEAM_RANGE.default);
-  const [viewMode, setViewMode] = useState<ViewMode>("demo");
+  // `null` means "follow the avatar"; the toggle and Reset set it explicitly.
+  const [viewModeChoice, setViewModeChoice] = useState<ViewMode | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [guestTaskId, setGuestTaskId] = useState<number | null>(null);
-  const [guestGlbUrl, setGuestGlbUrl] = useState<string | null>(null);
+  /* Guests get a model with no request at all: whatever this session already
+     generated, else the bundled static default. */
+  const [guestGlbUrl, setGuestGlbUrl] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : sessionStorage.getItem("clossette_guest_glb") ?? DEFAULT_AVATAR_URL
+  );
   const [isUpdating, setIsUpdating] = useState(false);
   const [controlsExpanded, setControlsExpanded] = useState(false);
 
@@ -256,23 +265,22 @@ export default function TryOnSection() {
   const avatarGenerating =
     avatarStatus?.status === "PENDING" || avatarStatus?.status === "RUNNING";
 
-  /* Auto-switch to avatar mode when user has one */
-  useEffect(() => {
-    if (avatarReady) setViewMode("avatar");
-  }, [avatarReady]);
+  /* Avatar mode as soon as the user has one, unless they picked otherwise */
+  const viewMode: ViewMode = viewModeChoice ?? (avatarReady ? "avatar" : "demo");
 
-  /* Load default static avatar immediately for guests (no API call needed) */
-  useEffect(() => {
-    if (user || avatarReady) return;
-
-    const cached = sessionStorage.getItem("clossette_guest_glb");
-    if (cached) {
-      setGuestGlbUrl(cached);
-      return;
-    }
-
-    setGuestGlbUrl(DEFAULT_AVATAR_URL);
-  }, [user, avatarReady]);
+  /* The pipeline owns the stage while it works; a finished generation we asked
+     for lands on "result", and a failure the hook swallowed on "input". */
+  const avatarFailed =
+    Boolean(avatarActionError) && localStep === "generating" && !avatarGenerating;
+  const step: WidgetStep = avatarGenerating
+    ? "generating"
+    : localStep === "generating" && avatarReady
+      ? "result"
+      : avatarFailed
+        ? "input"
+        : localStep;
+  const displayError =
+    generateError ?? (avatarFailed ? avatarActionError : null);
 
   const sectionRef = useRef<HTMLElement>(null);
 
@@ -327,7 +335,7 @@ export default function TryOnSection() {
   const handleGenerate = useCallback(async () => {
     setGenerateError(null);
     if (user && !avatarReady && !avatarGenerating) {
-      setStep("generating");
+      setLocalStep("generating");
       try {
         await Promise.all([
           api.put("/api/auth/profile", { genderIdentity: bodyType }),
@@ -348,7 +356,7 @@ export default function TryOnSection() {
             ? err.message
             : "Could not save your measurements. Please try again.";
         setGenerateError(message);
-        setStep("input");
+        setLocalStep("input");
       }
       return;
     }
@@ -357,7 +365,7 @@ export default function TryOnSection() {
     if (alreadyHasModel) {
       setIsUpdating(true);
     } else {
-      setStep("generating");
+      setLocalStep("generating");
     }
     try {
       const res = await api.post<{ taskId: number }>("/api/public/avatar/generate", {
@@ -378,28 +386,9 @@ export default function TryOnSection() {
           : "Generation failed. Please try again.";
       setGenerateError(message);
       setIsUpdating(false);
-      if (!alreadyHasModel) setStep("input");
+      if (!alreadyHasModel) setLocalStep("input");
     }
   }, [user, avatarReady, avatarGenerating, generateAvatar, heightCm, weightKg, bodyType, guestGlbUrl, chestCm, waistCm, hipsCm, shoulderWidthCm, inseamCm]);
-
-  /* Sync real generation status to widget step */
-  useEffect(() => {
-    if (avatarGenerating && step !== "generating") {
-      setStep("generating");
-    }
-    if (avatarReady && step === "generating") {
-      setStep("result");
-      setViewMode("avatar");
-    }
-  }, [avatarGenerating, avatarReady, step]);
-
-  /* Fall back if avatar generate API fails (error caught inside hook) */
-  useEffect(() => {
-    if (avatarActionError && step === "generating" && !avatarGenerating) {
-      setGenerateError(avatarActionError);
-      setStep("input");
-    }
-  }, [avatarActionError, step, avatarGenerating]);
 
   /* Poll guest avatar task status */
   useEffect(() => {
@@ -417,12 +406,12 @@ export default function TryOnSection() {
         if (res.status === "READY" && res.glbUrl) {
           setGuestGlbUrl(res.glbUrl);
           sessionStorage.setItem("clossette_guest_glb", res.glbUrl);
-          if (step === "generating") setStep("result");
+          if (step === "generating") setLocalStep("result");
           setIsUpdating(false);
           setGuestTaskId(null);
         } else if (res.status === "FAILED") {
           setGenerateError(res.errorMessage || "Generation failed.");
-          if (step === "generating") setStep("input");
+          if (step === "generating") setLocalStep("input");
           setIsUpdating(false);
           setGuestTaskId(null);
         }
@@ -437,9 +426,9 @@ export default function TryOnSection() {
   }, [guestTaskId, step]);
 
   const handleReset = useCallback(() => {
-    setStep("input");
+    setLocalStep("input");
     setInputStep(1);
-    setViewMode("demo");
+    setViewModeChoice("demo");
     setGuestTaskId(null);
     setGuestGlbUrl(null);
   }, []);
@@ -701,7 +690,7 @@ export default function TryOnSection() {
                 <div className="ml-auto flex items-center gap-2">
                   <ViewModeToggle
                     mode={viewMode}
-                    onToggle={setViewMode}
+                    onToggle={setViewModeChoice}
                     hasAvatar={avatarReady}
                   />
                   {step === "result" && !showRealAvatar && (
@@ -890,9 +879,9 @@ export default function TryOnSection() {
                                       unit="cm"
                                       onChange={setInseamCm}
                                     />
-                                    {generateError && (
+                                    {displayError && (
                                       <p className="text-[11px] text-destructive/90 text-center leading-snug">
-                                        {generateError}
+                                        {displayError}
                                       </p>
                                     )}
                                     <div className="flex gap-2">
@@ -1061,9 +1050,9 @@ export default function TryOnSection() {
                                 unit="cm"
                                 onChange={setInseamCm}
                               />
-                              {generateError && (
+                              {displayError && (
                                 <p className="text-[11px] text-destructive/90 text-center leading-snug">
-                                  {generateError}
+                                  {displayError}
                                 </p>
                               )}
                               <div className="flex gap-2">

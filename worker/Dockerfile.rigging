@@ -11,7 +11,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 # Rigging-specific deps (require C compiler)
 RUN pip install --no-cache-dir libigl>=2.5.0 robust-laplacian>=1.0.0
-RUN pip install Pillow
+# Pillow moved into requirements.txt — it is needed wherever textured GLBs are
+# read, not just here.
 
 COPY . .
 

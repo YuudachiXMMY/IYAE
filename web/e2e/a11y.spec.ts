@@ -19,21 +19,47 @@ import { signIn } from './session';
 // are mid-flight for the first couple of seconds. HeroSection's "Scroll to
 // Discover" cue fades opacity 0 -> 1 over 0.9s delay + 0.8s duration; on a slow
 // machine the scan landed at ~12% opacity and reported #e4e4e4 on #ffffff —
-// 1.27:1 — even though the settled colour is #737373 at 4.74:1, which passes.
-// It failed in CI and passed locally purely on timing.
+// 1.27:1 — even though the settled colour passed. It failed in CI and passed
+// locally purely on timing. (That cue's settled colour had only 0.19 of
+// headroom over AA, so it is a token now; __tests__/a11y/token-contrast.test.ts
+// guards the remaining ad-hoc opacities. The timing problem is separate and is
+// what this setting is for.)
 //
 // All 13 framer-motion components under components/home/ gate on
 // `prefers-reduced-motion`, so asking for it removes the entrance animations
 // outright rather than papering over the timing.
-test.use({ reducedMotion: 'reduce' });
+//
+// It has to go through `contextOptions`. On Playwright 1.60 `reducedMotion` is
+// a BrowserContextOptions property, NOT a top-level test option — and
+// `test.use({ reducedMotion: 'reduce' })` is accepted and then silently
+// ignored, which is how it shipped as a no-op that `tsc` flagged and a fast CI
+// runner hid. Probed directly: top-level form leaves
+// matchMedia('(prefers-reduced-motion: reduce)') false, this form makes it true.
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
 const BLOCKING_IMPACTS = ['serious', 'critical'];
+
+// Asserted, not assumed. The whole point of the setting above is that scans are
+// deterministic; an option that stops arriving would quietly restore the flaky
+// mid-animation sampling instead of failing, which is exactly what happened
+// once already.
+async function expectReducedMotion(page: Page) {
+  const applied = await page.evaluate(
+    () => matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+  expect(
+    applied,
+    'prefers-reduced-motion did not reach the browser — the test.use() option ' +
+      'is being ignored, so axe may sample entrance animations mid-flight'
+  ).toBe(true);
+}
 
 async function expectNoSeriousA11yViolations(
   page: Page,
   label: string,
   opts?: { include?: string }
 ) {
+  await expectReducedMotion(page);
   const builder = new AxeBuilder({ page });
   if (opts?.include) builder.include(opts.include);
   const results = await builder.analyze();

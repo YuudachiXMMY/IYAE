@@ -108,6 +108,8 @@ describe('useProfileSurface', () => {
     const updated: ProfileSurface = { ...defaultSurface, bio: 'From other tab' }
 
     act(() => {
+      // Storage first, then the announcement — the order every writer uses.
+      localStorage.setItem('clossette.profile-surface.user-5', JSON.stringify(updated))
       window.dispatchEvent(
         new CustomEvent('clossette:profile-surface-updated:user-5', { detail: updated })
       )

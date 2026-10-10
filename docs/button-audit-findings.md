@@ -66,14 +66,18 @@ Two changes:
   (`recommendationId` is required), not catalogue items — so saves live in
   localStorage next to the other demo layers, exposed through a
   `useSyncExternalStore`-based `useSavedProductIds()` that also syncs across
-  tabs. Promoting this to a real table is a follow-up.
+  tabs. **Since resolved**: V21 added a real `saved_products` table and
+  `/api/saved-products`; localStorage is now a cache of it, not the store.
 
 ### 3. Social login buttons were visual placeholders
 
-`web/app/login/page.tsx:171-178` — `GOOGLE` and `APPLE` had no `onClick` and no
-`disabled` state. No OAuth provider is configured server-side, so they are now
-disabled with an explanatory note rather than silently swallowing clicks.
-**Product call**: if social sign-in is not on the roadmap, delete the block.
+`web/app/login/page.tsx` — `GOOGLE` and `APPLE` had no `onClick` and no
+`disabled` state. No OAuth provider is configured server-side, so they were
+first made disabled with an explanatory note rather than silently swallowing
+clicks. **The product call has since been made**: the buttons and the "or
+continue with" divider are deleted, keeping only the line that sets the
+expectation. A control a user can never operate is worse than its absence, and
+the divider promised alternatives that were not there.
 
 ### 4. Active filter chip exposed no selected state
 
@@ -231,17 +235,12 @@ Note the failure is not limited to writes: any request that carries a
 non-allowlisted `Origin` is rejected, including authenticated GETs such as
 `/api/avatar` and `/api/body-profile`.
 
-### Product saves are still client-side only
+### Resolved: product saves are now server-side
 
-`lib/saved-products.ts` persists to localStorage because the server has no
-"save a product" capability (`/api/looks` requires a `recommendationId` and
-stores outfit recommendations, not catalogue items). A real wishlist table is
-follow-up work.
-
-### Social sign-in buttons are disabled, not removed
-
-No OAuth provider is configured server-side. If social sign-in is not on the
-roadmap, delete the block in `app/login/page.tsx` outright.
+The follow-up pass added V21 `saved_products` and
+`GET`/`PUT`/`DELETE /api/saved-products`. `lib/saved-products.ts` treats the
+server as the source of truth when signed in, with localStorage demoted to a
+cache and replayed up on first sign-in, so a save survives a change of device.
 
 ## Deliberately not clicked
 

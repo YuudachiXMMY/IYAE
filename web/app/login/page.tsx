@@ -159,42 +159,14 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="my-8 flex items-center gap-4">
-            <span className="h-px flex-1 bg-border" />
-            <span className="font-body text-[11px] uppercase tracking-[0.12px] text-muted-foreground">
-              or continue with
-            </span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          {/* No OAuth provider is configured server-side yet, so these stay
-              disabled and say so — previously they were clickable and silently
-              did nothing. */}
-          <div className="flex gap-3">
-            <Button
-              variant="outline-pill"
-              size="pill"
-              className="flex-1"
-              disabled
-              aria-describedby="social-login-note"
-            >
-              GOOGLE
-            </Button>
-            <Button
-              variant="outline-pill"
-              size="pill"
-              className="flex-1"
-              disabled
-              aria-describedby="social-login-note"
-            >
-              APPLE
-            </Button>
-          </div>
-          <p
-            id="social-login-note"
-            className="mt-3 text-center font-body text-[12px] text-muted-foreground"
-          >
+          {/* No OAuth provider is configured server-side — nothing in the
+              server reads a Google or Apple credential. The GOOGLE / APPLE
+              buttons that used to sit here were disabled placeholders; a
+              control a user can never operate is worse than its absence, so
+              only the expectation-setting line remains. The "or continue with"
+              divider went with them: it promised alternatives that are not
+              there. Restore both together when a provider exists. */}
+          <p className="mt-8 text-center font-body text-[12px] text-muted-foreground">
             Social sign-in is coming soon — use your email for now.
           </p>
 

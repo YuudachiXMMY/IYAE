@@ -33,38 +33,35 @@ export default function EditProductPage() {
   const productId = Number(params.id);
 
   const { status: generationStatus } = useGenerationStatus(productId, true);
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [fetched, setFetched] = useState<{
+    productId: number;
+    product: Product | null;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchProduct = useCallback(async () => {
-    if (!productId || isNaN(productId)) {
-      setNotFound(true);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const products = await api.get<Product[]>("/api/designer/products");
-      const found = products.find((p) => p.id === productId) ?? null;
-      if (!found) {
-        setNotFound(true);
-      } else {
-        setProduct(found);
-      }
-    } catch {
-      setNotFound(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [productId]);
+  // `Number("abc")` is NaN and `Number("")` is 0 — neither is a product id.
+  const validId = Number.isFinite(productId) && productId !== 0;
+  // The fetched product is tagged with the id it belongs to, so "no answer for
+  // this id yet" is the skeleton and an unusable id is straight to not-found —
+  // neither needs a flag set from the effect.
+  const loading = validId && fetched?.productId !== productId;
+  const product = fetched?.productId === productId ? fetched.product : null;
 
   useEffect(() => {
-    if (!authLoading) {
-      void fetchProduct();
+    if (authLoading || !validId) return;
+    async function fetchProduct() {
+      try {
+        const products = await api.get<Product[]>("/api/designer/products");
+        setFetched({
+          productId,
+          product: products.find((p) => p.id === productId) ?? null,
+        });
+      } catch {
+        setFetched({ productId, product: null });
+      }
     }
-  }, [authLoading, fetchProduct]);
+    void fetchProduct();
+  }, [authLoading, validId, productId]);
 
   const handleUpdate = useCallback(
     async (data: ProductFormData) => {
@@ -106,7 +103,7 @@ export default function EditProductPage() {
     );
   }
 
-  if (notFound || !product) {
+  if (!product) {
     return (
       <>
         <SiteHeader variant="app" />

@@ -210,23 +210,39 @@ export function StyleCircleDialog({
   onToggleFollow,
   initialTab = "followers",
 }: StyleCircleDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl p-0 overflow-hidden rounded-[2rem]">
+        {/* The body opens on `initialTab`, so it is remounted per open instead of
+            an effect re-syncing the tab after the fact. */}
+        <CircleBody
+          key={`${open}-${initialTab}`}
+          currentUserId={currentUserId}
+          initialTab={initialTab}
+          onToggleFollow={onToggleFollow}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CircleBody({
+  currentUserId,
+  initialTab,
+  onToggleFollow,
+}: {
+  currentUserId: number;
+  initialTab: "followers" | "following";
+  onToggleFollow: (username: string) => void;
+}) {
   const [activeTab, setActiveTab] = useState<"followers" | "following">(initialTab);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [followers, setFollowers] = useState<CircleUser[]>([]);
   const [following, setFollowing] = useState<CircleUser[]>([]);
   const [followedIds, setFollowedIds] = useState<Set<number>>(new Set());
 
-  // Re-sync tab when dialog reopens with a different initialTab
-  useEffect(() => {
-    if (open) {
-      setActiveTab(initialTab);
-      setSelectedUserId(null);
-    }
-  }, [open, initialTab]);
-
   // Load the REAL follower/following graph (replaces the old SOCIAL_PROFILES.slice(0,5) fabrication).
   useEffect(() => {
-    if (!open) return;
     const ctrl = new AbortController();
     follows
       .followers(currentUserId, 0, 50, ctrl.signal)
@@ -241,7 +257,7 @@ export function StyleCircleDialog({
       })
       .catch(() => setFollowing([]));
     return () => ctrl.abort();
-  }, [open, currentUserId]);
+  }, [currentUserId]);
 
   const activeList = activeTab === "followers" ? followers : following;
 
@@ -271,82 +287,78 @@ export function StyleCircleDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden rounded-[2rem]">
-        <div className="grid md:grid-cols-[1fr_1fr] min-h-[480px]">
-          {/* Left panel — user list */}
-          <div className="flex flex-col">
-            <DialogHeader className="px-5 pt-5 pb-3">
-              <DialogTitle className="text-base font-semibold">Style Circle</DialogTitle>
-              <div className="flex gap-1 mt-2">
-                {(["followers", "following"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => {
-                      setActiveTab(tab);
-                      setSelectedUserId(null);
-                    }}
-                    className={cn(
-                      "px-4 py-1.5 text-xs font-semibold rounded-full capitalize transition-colors",
-                      activeTab === tab
-                        ? "bg-foreground text-background"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    )}
-                  >
-                    {tab}
-                    <span className="ml-1.5 opacity-60">
-                      {tab === "followers" ? followers.length : following.length}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </DialogHeader>
-
-            <ScrollArea className="flex-1 px-3 pb-4">
-              {activeList.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  {activeTab === "following"
-                    ? "Not following anyone yet."
-                    : "No followers yet."}
-                </p>
-              ) : (
-                <div className="flex flex-col gap-0.5">
-                  {activeList.map((profile) => (
-                    <UserListItem
-                      key={profile.id}
-                      profile={profile}
-                      isFollowing={followedIds.has(profile.id)}
-                      isSelected={selectedUserId === profile.id}
-                      onSelect={() => setSelectedUserId(profile.id)}
-                      onToggleFollow={() => handleToggle(profile)}
-                    />
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
+    <div className="grid md:grid-cols-[1fr_1fr] min-h-[480px]">
+      {/* Left panel — user list */}
+      <div className="flex flex-col">
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <DialogTitle className="text-base font-semibold">Style Circle</DialogTitle>
+          <div className="flex gap-1 mt-2">
+            {(["followers", "following"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setSelectedUserId(null);
+                }}
+                className={cn(
+                  "px-4 py-1.5 text-xs font-semibold rounded-full capitalize transition-colors",
+                  activeTab === tab
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {tab}
+                <span className="ml-1.5 opacity-60">
+                  {tab === "followers" ? followers.length : following.length}
+                </span>
+              </button>
+            ))}
           </div>
+        </DialogHeader>
 
-          <Separator orientation="vertical" className="hidden md:block" />
+        <ScrollArea className="flex-1 px-3 pb-4">
+          {activeList.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {activeTab === "following"
+                ? "Not following anyone yet."
+                : "No followers yet."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {activeList.map((profile) => (
+                <UserListItem
+                  key={profile.id}
+                  profile={profile}
+                  isFollowing={followedIds.has(profile.id)}
+                  isSelected={selectedUserId === profile.id}
+                  onSelect={() => setSelectedUserId(profile.id)}
+                  onToggleFollow={() => handleToggle(profile)}
+                />
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
 
-          {/* Right panel — detail card */}
-          <div className="hidden md:flex flex-col">
-            {selectedUser ? (
-              <DetailCard
-                profile={selectedUser}
-                isFollowing={followedIds.has(selectedUser.id)}
-                onToggleFollow={() => handleToggle(selectedUser)}
-              />
-            ) : (
-              <div className="flex flex-1 items-center justify-center p-8">
-                <p className="text-sm text-muted-foreground text-center">
-                  Select a user to view their profile
-                </p>
-              </div>
-            )}
+      <Separator orientation="vertical" className="hidden md:block" />
+
+      {/* Right panel — detail card */}
+      <div className="hidden md:flex flex-col">
+        {selectedUser ? (
+          <DetailCard
+            profile={selectedUser}
+            isFollowing={followedIds.has(selectedUser.id)}
+            onToggleFollow={() => handleToggle(selectedUser)}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-8">
+            <p className="text-sm text-muted-foreground text-center">
+              Select a user to view their profile
+            </p>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -4,11 +4,12 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
 } from "react";
-import { api, ApiError } from "./api";
+import { api } from "./api";
 import { useAuth } from "./auth-context";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -80,6 +81,9 @@ interface CartContextType {
 
 const DEMO_STORAGE_KEY = "clossette_demo_cart_items";
 
+/** Shared empty list, so a signed-out `serverItems` keeps a stable identity. */
+const NO_SERVER_ITEMS: CartItem[] = [];
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -106,43 +110,70 @@ function saveDemoItems(items: DemoCartItem[]): void {
   localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(items));
 }
 
-function generateDemoId(): number {
-  return -Math.floor(Date.now() + Math.random() * 1000);
+/**
+ * One below the lowest id in use, so a new demo item cannot collide with one
+ * already in the cart.
+ *
+ * Derived from the list rather than from the clock, which is what makes it
+ * usable inside a state updater: the updater is re-invoked under StrictMode and
+ * whenever a pending queue is replayed, and a `Date.now()` id changed on every
+ * invocation. The previous `-Math.floor(Date.now() + Math.random() * 1000)`
+ * could also collide outright — the random term spans a full second, so two
+ * items added within a second of each other had a real chance of sharing an id,
+ * and the id is both the React key and what `removeDemoItem` matches on.
+ */
+function nextDemoId(items: DemoCartItem[]): number {
+  return items.reduce((lowest, item) => Math.min(lowest, item.id), 0) - 1;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [serverItems, setServerItems] = useState<CartItem[]>([]);
-  const [demoItems, setDemoItems] = useState<DemoCartItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [fetchedItems, setFetchedItems] = useState<CartItem[]>([]);
+  const [fetchedForUserId, setFetchedForUserId] = useState<number | null>(null);
+  const [demoItems, setDemoItems] = useState<DemoCartItem[]>(loadDemoItems);
+
+  // Both derived from which user's cart has landed: signed out there is no
+  // server cart, and until this user's fetch settles the items on hand belong
+  // to nobody we can show them to. That keeps the fetch effect below free of
+  // synchronous state resets.
+  const serverItems =
+    user && fetchedForUserId === user.id ? fetchedItems : NO_SERVER_ITEMS;
+  const loading = !!user && fetchedForUserId !== user.id;
 
   const totalCount = serverItems.length + demoItems.length;
 
-  // Load demo items from localStorage on mount
+  // Demo items are persisted here, mirroring *committed* state, rather than
+  // from inside the `setDemoItems` updaters below. An updater has to be pure:
+  // React invokes it twice under StrictMode and re-invokes it whenever a
+  // pending queue is replayed on a later render, so a localStorage write in
+  // there fires more than once per change — and can fire for a render that is
+  // then thrown away, persisting a cart the user never saw.
+  //
+  // The ref starts holding the mounted value, which came *from* storage, so the
+  // first run writes nothing. Comparing identity rather than counting renders
+  // also keeps StrictMode's double-invoked mount effect from writing.
+  const persistedDemoItems = useRef(demoItems);
   useEffect(() => {
-    setDemoItems(loadDemoItems());
-  }, []);
+    if (persistedDemoItems.current === demoItems) return;
+    persistedDemoItems.current = demoItems;
+    saveDemoItems(demoItems);
+  }, [demoItems]);
 
   // Fetch server cart when user logs in
-  const refreshCart = useCallback(async () => {
-    if (!user) {
-      setServerItems([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.get<ServerCartResponse>("/api/cart");
-      setServerItems(res.items.map(mapServerItem));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setServerItems([]);
-      }
-      // Silently handle other errors — cart badge degrades gracefully
-    } finally {
-      setLoading(false);
-    }
+  const refreshCart = useCallback((): Promise<void> => {
+    if (!user) return Promise.resolve();
+    const userId = user.id;
+    return api
+      .get<ServerCartResponse>("/api/cart")
+      .then((res) => setFetchedItems(res.items.map(mapServerItem)))
+      // A 404 means no cart row yet; anything else is handled silently — the
+      // cart badge degrades gracefully. Either way the list is emptied rather
+      // than left holding items fetched for whoever was signed in before.
+      .catch(() => setFetchedItems([]))
+      // Settles `loading`, whichever way the request went.
+      .finally(() => setFetchedForUserId(userId));
   }, [user]);
 
   useEffect(() => {
@@ -158,7 +189,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         quantity,
         selectedSize,
       });
-      setServerItems(res.items.map(mapServerItem));
+      setFetchedItems(res.items.map(mapServerItem));
     },
     [],
   );
@@ -169,14 +200,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const res = await api.delete<ServerCartResponse>(
           `/api/cart/items/${itemId}`,
         );
-        setServerItems(res.items.map(mapServerItem));
+        setFetchedItems(res.items.map(mapServerItem));
         return;
       }
       const res = await api.put<ServerCartResponse>(
         `/api/cart/items/${itemId}`,
         { quantity },
       );
-      setServerItems(res.items.map(mapServerItem));
+      setFetchedItems(res.items.map(mapServerItem));
     },
     [],
   );
@@ -185,45 +216,39 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const res = await api.delete<ServerCartResponse>(
       `/api/cart/items/${itemId}`,
     );
-    setServerItems(res.items.map(mapServerItem));
+    setFetchedItems(res.items.map(mapServerItem));
   }, []);
 
   // ── Demo item operations ───────────────────────────────────────────────────
+
+  // All three updaters are pure: they read `prev`, build the next list and
+  // return it. Persistence is the effect above.
 
   const addDemoItem = useCallback((item: Omit<DemoCartItem, "id">) => {
     setDemoItems((prev) => {
       const existing = prev.find(
         (i) => i.name === item.name && i.selectedSize === item.selectedSize,
       );
-      const updated = existing
+      return existing
         ? prev.map((i) =>
             i.name === item.name && i.selectedSize === item.selectedSize
               ? { ...i, quantity: i.quantity + item.quantity }
               : i,
           )
-        : [...prev, { ...item, id: generateDemoId() }];
-      saveDemoItems(updated);
-      return updated;
+        : [...prev, { ...item, id: nextDemoId(prev) }];
     });
   }, []);
 
   const updateDemoItem = useCallback((itemId: number, quantity: number) => {
-    setDemoItems((prev) => {
-      const updated =
-        quantity <= 0
-          ? prev.filter((i) => i.id !== itemId)
-          : prev.map((i) => (i.id === itemId ? { ...i, quantity } : i));
-      saveDemoItems(updated);
-      return updated;
-    });
+    setDemoItems((prev) =>
+      quantity <= 0
+        ? prev.filter((i) => i.id !== itemId)
+        : prev.map((i) => (i.id === itemId ? { ...i, quantity } : i)),
+    );
   }, []);
 
   const removeDemoItem = useCallback((itemId: number) => {
-    setDemoItems((prev) => {
-      const updated = prev.filter((i) => i.id !== itemId);
-      saveDemoItems(updated);
-      return updated;
-    });
+    setDemoItems((prev) => prev.filter((i) => i.id !== itemId));
   }, []);
 
   return (

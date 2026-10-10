@@ -4,31 +4,40 @@ import { rigging, RiggingStatusResponse, ApiError } from "../api";
 
 export function useRiggingStatus(productId: number | null) {
   const [status, setStatus] = useState<RiggingStatusResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  // Starts true exactly when the mount fetch below will actually run, so that
+  // first fetch needs no setIsLoading of its own.
+  const [isLoading, setIsLoading] = useState(() => Boolean(productId));
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchStatus = useCallback(
-    async (silent = false) => {
-      if (!productId) return;
-      if (!silent) setIsLoading(true);
-      const controller = new AbortController();
-      try {
-        const data = await rigging.getStatus(productId, controller.signal);
-        setStatus(data);
-      } catch (err) {
+  // The request starts inside the promise chain so that a synchronous throw lands
+  // in `.catch` too, as it did in the `async`/`try` version this replaced.
+  const loadStatus = useCallback(() => {
+    if (!productId) return Promise.resolve();
+    const controller = new AbortController();
+    return Promise.resolve()
+      .then(() => rigging.getStatus(productId, controller.signal))
+      .then((data) => setStatus(data))
+      .catch((err: unknown) => {
         if (err instanceof Error && err.name === "AbortError") return;
         setStatus(null);
-      } finally {
+      });
+  }, [productId]);
+
+  const fetchStatus = useCallback(
+    (silent = false) => {
+      if (!productId) return Promise.resolve();
+      if (!silent) setIsLoading(true);
+      return loadStatus().finally(() => {
         if (!silent) setIsLoading(false);
-      }
+      });
     },
-    [productId]
+    [productId, loadStatus]
   );
 
   useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+    loadStatus().finally(() => setIsLoading(false));
+  }, [loadStatus]);
 
   useEffect(() => {
     if (status?.status === "PENDING" || status?.status === "RUNNING") {

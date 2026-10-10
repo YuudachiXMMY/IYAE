@@ -1,10 +1,20 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import type { ReactNode } from "react";
+
+// Only the props these stubs actually read — Radix's own prop types are far
+// wider and nothing here benefits from matching them.
+type SelectStubProps = {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  children?: ReactNode;
+};
+type SelectItemStubProps = { value: string; children?: ReactNode };
 
 // Radix Select relies on pointer APIs jsdom lacks; swap in a native <select>
 // so category/status can be driven deterministically with fireEvent.change.
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ value, onValueChange, children }: any) => (
+  Select: ({ value, onValueChange, children }: SelectStubProps) => (
     <select
       value={value ?? ""}
       onChange={(e) => onValueChange?.(e.target.value)}
@@ -13,10 +23,12 @@ vi.mock("@/components/ui/select", () => ({
       {children}
     </select>
   ),
-  SelectTrigger: ({ children }: any) => <>{children}</>,
+  SelectTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
   SelectValue: () => null,
-  SelectContent: ({ children }: any) => <>{children}</>,
-  SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
+  SelectContent: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  SelectItem: ({ value, children }: SelectItemStubProps) => (
+    <option value={value}>{children}</option>
+  ),
 }));
 
 // The form fetches categories on mount; resolve empty so it keeps its fallback list.

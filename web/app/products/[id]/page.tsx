@@ -108,6 +108,13 @@ export default function ProductDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  // Keyed on the id so navigating between products mounts a fresh subtree: that
+  // is what clears the previous product's size/recommendation (which must never
+  // be carried into the cart), rather than a reset pass inside the effects.
+  return <ProductDetail key={id} id={id} />;
+}
+
+function ProductDetail({ id }: { id: string }) {
   const { user } = useAuth();
   const { addServerItem, addDemoItem } = useCart();
   const track = useTrackEvent();
@@ -127,12 +134,6 @@ export default function ProductDetailPage({
   const [sizeRec, setSizeRec] = useState<SizeRecommendationResponse | null>(null);
 
   useEffect(() => {
-    setProductLoading(true);
-    setError("");
-    // Reset size state so a stale size/rec from the previous product can't be
-    // carried over (and later added to cart) when navigating between products.
-    setSelectedSize(null);
-    setSizeRec(null);
     api
       .get<ProductWithAsset>(`/api/products/${id}`)
       .then((p) => {
@@ -162,7 +163,6 @@ export default function ProductDetailPage({
   }, [id, track]);
 
   useEffect(() => {
-    setReviewsLoading(true);
     api
       .get<PagedReviewResponse>(`/api/products/${id}/reviews`)
       .then((res) =>

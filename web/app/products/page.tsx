@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
@@ -47,51 +47,73 @@ function ProductsPageContent() {
     totalPages: number;
     last: boolean;
   } | null>(null);
-  const [loading, setLoading] = useState(true);
   const savedIds = useSavedProductIds();
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(currentPage),
-        size: "20",
-        sort: currentSort,
-      });
-      if (currentCategory) params.set("category", currentCategory);
-      if (currentQ) params.set("q", currentQ);
-      if (currentLocalOnly) params.set("localOnly", "true");
-
-      const result = await api.get<ProductPage>(
-        `/api/products?${params.toString()}`,
-      );
-      setMeta({
-        totalElements: result.totalElements,
-        totalPages: result.totalPages,
-        last: result.last,
-      });
-      // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
-      setProducts((prev) => {
-        if (currentPage === 0) return result.content;
-        // Append by id, never blindly: a re-run of this effect (React Strict
-        // Mode double-invokes it in dev) would otherwise append the same page
-        // twice and collide React keys.
-        const seen = new Set(prev.map((p) => p.id));
-        return [...prev, ...result.content.filter((p) => !seen.has(p.id))];
-      });
-    } catch {
-      if (currentPage === 0) {
-        setProducts([]);
-        setMeta(null);
-      }
-    } finally {
-      setLoading(false);
-    }
+  const query = useMemo(() => {
+    const params = new URLSearchParams({
+      page: String(currentPage),
+      size: "20",
+      sort: currentSort,
+    });
+    if (currentCategory) params.set("category", currentCategory);
+    if (currentQ) params.set("q", currentQ);
+    if (currentLocalOnly) params.set("localOnly", "true");
+    return params.toString();
   }, [currentPage, currentCategory, currentSort, currentQ, currentLocalOnly]);
 
+  // The query string doubles as the identity of what is on screen: "we have no
+  // answer for this query yet" *is* the loading state, so changing filters or
+  // page enters it during render instead of through a set in the effect.
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
+  const loading = loadedQuery !== query;
+
   useEffect(() => {
+    // Cancelled on cleanup, so a request the user has already navigated away
+    // from writes nothing. Without this, a late page>0 response ran its append
+    // branch and dropped rows from the previous filter into the new result set
+    // — and, worse, its `finally` wrote the *old* query into `loadedQuery`.
+    // Since `loading` is derived as `loadedQuery !== query` and nothing re-runs
+    // this effect afterwards, LOAD MORE then sat disabled on "LOADING…" for as
+    // long as the user stayed on the page.
+    const controller = new AbortController();
+
+    async function fetchProducts() {
+      try {
+        const result = await api.get<ProductPage>(`/api/products?${query}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setMeta({
+          totalElements: result.totalElements,
+          totalPages: result.totalPages,
+          last: result.last,
+        });
+        // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
+        setProducts((prev) => {
+          if (currentPage === 0) return result.content;
+          // Append by id, never blindly: with `sort=createdAt,desc` a listing
+          // published between the two requests shifts the page boundary, so
+          // page 1 can repeat a row already shown from page 0.
+          const seen = new Set(prev.map((p) => p.id));
+          return [...prev, ...result.content.filter((p) => !seen.has(p.id))];
+        });
+      } catch {
+        // An abort is not a failed search: the run that superseded this one owns
+        // the grid now, and clearing it here would blank a result set that
+        // loaded fine.
+        if (controller.signal.aborted) return;
+        if (currentPage === 0) {
+          setProducts([]);
+          setMeta(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoadedQuery(query);
+      }
+    }
+
     void fetchProducts();
-  }, [fetchProducts]);
+    return () => controller.abort();
+  }, [query, currentPage]);
 
   const updateParams = useCallback(
     (updates: Record<string, string>) => {
@@ -256,7 +278,12 @@ function ProductsPageContent() {
                   imageUrl={product.media?.[0]}
                   href={`/products/${product.id}`}
                   saved={savedIds.has(product.id)}
-                  onToggleSave={() => toggleSavedProduct(product.id)}
+                  onToggleSave={() => {
+                    // Optimistic: the store updates synchronously, so the heart
+                    // flips now. The promise settles the server write and never
+                    // rejects — a failure rolls the store back on its own.
+                    void toggleSavedProduct(product.id);
+                  }}
                 />
               ))}
             </div>
