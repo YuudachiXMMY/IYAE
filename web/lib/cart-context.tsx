@@ -11,6 +11,13 @@ import {
 } from "react";
 import { api } from "./api";
 import { useAuth } from "./auth-context";
+import {
+  loadDemoCartItems,
+  saveDemoCartItems,
+  type DemoCartItem,
+} from "./demo-cart";
+
+export type { DemoCartItem };
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,15 +27,6 @@ export interface CartItem {
   name: string;
   price: number;
   currency: string;
-  quantity: number;
-  imageUrl: string | null;
-  selectedSize: string;
-}
-
-export interface DemoCartItem {
-  id: number; // negative integer
-  name: string;
-  price: number;
   quantity: number;
   imageUrl: string | null;
   selectedSize: string;
@@ -79,36 +77,12 @@ interface CartContextType {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEMO_STORAGE_KEY = "clossette_demo_cart_items";
-
 /** Shared empty list, so a signed-out `serverItems` keeps a stable identity. */
 const NO_SERVER_ITEMS: CartItem[] = [];
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const CartContext = createContext<CartContextType | null>(null);
-
-// ── localStorage helpers ──────────────────────────────────────────────────────
-
-function loadDemoItems(): DemoCartItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(DEMO_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<Partial<DemoCartItem> & { id: number }>;
-    return parsed.map((item) => ({
-      ...item,
-      selectedSize: item.selectedSize ?? "ONE_SIZE",
-    })) as DemoCartItem[];
-  } catch {
-    return [];
-  }
-}
-
-function saveDemoItems(items: DemoCartItem[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(items));
-}
 
 /**
  * One below the lowest id in use, so a new demo item cannot collide with one
@@ -132,7 +106,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [fetchedItems, setFetchedItems] = useState<CartItem[]>([]);
   const [fetchedForUserId, setFetchedForUserId] = useState<number | null>(null);
-  const [demoItems, setDemoItems] = useState<DemoCartItem[]>(loadDemoItems);
+  const [demoItems, setDemoItems] = useState<DemoCartItem[]>(loadDemoCartItems);
 
   // Both derived from which user's cart has landed: signed out there is no
   // server cart, and until this user's fetch settles the items on hand belong
@@ -141,6 +115,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const serverItems =
     user && fetchedForUserId === user.id ? fetchedItems : NO_SERVER_ITEMS;
   const loading = !!user && fetchedForUserId !== user.id;
+
+  // Signing out empties the demo cart, and it has to empty it *here*, where the
+  // list actually lives. `logout()` used to delete `DEMO_STORAGE_KEY` itself —
+  // its own hardcoded second copy of the key — which left `demoItems` holding
+  // the items: the badge kept counting them, /cart kept listing them, and the
+  // next add or remove mirrored the whole stale list straight back to storage,
+  // resurrecting a cart that was supposed to be gone. On a shared device the
+  // next account signed in to it.
+  //
+  // Signing *in* deliberately keeps the list: browsing as a guest, adding a demo
+  // item and then signing in is a real flow, and the items are device-level
+  // anyway (negative ids, no server row).
+  const [wasSignedIn, setWasSignedIn] = useState(!!user);
+  if (wasSignedIn !== !!user) {
+    setWasSignedIn(!!user);
+    if (!user) setDemoItems([]);
+  }
 
   const totalCount = serverItems.length + demoItems.length;
 
@@ -158,7 +149,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (persistedDemoItems.current === demoItems) return;
     persistedDemoItems.current = demoItems;
-    saveDemoItems(demoItems);
+    saveDemoCartItems(demoItems);
   }, [demoItems]);
 
   // Fetch server cart when user logs in
