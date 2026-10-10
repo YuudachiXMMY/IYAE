@@ -256,7 +256,12 @@ function ProductsPageContent() {
                   imageUrl={product.media?.[0]}
                   href={`/products/${product.id}`}
                   saved={savedIds.has(product.id)}
-                  onToggleSave={() => toggleSavedProduct(product.id)}
+                  onToggleSave={() => {
+                    // Optimistic: the store updates synchronously, so the heart
+                    // flips now. The promise settles the server write and never
+                    // rejects — a failure rolls the store back on its own.
+                    void toggleSavedProduct(product.id);
+                  }}
                 />
               ))}
             </div>

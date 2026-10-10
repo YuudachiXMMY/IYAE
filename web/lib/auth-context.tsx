@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { api, type RegisterRequest, type UpdateProfileRequest } from "./api";
 import { isVerificationPending } from "./auth-config";
+import { clearSavedProducts, resetSavedProductsSync } from "./saved-products";
 
 interface User {
   id: number;
@@ -95,6 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem("clossette_token");
     localStorage.removeItem("clossette_demo_cart_items");
+    // The wishlist cache is per-user. Left behind on a shared device it would
+    // show the previous account's saves, and the next sign-in would replay them
+    // onto the new account as if they had been tapped there.
+    clearSavedProducts();
+    resetSavedProductsSync();
     setUser(null);
   }, []);
 
