@@ -19,8 +19,11 @@ import { signIn } from './session';
 // are mid-flight for the first couple of seconds. HeroSection's "Scroll to
 // Discover" cue fades opacity 0 -> 1 over 0.9s delay + 0.8s duration; on a slow
 // machine the scan landed at ~12% opacity and reported #e4e4e4 on #ffffff —
-// 1.27:1 — even though the settled colour is #737373 at 4.74:1, which passes.
-// It failed in CI and passed locally purely on timing.
+// 1.27:1 — even though the settled colour passed. It failed in CI and passed
+// locally purely on timing. (That cue's settled colour had only 0.19 of
+// headroom over AA, so it is a token now; __tests__/a11y/token-contrast.test.ts
+// guards the remaining ad-hoc opacities. The timing problem is separate and is
+// what this setting is for.)
 //
 // All 13 framer-motion components under components/home/ gate on
 // `prefers-reduced-motion`, so asking for it removes the entrance animations
