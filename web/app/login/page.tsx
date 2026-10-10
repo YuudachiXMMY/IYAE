@@ -168,14 +168,35 @@ export default function LoginPage() {
             <span className="h-px flex-1 bg-border" />
           </div>
 
+          {/* No OAuth provider is configured server-side yet, so these stay
+              disabled and say so — previously they were clickable and silently
+              did nothing. */}
           <div className="flex gap-3">
-            <Button variant="outline-pill" size="pill" className="flex-1">
+            <Button
+              variant="outline-pill"
+              size="pill"
+              className="flex-1"
+              disabled
+              aria-describedby="social-login-note"
+            >
               GOOGLE
             </Button>
-            <Button variant="outline-pill" size="pill" className="flex-1">
+            <Button
+              variant="outline-pill"
+              size="pill"
+              className="flex-1"
+              disabled
+              aria-describedby="social-login-note"
+            >
               APPLE
             </Button>
           </div>
+          <p
+            id="social-login-note"
+            className="mt-3 text-center font-body text-[12px] text-muted-foreground"
+          >
+            Social sign-in is coming soon — use your email for now.
+          </p>
 
           <p className="mt-8 text-center font-body text-[13px] text-muted-foreground">
             New to {BRAND.name}?{" "}

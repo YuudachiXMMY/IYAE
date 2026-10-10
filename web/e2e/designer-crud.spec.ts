@@ -1,16 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { signIn } from './session';
 
-const DESIGNER_EMAIL = 'designer@example.com';
-const DESIGNER_PASSWORD = 'password123';
 const UNIQUE_SUFFIX = () => Date.now().toString();
 
 test.describe('Designer product CRUD', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(DESIGNER_EMAIL);
-    await page.getByLabel('Password').fill(DESIGNER_PASSWORD);
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('/dashboard', { timeout: 10000 });
+    await signIn(page, 'designer');
+    await page.goto('/dashboard');
   });
 
   test('designer products page renders', async ({ page }) => {
@@ -29,7 +25,8 @@ test.describe('Designer product CRUD', () => {
     await page.getByRole('button', { name: 'Create product' }).click();
     await page.waitForURL('/designer/products/new', { timeout: 5000 });
 
-    await expect(page.getByRole('heading', { name: 'New Product' })).toBeVisible({
+    // "New Product" is a shadcn CardTitle, which renders a <div> — not a heading.
+    await expect(page.getByText('New Product')).toBeVisible({
       timeout: 5000,
     });
   });
@@ -80,8 +77,9 @@ test.describe('Designer product CRUD', () => {
     await page.getByRole('button', { name: /Create product/i }).click();
     await page.waitForURL('/designer/products', { timeout: 10000 });
 
-    // Click on the product to edit
-    await page.getByText(productName).click();
+    // The name node is pointer-events-none and sits under a stretched edit
+    // link, so clicking the text fails the hit-target check — click the link.
+    await page.getByRole('link', { name: `Edit ${productName}` }).click();
     await page.waitForURL(/\/designer\/products\/\d+\/edit/, { timeout: 5000 });
 
     // Update price
@@ -123,17 +121,17 @@ test.describe('Designer product CRUD', () => {
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'Delete' }).last().click();
 
-    // Product should be gone from list
-    await expect(page.getByText(productName)).not.toBeVisible({ timeout: 10000 });
+    // Product should be gone from the list. Assert on the row's edit link: the
+    // bare name also appears inside the delete-confirm dialog, which makes a
+    // plain text match ambiguous.
+    await expect(
+      page.getByRole('link', { name: `Edit ${productName}` }),
+    ).toHaveCount(0, { timeout: 10000 });
   });
 
   test('non-designer sees designer area gate', async ({ page }) => {
-    // Log in as a buyer instead
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('emma@example.com');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('/dashboard', { timeout: 10000 });
+    // Act as a buyer instead of the designer the suite signs in as.
+    await signIn(page, 'shopper');
 
     await page.goto('/designer/products');
     await expect(page.getByText('Designer area')).toBeVisible({ timeout: 5000 });

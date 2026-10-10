@@ -1,12 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signIn } from './session';
 
 async function loginAsBuyer(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('emma@example.com');
-  await page.getByLabel('Password').fill('password123');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await page.waitForURL('/dashboard', { timeout: 10000 });
+  await signIn(page, 'shopper');
+  await page.goto('/dashboard');
 }
+
+// Serial for the same reason as cart.spec: these tests all add to the single
+// server-side cart belonging to the seed shopper.
+test.describe.configure({ mode: 'serial' });
 
 test.describe('Checkout flow', () => {
   test('products page shows at least one product', async ({ page }) => {
@@ -185,11 +187,23 @@ test.describe('Checkout flow', () => {
     const urgency = page.getByText(/only \d+ left|hurry|expires in|\d+:\d{2}\b/i);
     expect(await urgency.count()).toBe(0);
 
-    // 3) Total is itemized and equals the subtotal of the listed items (no hidden fees)
-    const subtotal = (await page.getByTestId('checkout-subtotal').textContent())?.trim();
-    const total = (await page.getByTestId('checkout-total').textContent())?.trim();
-    expect(subtotal).toBeTruthy();
-    expect(total).toBe(subtotal);
+    // 3) Every charge in the total is itemized above it — no hidden fees.
+    //    Since Phase 8 the total is subtotal + shipping (the default method is
+    //    SHIP with a carrier preselected), so a bare total === subtotal check
+    //    would fail on a correct page. Shipping reads "Free" when it is zero.
+    const money = async (testId: string): Promise<number> => {
+      const raw = (await page.getByTestId(testId).textContent())?.trim() ?? '';
+      if (/^free$/i.test(raw)) return 0;
+      const parsed = Number(raw.replace(/[^0-9.]/g, ''));
+      expect(Number.isNaN(parsed)).toBe(false);
+      return parsed;
+    };
+
+    const subtotal = await money('checkout-subtotal');
+    const shipping = await money('checkout-shipping');
+    const total = await money('checkout-total');
+    expect(subtotal).toBeGreaterThan(0);
+    expect(total).toBeCloseTo(subtotal + shipping, 2);
   });
 
   test('orders page renders for authenticated user', async ({ page }) => {

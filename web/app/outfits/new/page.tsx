@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -39,6 +39,11 @@ export default function NewOutfitPage() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // Return to the outfit list rather than `router.back()`: reached from a
+  // shared link or a new tab there is no in-app entry to go back to, and the
+  // user ends up outside the app.
+  const handleCancel = useCallback(() => router.push("/outfits"), [router]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -173,7 +178,7 @@ export default function NewOutfitPage() {
               <Button
                 variant="outline"
                 className="flex-1 rounded-full border-border"
-                onClick={() => router.back()}
+                onClick={handleCancel}
                 disabled={saving}
               >
                 Cancel
@@ -196,7 +201,7 @@ export default function NewOutfitPage() {
           <Button
             variant="outline"
             className="flex-1 rounded-full border-border"
-            onClick={() => router.back()}
+            onClick={handleCancel}
             disabled={saving}
           >
             Cancel

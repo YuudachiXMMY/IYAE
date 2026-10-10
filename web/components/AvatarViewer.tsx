@@ -8,6 +8,7 @@ import {
   useGLTF,
   Bounds,
   useProgress,
+  useEnvironment,
   Html,
   ContactShadows,
 } from "@react-three/drei";
@@ -36,6 +37,16 @@ import { POSE_PRESETS } from "@/lib/pose-config";
 import { useTrackEvent } from "@/lib/hooks/useTrackEvent";
 
 const DEFAULT_POSE_ID = POSE_PRESETS.find((p) => p.isDefault)?.id ?? "a-pose";
+
+const ENVIRONMENT_PRESET = "studio";
+
+// Warm drei's environment cache at module scope. <Environment> otherwise starts
+// its HDR load during EnvironmentCube's render, and that load synchronously
+// writes drei's global useProgress store — which `Loader`/`LoadStatus` below
+// subscribe to. React then reports "Cannot update a component (Loader) while
+// rendering a different component (EnvironmentCube)". Preloading makes the
+// lookup a cache hit, so nothing is written mid-render.
+useEnvironment.preload({ preset: ENVIRONMENT_PRESET });
 
 /**
  * Screen-reader-only live region announcing 3D load progress. Lives in normal DOM
@@ -339,7 +350,7 @@ export default function AvatarViewer({
             resolution={512}
             color="#000000"
           />
-          <Environment preset="studio" environmentIntensity={0.6} />
+          <Environment preset={ENVIRONMENT_PRESET} environmentIntensity={0.6} />
         </Suspense>
         <OrbitControls makeDefault enablePan enableZoom enableRotate />
       </Canvas>

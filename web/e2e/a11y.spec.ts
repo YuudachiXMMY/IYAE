@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { signIn } from './session';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Automated accessibility (axe-core) gate for the key routes. Gates on
@@ -11,6 +12,20 @@ import AxeBuilder from '@axe-core/playwright';
 // (or `npm run dev` + the API) before `npm run test:e2e -- a11y.spec.ts`.
 // 3D routes (PDP, try-on) wait for the viewer <canvas> to mount before scanning.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Scan the resting presentation, not a random animation frame.
+//
+// axe samples computed colours at the instant it runs, and entrance animations
+// are mid-flight for the first couple of seconds. HeroSection's "Scroll to
+// Discover" cue fades opacity 0 -> 1 over 0.9s delay + 0.8s duration; on a slow
+// machine the scan landed at ~12% opacity and reported #e4e4e4 on #ffffff —
+// 1.27:1 — even though the settled colour is #737373 at 4.74:1, which passes.
+// It failed in CI and passed locally purely on timing.
+//
+// All 13 framer-motion components under components/home/ gate on
+// `prefers-reduced-motion`, so asking for it removes the entrance animations
+// outright rather than papering over the timing.
+test.use({ reducedMotion: 'reduce' });
 
 const BLOCKING_IMPACTS = ['serious', 'critical'];
 
@@ -44,12 +59,13 @@ async function expectNoSeriousA11yViolations(
   ).toEqual([]);
 }
 
+// Being signed in is a precondition for the authed-route audits below, not
+// their subject — so seed the token instead of spending one of the five
+// logins/minute the API allows per IP. The invalid-credentials banner test at
+// the bottom of this file still drives the real form, as it must.
 async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill('emma@iyae.ca');
-  await page.getByLabel('Password').fill('password123');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await page.waitForURL('/dashboard', { timeout: 30000 });
+  await signIn(page, 'shopper');
+  await page.goto('/dashboard');
 }
 
 test.describe('Accessibility (axe) — public routes', () => {

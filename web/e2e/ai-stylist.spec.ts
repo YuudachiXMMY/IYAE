@@ -1,12 +1,45 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type Locator } from '@playwright/test';
+import { signIn } from './session';
+
+/**
+ * "Date night" is both a PROMPT_STARTERS label and an OCCASION_CHIPS entry
+ * (app/chat/page.tsx:36,71), so plain text matching is a strict-mode violation.
+ * The starter card's accessible name includes its prompt copy; the chip's does not.
+ */
+function dateNightStarter(page: Page): Locator {
+  return page.getByRole('button', { name: /dinner date this Friday/i });
+}
+
+/**
+ * Chat sessions live on the server, keyed by user — so an earlier test in this
+ * file leaves the shared seed account with a conversation, and `/chat` then
+ * opens that instead of the welcome screen. Blanking the session *list* fetch
+ * restores the welcome state while leaving every write to the real API.
+ *
+ * The stub has no `times` cap on purpose: React Strict Mode double-invokes the
+ * fetching effect under `next dev`, so a one-shot stub lets the second request
+ * through and the welcome state vanishes again.
+ */
+async function freshChat(page: Page): Promise<void> {
+  await page.route('**/api/chat/sessions', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: [] })
+      : route.continue(),
+  );
+}
+
+/**
+ * Messages persist on the shared seed account, so a fixed string matches both
+ * this run's bubble and every previous run's. Unique copy keeps the assertion
+ * unambiguous without depending on a pristine history.
+ */
+function uniqueMessage(prefix: string): string {
+  return `${prefix} ${Date.now()}`;
+}
 
 test.describe('AI Stylist chat flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('emma@example.com');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('/dashboard', { timeout: 10000 });
+    await signIn(page, 'shopper');
   });
 
   test('chat page renders input and send button', async ({ page }) => {
@@ -19,24 +52,28 @@ test.describe('AI Stylist chat flow', () => {
   });
 
   test('welcome screen shows quick-start prompt cards', async ({ page }) => {
+    await freshChat(page);
     await page.goto('/chat');
 
     await expect(page.getByText('Your AI stylist')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Date night')).toBeVisible();
-    await expect(page.getByText('Weekend brunch')).toBeVisible();
+    await expect(dateNightStarter(page)).toBeVisible();
+    // `exact` picks the card's label span; the prompt copy below it also
+    // contains "weekend brunch".
+    await expect(page.getByText('Weekend brunch', { exact: true })).toBeVisible();
   });
 
   test('can send a message and receive AI reply', async ({ page }) => {
     test.slow();
     await page.goto('/chat');
 
+    const message = uniqueMessage('I need a casual summer outfit');
     const textarea = page.getByPlaceholder('Describe what you\'re dressing for...');
-    await textarea.fill('I need a casual summer outfit');
+    await textarea.fill(message);
 
     await page.getByRole('button', { name: 'Send message' }).click();
 
     // User message appears optimistically
-    await expect(page.getByText('I need a casual summer outfit')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(message)).toBeVisible({ timeout: 5000 });
 
     // Wait for AI reply (mock provider responds quickly)
     await expect(page.locator('[class*="rounded-2xl"]').nth(1)).toBeVisible({ timeout: 15000 });
@@ -44,38 +81,47 @@ test.describe('AI Stylist chat flow', () => {
 
   test('quick-start card creates session and sends prompt', async ({ page }) => {
     test.slow();
+    await freshChat(page);
     await page.goto('/chat');
 
-    await expect(page.getByText('Date night')).toBeVisible({ timeout: 10000 });
-    await page.getByText('Date night').click();
+    const starter = dateNightStarter(page);
+    await expect(starter).toBeVisible({ timeout: 10000 });
+    await starter.click();
 
-    // After clicking, the prompt text should appear as a user message
-    await expect(
-      page.getByText(/dinner date/i)
-    ).toBeVisible({ timeout: 15000 });
+    // The welcome state (and with it the starter card) must give way to the
+    // conversation; only then is a /dinner date/ match necessarily the message.
+    await expect(starter).toBeHidden({ timeout: 15000 });
+    await expect(page.getByText(/dinner date/i).first()).toBeVisible();
   });
 
   test('suggestion chips appear after AI reply and are clickable', async ({ page }) => {
     test.slow();
     await page.goto('/chat');
 
+    const message = uniqueMessage('Show me outfit ideas');
     const textarea = page.getByPlaceholder('Describe what you\'re dressing for...');
-    await textarea.fill('Show me outfit ideas');
+    await textarea.fill(message);
     await page.getByRole('button', { name: 'Send message' }).click();
 
-    await expect(page.getByText('Show me outfit ideas')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(message)).toBeVisible({ timeout: 5000 });
 
     // If suggestion chips render, click the first one
-    const chips = page.getByRole('group', { name: /suggestions/i });
+    // SuggestionChips labels its group "Suggested responses".
+    const chips = page.getByRole('group', { name: /suggested responses/i }).first();
     const hasChips = await chips.isVisible({ timeout: 10000 }).catch(() => false);
     if (hasChips) {
       const firstChip = chips.getByRole('button').first();
       await expect(firstChip).toBeVisible();
       await firstChip.click();
-      // Chip text should appear as next user message
+      // Chip text should appear as the next user message. `.first()` is
+      // deliberate: chip labels come from a fixed pool, so the same text can
+      // also sit in this account's earlier history or in a re-rendered chip —
+      // an unscoped match is a strict-mode violation waiting to happen.
       const chipText = await firstChip.textContent();
       if (chipText) {
-        await expect(page.getByText(chipText.trim())).toBeVisible({ timeout: 5000 });
+        await expect(
+          page.getByText(chipText.trim()).first(),
+        ).toBeVisible({ timeout: 5000 });
       }
     }
   });
@@ -112,11 +158,16 @@ test.describe('AI Stylist chat flow', () => {
   });
 
   test('welcome screen shows occasion and mood quick-pick chips', async ({ page }) => {
+    await freshChat(page);
     await page.goto('/chat');
     await expect(page.getByText('Your AI stylist')).toBeVisible({ timeout: 10000 });
-    // Occasion/mood chips render as accessible suggestion groups.
-    await expect(page.getByText('Occasion')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Mood')).toBeVisible();
+    // Assert the chips themselves, not the "Occasion"/"Mood" captions: those
+    // strings also label the UnderlineFields in the brief panel, so matching
+    // them by text is ambiguous. The chip contents are the real subject anyway.
+    await expect(
+      page.getByRole('button', { name: 'Brunch', exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Cozy', exact: true })).toBeVisible();
   });
 
   test('inline "Try on my avatar" toggle expands the avatar preview', async ({ page }) => {

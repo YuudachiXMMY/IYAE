@@ -34,7 +34,11 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://iyae.localhost}
+      # The actual web origin is always appended: browsers attach `Origin` to
+      # every POST/PUT/DELETE (even same-origin), the Next.js rewrite forwards
+      # it, and Spring rejects anything unlisted. With WEB_PORT != 3000 that
+      # turns every write — login, add-to-cart, checkout — into a 403.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://iyae.localhost},http://localhost:${WEB_PORT:-3000}
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
       JAVA_TOOL_OPTIONS: "-Xmx384m -Xms128m"
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send

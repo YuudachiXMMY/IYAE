@@ -198,7 +198,10 @@ export function buildCurrentUserSeedPost(
       "Pinned this minimalist fit to keep the silhouette and palette logic in my own archive.",
     postedAt: "1d",
     type: "outfit_photo",
-    tags: [aesthetic, "Everyday", "Personal archive"],
+    // Deduped: `aesthetic` defaults to "Everyday" when the user has set no
+    // style aesthetics, which repeated the static tag. Tag lists render with
+    // `key={tag}` in five places, so a repeat is a duplicate React key.
+    tags: [...new Set([aesthetic, "Everyday", "Personal archive"])],
     productLinks: [
       { id: "pl-3-1", label: "Shop this jacket", href: "/products/5", slot: "Outerwear", productId: 5 },
       { id: "pl-3-2", label: "Shop entire outfit", href: "/outfits/5/view" },

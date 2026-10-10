@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { signIn } from './session';
 
 // NOTE: the 5 canvas-dependent tests below are `test.fixme` — they require a seeded
 // outfit with a RIGGED garment (non-null riggedGlbUrl) reachable at /outfits/[id]/view,
@@ -8,11 +9,10 @@ import { test, expect, type Page } from '@playwright/test';
 // seeded (see .claude/PRPs/plans/completed/phase9-live-validation.plan.md, Task 4A).
 test.describe('Pose Selector', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill('emma@iyae.ca');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await page.waitForURL('/dashboard', { timeout: 30000 });
+    // Seeded token, not the sign-in form: the API allows only five logins per
+    // minute per IP and this spec's subject is the pose strip.
+    await signIn(page, 'shopper');
+    await page.goto('/dashboard');
   });
 
   async function navigateToOutfitWithViewer(page: Page) {
