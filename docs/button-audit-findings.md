@@ -70,10 +70,13 @@ Two changes:
 
 ### 3. Social login buttons were visual placeholders
 
-`web/app/login/page.tsx:171-178` — `GOOGLE` and `APPLE` had no `onClick` and no
-`disabled` state. No OAuth provider is configured server-side, so they are now
-disabled with an explanatory note rather than silently swallowing clicks.
-**Product call**: if social sign-in is not on the roadmap, delete the block.
+`web/app/login/page.tsx` — `GOOGLE` and `APPLE` had no `onClick` and no
+`disabled` state. No OAuth provider is configured server-side, so they were
+first made disabled with an explanatory note rather than silently swallowing
+clicks. **The product call has since been made**: the buttons and the "or
+continue with" divider are deleted, keeping only the line that sets the
+expectation. A control a user can never operate is worse than its absence, and
+the divider promised alternatives that were not there.
 
 ### 4. Active filter chip exposed no selected state
 
@@ -237,11 +240,6 @@ non-allowlisted `Origin` is rejected, including authenticated GETs such as
 "save a product" capability (`/api/looks` requires a `recommendationId` and
 stores outfit recommendations, not catalogue items). A real wishlist table is
 follow-up work.
-
-### Social sign-in buttons are disabled, not removed
-
-No OAuth provider is configured server-side. If social sign-in is not on the
-roadmap, delete the block in `app/login/page.tsx` outright.
 
 ## Deliberately not clicked
 
