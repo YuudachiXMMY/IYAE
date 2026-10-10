@@ -13,6 +13,20 @@ import { signIn } from './session';
 // 3D routes (PDP, try-on) wait for the viewer <canvas> to mount before scanning.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Scan the resting presentation, not a random animation frame.
+//
+// axe samples computed colours at the instant it runs, and entrance animations
+// are mid-flight for the first couple of seconds. HeroSection's "Scroll to
+// Discover" cue fades opacity 0 -> 1 over 0.9s delay + 0.8s duration; on a slow
+// machine the scan landed at ~12% opacity and reported #e4e4e4 on #ffffff —
+// 1.27:1 — even though the settled colour is #737373 at 4.74:1, which passes.
+// It failed in CI and passed locally purely on timing.
+//
+// All 13 framer-motion components under components/home/ gate on
+// `prefers-reduced-motion`, so asking for it removes the entrance animations
+// outright rather than papering over the timing.
+test.use({ reducedMotion: 'reduce' });
+
 const BLOCKING_IMPACTS = ['serious', 'critical'];
 
 async function expectNoSeriousA11yViolations(
