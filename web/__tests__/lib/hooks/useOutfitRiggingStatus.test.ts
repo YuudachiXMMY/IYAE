@@ -166,7 +166,9 @@ describe("useOutfitRiggingStatus", () => {
 
   it("gracefully handles 403 without throwing", async () => {
     const { ApiError } = await import("@/lib/api");
-    mockApiGet.mockRejectedValue(new (ApiError as any)("Forbidden", 403));
+    // (status, message) — the `as any` this replaces was hiding the arguments
+    // being the other way round, so the rejection carried status "Forbidden".
+    mockApiGet.mockRejectedValue(new ApiError(403, "Forbidden"));
     const items = [makeItem({ productId: 40 })];
 
     expect(() => {

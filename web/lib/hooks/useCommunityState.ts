@@ -22,19 +22,44 @@ interface CommunityStateUser {
   styleAesthetics?: string[] | null;
 }
 
-export function useCommunityState(user: CommunityStateUser | null) {
-  const [state, setState] = useState<PersistedCommunityState | null>(null);
+function loadFor(user: CommunityStateUser | null): PersistedCommunityState | null {
+  if (!user) return null;
+  return loadCommunityState(
+    String(user.id),
+    user.name ?? "",
+    user.username ?? "",
+    user.styleAesthetics?.[0] ?? "Everyday"
+  );
+}
 
-  useEffect(() => {
-    if (!user) return;
-    const initial = loadCommunityState(
-      String(user.id),
-      user.name ?? "",
-      user.username ?? "",
-      user.styleAesthetics?.[0] ?? "Everyday"
-    );
-    setState(initial);
-  }, [user]);
+// Everything `loadCommunityState` reads, as a value signature: reloading on this
+// rather than on the `user` object identity skips the reloads AuthContext's
+// refreshUser used to cause, while still reloading when the user (or the display
+// name baked into the seeded posts) actually changes.
+function loadKey(user: CommunityStateUser | null): string | null {
+  if (!user) return null;
+  return [
+    user.id,
+    user.name ?? "",
+    user.username ?? "",
+    user.styleAesthetics?.[0] ?? "Everyday",
+  ].join("|");
+}
+
+export function useCommunityState(user: CommunityStateUser | null) {
+  const [state, setState] = useState<PersistedCommunityState | null>(() => loadFor(user));
+
+  // The load is a localStorage read-through, so it runs in the initialiser above
+  // and during render on a user change instead of from an effect — the first
+  // render already has the feed.
+  // A null key (signed out) leaves the last loaded state in place, as the previous
+  // `if (!user) return` effect did.
+  const key = loadKey(user);
+  const [loadedKey, setLoadedKey] = useState(key);
+  if (key !== null && loadedKey !== key) {
+    setLoadedKey(key);
+    setState(loadFor(user));
+  }
 
   // Persist on change
   useEffect(() => {

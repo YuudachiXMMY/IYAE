@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
@@ -47,51 +47,55 @@ function ProductsPageContent() {
     totalPages: number;
     last: boolean;
   } | null>(null);
-  const [loading, setLoading] = useState(true);
   const savedIds = useSavedProductIds();
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(currentPage),
-        size: "20",
-        sort: currentSort,
-      });
-      if (currentCategory) params.set("category", currentCategory);
-      if (currentQ) params.set("q", currentQ);
-      if (currentLocalOnly) params.set("localOnly", "true");
-
-      const result = await api.get<ProductPage>(
-        `/api/products?${params.toString()}`,
-      );
-      setMeta({
-        totalElements: result.totalElements,
-        totalPages: result.totalPages,
-        last: result.last,
-      });
-      // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
-      setProducts((prev) => {
-        if (currentPage === 0) return result.content;
-        // Append by id, never blindly: a re-run of this effect (React Strict
-        // Mode double-invokes it in dev) would otherwise append the same page
-        // twice and collide React keys.
-        const seen = new Set(prev.map((p) => p.id));
-        return [...prev, ...result.content.filter((p) => !seen.has(p.id))];
-      });
-    } catch {
-      if (currentPage === 0) {
-        setProducts([]);
-        setMeta(null);
-      }
-    } finally {
-      setLoading(false);
-    }
+  const query = useMemo(() => {
+    const params = new URLSearchParams({
+      page: String(currentPage),
+      size: "20",
+      sort: currentSort,
+    });
+    if (currentCategory) params.set("category", currentCategory);
+    if (currentQ) params.set("q", currentQ);
+    if (currentLocalOnly) params.set("localOnly", "true");
+    return params.toString();
   }, [currentPage, currentCategory, currentSort, currentQ, currentLocalOnly]);
 
+  // The query string doubles as the identity of what is on screen: "we have no
+  // answer for this query yet" *is* the loading state, so changing filters or
+  // page enters it during render instead of through a set in the effect.
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
+  const loading = loadedQuery !== query;
+
   useEffect(() => {
+    async function fetchProducts() {
+      try {
+        const result = await api.get<ProductPage>(`/api/products?${query}`);
+        setMeta({
+          totalElements: result.totalElements,
+          totalPages: result.totalPages,
+          last: result.last,
+        });
+        // Page 0 (fresh filter/search) replaces; later pages accumulate (LOAD MORE).
+        setProducts((prev) => {
+          if (currentPage === 0) return result.content;
+          // Append by id, never blindly: a re-run of this effect (React Strict
+          // Mode double-invokes it in dev) would otherwise append the same page
+          // twice and collide React keys.
+          const seen = new Set(prev.map((p) => p.id));
+          return [...prev, ...result.content.filter((p) => !seen.has(p.id))];
+        });
+      } catch {
+        if (currentPage === 0) {
+          setProducts([]);
+          setMeta(null);
+        }
+      } finally {
+        setLoadedQuery(query);
+      }
+    }
     void fetchProducts();
-  }, [fetchProducts]);
+  }, [query, currentPage]);
 
   const updateParams = useCallback(
     (updates: Record<string, string>) => {

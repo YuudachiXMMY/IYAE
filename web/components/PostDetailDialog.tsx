@@ -176,19 +176,28 @@ export function PostDetailDialog({
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
-  const [serverComments, setServerComments] = useState<PostComment[]>([]);
+  // Tagged with the post the thread was fetched for, so a thread never leaks
+  // into a different post while its own fetch is still in flight.
+  const [loadedThread, setLoadedThread] = useState<{
+    serverId: number;
+    comments: PostComment[];
+  } | null>(null);
+  const serverComments =
+    loadedThread && loadedThread.serverId === post.serverId
+      ? loadedThread.comments
+      : [];
 
   // Lazy-load real comments for server-backed posts (SocialPost.comments is empty for them).
   useEffect(() => {
-    if (!open || post.serverId == null) {
-      setServerComments([]);
-      return;
-    }
+    const serverId = post.serverId;
+    if (!open || serverId == null) return;
     const ctrl = new AbortController();
     postsApi
-      .listComments(post.serverId, 0, 50, ctrl.signal)
-      .then((res) => setServerComments(res.content.map(toPostComment)))
-      .catch(() => setServerComments([]));
+      .listComments(serverId, 0, 50, ctrl.signal)
+      .then((res) =>
+        setLoadedThread({ serverId, comments: res.content.map(toPostComment) })
+      )
+      .catch(() => setLoadedThread({ serverId, comments: [] }));
     return () => ctrl.abort();
   }, [open, post.serverId]);
 

@@ -14,17 +14,16 @@ function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { refreshUser } = useAuth();
-  const [status, setStatus] = useState<Status>("loading");
-  const [errorMessage, setErrorMessage] = useState("");
+  const token = searchParams.get("token");
+  // A missing token is already decided before the first paint, so it belongs in
+  // the initial state rather than in a correction from the effect below.
+  const [status, setStatus] = useState<Status>(token ? "loading" : "error");
+  const [errorMessage, setErrorMessage] = useState(
+    token ? "" : "Verification token is missing.",
+  );
 
   useEffect(() => {
-    const token = searchParams.get("token");
-
-    if (!token) {
-      setErrorMessage("Verification token is missing.");
-      setStatus("error");
-      return;
-    }
+    if (!token) return;
 
     api
       .post("/api/auth/verify-email", { token })

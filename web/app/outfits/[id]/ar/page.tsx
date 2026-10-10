@@ -24,25 +24,38 @@ export default function OutfitARPage() {
   const params = useParams();
   const outfitId = params.id as string;
 
-  const [outfit, setOutfit] = useState<OutfitDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // One settled fetch per (viewer, outfit). "Loading" is the absence of a result
+  // for the current pair, so the effect never has to reset state synchronously.
+  const [loaded, setLoaded] = useState<{
+    viewer: typeof user;
+    outfitId: string;
+    outfit: OutfitDetail | null;
+    error: string | null;
+  } | null>(null);
+
+  const settled =
+    loaded?.viewer === user && loaded?.outfitId === outfitId ? loaded : null;
+  const outfit = settled?.outfit ?? null;
+  const error = settled?.error ?? null;
+  const loading = settled === null;
 
   useEffect(() => {
     if (authLoading || !user || !outfitId) return;
 
-    setLoading(true);
-    setError(null);
-
     api
       .get<OutfitDetail>(`/api/outfits/${outfitId}`)
-      .then(setOutfit)
-      .catch((err: unknown) => {
-        setError(
-          err instanceof ApiError ? err.message : "Failed to load outfit"
-        );
-      })
-      .finally(() => setLoading(false));
+      .then((data) =>
+        setLoaded({ viewer: user, outfitId, outfit: data, error: null })
+      )
+      .catch((err: unknown) =>
+        setLoaded((prev) => ({
+          viewer: user,
+          outfitId,
+          outfit: prev?.outfit ?? null,
+          error:
+            err instanceof ApiError ? err.message : "Failed to load outfit",
+        }))
+      );
   }, [authLoading, user, outfitId]);
 
   // Collect all GLB URLs from outfit items

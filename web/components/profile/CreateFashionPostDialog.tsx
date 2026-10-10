@@ -68,10 +68,12 @@ export function CreateFashionPostDialog({
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  // `null` until the catalogue request settles — the loading flag reads off that
+  // rather than being flipped either side of the fetch.
+  const [allProducts, setAllProducts] = useState<Product[] | null>(null);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<ProductLink[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const loadingProducts = allProducts === null;
   // Phase 6 — Share-a-Look bindings + named-feed dimensions
   const [topic, setTopic] = useState("");
   const [city, setCity] = useState("");
@@ -85,27 +87,28 @@ export function CreateFashionPostDialog({
   const fetchProducts = useCallback(async () => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
-    setLoadingProducts(true);
     try {
       const response = await api.get<{ content: Product[] }>("/api/products", {
         signal: abortRef.current.signal,
       });
       setAllProducts(response?.content ?? []);
     } catch {
-      // Silently ignore abort or fetch errors
-    } finally {
-      setLoadingProducts(false);
+      // Silently ignore abort or fetch errors, but still settle the loading
+      // state — keeping anything already fetched rather than clearing it.
+      setAllProducts((prev) => prev ?? []);
     }
   }, []);
 
-  const fetchLooks = useCallback(async () => {
-    try {
-      const looks = await api.get<{ id: number; note: string | null }[]>("/api/looks");
-      setSavedLooks(looks ?? []);
-    } catch {
-      // Silently ignore — Share-a-Look binding is optional
-    }
-  }, []);
+  const fetchLooks = useCallback(
+    () =>
+      api
+        .get<{ id: number; note: string | null }[]>("/api/looks")
+        .then((looks) => setSavedLooks(looks ?? []))
+        .catch(() => {
+          // Silently ignore — Share-a-Look binding is optional
+        }),
+    []
+  );
 
   useEffect(() => {
     if (open) {
@@ -119,11 +122,11 @@ export function CreateFashionPostDialog({
     debounceRef.current = setTimeout(() => {
       const query = productSearch.trim().toLowerCase();
       if (!query) {
-        setFilteredProducts(allProducts);
+        setFilteredProducts(allProducts ?? []);
         return;
       }
       setFilteredProducts(
-        allProducts.filter(
+        (allProducts ?? []).filter(
           (p) =>
             p.name.toLowerCase().includes(query) ||
             p.brand.toLowerCase().includes(query) ||
@@ -181,7 +184,7 @@ export function CreateFashionPostDialog({
     setTags([]);
     setProductSearch("");
     setSelectedProducts([]);
-    setFilteredProducts(allProducts);
+    setFilteredProducts(allProducts ?? []);
     setTopic("");
     setCity("");
     setSelectedLookId(null);

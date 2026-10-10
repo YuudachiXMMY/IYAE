@@ -78,11 +78,7 @@ export default function StatusPage() {
   const [aiDetail, setAiDetail] = useState<string | undefined>(undefined);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
 
-  const checkHealth = useCallback(() => {
-    setApiStatus("loading");
-    setAiStatus("loading");
-    setCheckedAt(null);
-
+  const probeHealth = useCallback(() => {
     api
       .get<HealthResponse>("/api/health")
       .then((res) => {
@@ -104,9 +100,18 @@ export default function StatusPage() {
       .finally(() => setCheckedAt(new Date()));
   }, []);
 
+  // Refresh re-arms the indicators first; on mount they are already in that
+  // state, so the effect only has to fire the probes.
+  const checkHealth = useCallback(() => {
+    setApiStatus("loading");
+    setAiStatus("loading");
+    setCheckedAt(null);
+    probeHealth();
+  }, [probeHealth]);
+
   useEffect(() => {
-    checkHealth();
-  }, [checkHealth]);
+    probeHealth();
+  }, [probeHealth]);
 
   const allUp = apiStatus === "up" && aiStatus === "up";
   const anyLoading = apiStatus === "loading" || aiStatus === "loading";
