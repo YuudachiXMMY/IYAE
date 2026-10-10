@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
 
-export function ThemeToggle() {
-  const [mounted, setMounted] = useState(false);
-  const { theme, setTheme } = useTheme();
+// The resolved theme is only known in the browser, so the icon can only be
+// picked after hydration. Reading "am I hydrated" as an external store (server
+// snapshot false, client snapshot true) gets the placeholder into the server
+// markup and the real button into the first post-hydration render.
+const subscribeToNothing = () => () => {};
+const getHydrated = () => true;
+const getHydratedOnServer = () => false;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+export function ThemeToggle() {
+  const mounted = useSyncExternalStore(
+    subscribeToNothing,
+    getHydrated,
+    getHydratedOnServer,
+  );
+  const { theme, setTheme } = useTheme();
 
   if (!mounted) {
     return <div className="w-9 h-9" />;

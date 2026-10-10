@@ -330,30 +330,42 @@ function PostCard({
 
 export default function CommunityPage() {
   const { user } = useAuth();
+  // Keyed on the viewer so the per-user local feed can be seeded from
+  // localStorage in a lazy initialiser: signing in remounts the feed instead of
+  // loading it from an effect.
+  return <CommunityFeed key={user ? user.id : "guest"} user={user} />;
+}
+
+function CommunityFeed({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [state, setState] = useState<{
     followedUsernames: string[];
     posts: SocialPost[];
-  } | null>(null);
+  } | null>(() =>
+    user
+      ? loadCommunityState(
+          String(user.id),
+          user.name ?? "",
+          user.username ?? "",
+          (user as { styleAesthetics?: string[] }).styleAesthetics?.[0] ?? "Everyday"
+        )
+      : null
+  );
   const [activeTab, setActiveTab] = useState<CommunityTab>("discover");
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
 
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [feedRefreshKey, setFeedRefreshKey] = useState(0);
 
-  // Server feed (the 4 named feeds). null = not loaded / fell back to the local demo layer.
-  const [feedPosts, setFeedPosts] = useState<SocialPost[] | null>(null);
-  const [feedLoading, setFeedLoading] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    const initial = loadCommunityState(
-      String(user.id),
-      user.name ?? "",
-      user.username ?? "",
-      (user as { styleAesthetics?: string[] }).styleAesthetics?.[0] ?? "Everyday"
-    );
-    setState(initial);
-  }, [user]);
+  // Server feed (the 4 named feeds), stored with the key it was fetched for.
+  // `posts: null` = loaded but fell back to the local demo layer; a key mismatch
+  // is what "still loading" means, which keeps the fetch effect setState-free.
+  const [feed, setFeed] = useState<{ key: string; posts: SocialPost[] | null } | null>(
+    null
+  );
+  const feedKey =
+    user && isServerFeed(activeTab) ? `${user.id}:${activeTab}:${feedRefreshKey}` : null;
+  const feedPosts = feed && feed.key === feedKey ? feed.posts : null;
+  const feedLoading = feedKey !== null && feed?.key !== feedKey;
 
   useEffect(() => {
     if (user && state) saveCommunityState(String(user.id), state);
@@ -361,36 +373,37 @@ export default function CommunityPage() {
 
   // Fetch the selected server feed; degrade gracefully to the localStorage demo on error/offline.
   useEffect(() => {
-    if (!user || !isServerFeed(activeTab)) {
-      setFeedPosts(null);
-      return;
-    }
+    if (!user || !feedKey || !isServerFeed(activeTab)) return;
     const ctrl = new AbortController();
-    setFeedPosts(null); // clear the previous feed so switching tabs shows Loading, not stale posts
-    setFeedLoading(true);
     postsApi
       .feed(activeTab, 0, 20, ctrl.signal)
       .then((res) =>
-        setFeedPosts(
-          res.content.map((sp) => {
+        setFeed({
+          key: feedKey,
+          posts: res.content.map((sp) => {
             const p = toSocialPost(sp);
             // Stamp ownership so a user's own posts never render a self-Follow button / self-follow call.
             return { ...p, ownedByCurrentUser: p.creatorUserId === user.id };
-          })
-        )
+          }),
+        })
       )
       .catch((err) => {
         if (err?.name === "AbortError") return;
-        setFeedPosts(null); // fall back to the local demo layer (unauth / offline / 404)
-      })
-      .finally(() => setFeedLoading(false));
+        setFeed({ key: feedKey, posts: null }); // fall back to the local demo layer (unauth / offline / 404)
+      });
     return () => ctrl.abort();
-  }, [user, activeTab, feedRefreshKey]);
+  }, [user, activeTab, feedKey]);
+
+  // Patch the loaded server feed; a no-op while it is loading or has fallen back
+  // to the local layer, exactly as the old `prev ? … : prev` guard was.
+  function patchFeedPosts(map: (posts: SocialPost[]) => SocialPost[]) {
+    setFeed((prev) => (prev?.posts ? { ...prev, posts: map(prev.posts) } : prev));
+  }
 
   function handlePostUpdate(updatedPost: SocialPost) {
     setState((prev) => (prev ? updatePostInState(prev, updatedPost) : prev));
-    setFeedPosts((prev) =>
-      prev ? prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)) : prev
+    patchFeedPosts((posts) =>
+      posts.map((p) => (p.id === updatedPost.id ? updatedPost : p))
     );
   }
 
@@ -409,7 +422,7 @@ export default function CommunityPage() {
           p.id === post.id
             ? { ...p, likeCount: server.likeCount, likedByCurrentUser: server.likedByCurrentUser }
             : p;
-        setFeedPosts((prev) => (prev ? prev.map(patch) : prev));
+        patchFeedPosts((posts) => posts.map(patch));
         setState((prev) => (prev ? { ...prev, posts: prev.posts.map(patch) } : prev));
       })
       .catch(() => handlePostUpdate(post)); // revert to the pre-toggle state

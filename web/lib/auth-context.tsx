@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
-import { api, type RegisterRequest, type UpdateProfileRequest } from "./api";
+import { api, AUTH_TOKEN_KEY, type RegisterRequest, type UpdateProfileRequest } from "./api";
 import { isVerificationPending } from "./auth-config";
 import { clearSavedProducts, resetSavedProductsSync } from "./saved-products";
 
@@ -45,26 +45,35 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  // Unconditionally true, and deliberately NOT seeded from the stored token.
+  // Every `useRequireAuth` consumer renders `null` while this is true, so
+  // seeding it made the server prerender the whole protected page instead of
+  // nothing — and the hydration mismatch that followed rendered the form on
+  // /designer/products/new *twice*. Four E2E tests caught it; "React recovers
+  // from a mismatch" did not hold here.
   const [loading, setLoading] = useState(true);
 
-  // Hydrate session on mount
+  // Hydrate session on mount. Both branches settle through the same `.finally`
+  // rather than the signed-out one returning after a synchronous
+  // `setLoading(false)` — that is a cascading render the effect does not need
+  // (react-hooks/set-state-in-effect), and resolving it a microtask later
+  // keeps the server markup above identical.
   useEffect(() => {
-    const token = localStorage.getItem("clossette_token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    api.get<User>("/api/auth/me")
-      .then(setUser)
-      .catch(() => {
-        localStorage.removeItem("clossette_token");
-      })
-      .finally(() => setLoading(false));
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const settled = token
+      ? api
+          .get<User>("/api/auth/me")
+          .then(setUser)
+          .catch(() => {
+            localStorage.removeItem(AUTH_TOKEN_KEY);
+          })
+      : Promise.resolve();
+    void settled.finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.post<{ token: string; user: User }>("/api/auth/login", { email, password });
-    localStorage.setItem("clossette_token", res.token);
+    localStorage.setItem(AUTH_TOKEN_KEY, res.token);
     setUser(res.user);
   }, []);
 
@@ -75,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // and let the register page route to the verify-email page. Dev (gate off) is
     // unchanged — store the token and set the user as before.
     if (!isVerificationPending(res.user)) {
-      localStorage.setItem("clossette_token", res.token);
+      localStorage.setItem(AUTH_TOKEN_KEY, res.token);
       setUser(res.user);
     }
     return res.user;
@@ -87,14 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem("clossette_token");
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
     if (!token) return;
     const updated = await api.get<User>("/api/auth/me");
     setUser(updated);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("clossette_token");
+    localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem("clossette_demo_cart_items");
     // The wishlist cache is per-user. Left behind on a shared device it would
     // show the previous account's saves, and the next sign-in would replay them

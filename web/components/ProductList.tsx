@@ -48,14 +48,12 @@ function ProductSkeleton() {
 }
 
 export function ProductList({ products, loading, className }: ProductListProps) {
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  // The count belongs to one particular `products` array, so a new list
+  // (filter/search) reads as the initial slice without an effect resetting it.
+  const [shown, setShown] = useState({ products, count: INITIAL_VISIBLE });
+  const visibleCount = shown.products === products ? shown.count : INITIAL_VISIBLE;
   const sentinelRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-
-  useEffect(() => {
-    // Reset visible count when products change (e.g. filter/search)
-    setVisibleCount(INITIAL_VISIBLE);
-  }, [products]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -64,7 +62,14 @@ export function ProductList({ products, loading, className }: ProductListProps) 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + LOAD_MORE_COUNT, products.length));
+          setShown((prev) => {
+            const current =
+              prev.products === products ? prev.count : INITIAL_VISIBLE;
+            return {
+              products,
+              count: Math.min(current + LOAD_MORE_COUNT, products.length),
+            };
+          });
         }
       },
       { rootMargin: "200px" }
@@ -72,7 +77,7 @@ export function ProductList({ products, loading, className }: ProductListProps) 
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [products.length]);
+  }, [products]);
 
   const visibleProducts = products.slice(0, visibleCount);
   const gridClasses = cn(

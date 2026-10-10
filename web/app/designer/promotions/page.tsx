@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Footer } from "@/components/Footer";
@@ -14,38 +14,40 @@ import { promotions as promotionsApi, ApiError, type PromotionResponse } from "@
 export default function PromotionsPage() {
   const { user, loading: authLoading } = useRequireAuth("DESIGNER");
 
-  const [promotions, setPromotions] = useState<PromotionResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  // `null` is "not loaded yet" — the skeleton state — so the fetch below has no
+  // loading flag to set.
+  const [promotions, setPromotions] = useState<PromotionResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PromotionResponse | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const fetchPromotions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await promotionsApi.list();
-      setPromotions(data);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load promotions.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loading = promotions === null;
+  const items = promotions ?? [];
 
   useEffect(() => {
     if (authLoading || !user) return;
+    async function fetchPromotions() {
+      try {
+        const data = await promotionsApi.list();
+        setPromotions(data);
+        setError(null);
+      } catch (err) {
+        setPromotions([]);
+        setError(err instanceof ApiError ? err.message : "Failed to load promotions.");
+      }
+    }
     void fetchPromotions();
-  }, [authLoading, user, fetchPromotions]);
+  }, [authLoading, user]);
 
   function handleSaved(promotion: PromotionResponse) {
     setPromotions((prev) => {
-      const idx = prev.findIndex((p) => p.id === promotion.id);
+      const current = prev ?? [];
+      const idx = current.findIndex((p) => p.id === promotion.id);
       if (idx >= 0) {
-        return [...prev.slice(0, idx), promotion, ...prev.slice(idx + 1)];
+        return [...current.slice(0, idx), promotion, ...current.slice(idx + 1)];
       }
-      return [promotion, ...prev];
+      return [promotion, ...current];
     });
   }
 
@@ -53,7 +55,7 @@ export default function PromotionsPage() {
     setDeleting(id);
     try {
       await promotionsApi.delete(id);
-      setPromotions((prev) => prev.filter((p) => p.id !== id));
+      setPromotions((prev) => (prev ?? []).filter((p) => p.id !== id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to delete promotion.");
     } finally {
@@ -90,7 +92,7 @@ export default function PromotionsPage() {
             <h1 className="font-serif text-4xl font-semibold text-foreground">Promotions</h1>
             {!loading && (
               <p className="mt-1 text-sm text-muted-foreground">
-                {promotions.length} promotion{promotions.length !== 1 ? "s" : ""}
+                {items.length} promotion{items.length !== 1 ? "s" : ""}
               </p>
             )}
           </div>
@@ -118,7 +120,7 @@ export default function PromotionsPage() {
 
         {!loading && (
           <PromotionList
-            promotions={promotions}
+            promotions={items}
             onEdit={handleEdit}
             onDelete={handleDelete}
             deleting={deleting}

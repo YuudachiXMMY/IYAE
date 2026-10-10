@@ -144,6 +144,14 @@ function AvatarViewerPanel({ glbUrl }: { glbUrl: string }) {
   );
 }
 
+function bodyTypeFromGender(genderIdentity: string | null | undefined): string {
+  if (!genderIdentity) return "neutral";
+  const g = genderIdentity.toLowerCase();
+  if (g.includes("female")) return "female";
+  if (g.includes("male")) return "male";
+  return "neutral";
+}
+
 // ── Completeness ───────────────────────────────────────────────────────────────
 
 function measurementCompleteness(profile: BodyProfile | null): {
@@ -179,7 +187,10 @@ export default function AvatarPage() {
 
   const [profile, setProfile] = useState<BodyProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [bodyType, setBodyType] = useState<string>("neutral");
+  // Follows the saved gender identity until it is picked on this page; the pick
+  // is persisted as that same identity, so the two can't drift apart.
+  const [pickedBodyType, setPickedBodyType] = useState<string | null>(null);
+  const bodyType = pickedBodyType ?? bodyTypeFromGender(user?.genderIdentity);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
@@ -189,16 +200,6 @@ export default function AvatarPage() {
   useEffect(() => {
     if (confirmingDelete) cancelDeleteRef.current?.focus();
   }, [confirmingDelete]);
-
-  // Derive initial body type from user.genderIdentity
-  useEffect(() => {
-    if (user?.genderIdentity) {
-      const g = user.genderIdentity.toLowerCase();
-      if (g.includes("female")) setBodyType("female");
-      else if (g.includes("male")) setBodyType("male");
-      else setBodyType("neutral");
-    }
-  }, [user]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -210,7 +211,7 @@ export default function AvatarPage() {
   }, [authLoading, user]);
 
   async function handleBodyTypeChange(type: string) {
-    setBodyType(type);
+    setPickedBodyType(type);
     try {
       await api.put("/api/auth/profile", { genderIdentity: type });
     } catch {

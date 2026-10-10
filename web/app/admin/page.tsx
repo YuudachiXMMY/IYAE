@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
@@ -62,24 +62,25 @@ function StatusBadge({ status }: { status: string }) {
 function CatalogModeration() {
   const [tab, setTab] = useState<(typeof PRODUCT_TABS)[number]>("ALL");
   const [products, setProducts] = useState<AdminProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedTab, setLoadedTab] = useState<(typeof PRODUCT_TABS)[number] | null>(null);
   const [confirm, setConfirm] = useState<AdminProduct | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const status = tab === "ALL" ? undefined : (tab as AdminProductStatus);
-      setProducts(await admin.listProducts(status));
-    } catch {
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [tab]);
+  // Loading is "the listed products are not the ones this tab asked for", so
+  // switching tabs shows the spinner without a setState in the effect below.
+  const loading = loadedTab !== tab;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void (async () => {
+      try {
+        const status = tab === "ALL" ? undefined : (tab as AdminProductStatus);
+        setProducts(await admin.listProducts(status));
+      } catch {
+        setProducts([]);
+      } finally {
+        setLoadedTab(tab);
+      }
+    })();
+  }, [tab]);
 
   async function setStatus(p: AdminProduct, status: AdminProductStatus) {
     try {
@@ -183,24 +184,23 @@ function CatalogModeration() {
 function CommunityModeration() {
   const [tab, setTab] = useState<(typeof POST_TABS)[number]>("ACTIVE");
   const [posts, setPosts] = useState<AdminPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedTab, setLoadedTab] = useState<(typeof POST_TABS)[number] | null>(null);
   const [confirm, setConfirm] = useState<AdminPost | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const status = tab === "ALL" ? undefined : (tab as AdminPostStatus);
-      setPosts(await admin.listPosts(status));
-    } catch {
-      setPosts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [tab]);
+  const loading = loadedTab !== tab;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void (async () => {
+      try {
+        const status = tab === "ALL" ? undefined : (tab as AdminPostStatus);
+        setPosts(await admin.listPosts(status));
+      } catch {
+        setPosts([]);
+      } finally {
+        setLoadedTab(tab);
+      }
+    })();
+  }, [tab]);
 
   async function archive(post: AdminPost) {
     try {
@@ -313,20 +313,17 @@ function PromotionModeration() {
   const [promos, setPromos] = useState<PromotionResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setPromos(await admin.listPromotions());
-    } catch {
-      setPromos([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    void (async () => {
+      try {
+        setPromos(await admin.listPromotions());
+      } catch {
+        setPromos([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   async function setSlot(promo: PromotionResponse, slotType: PromotionSlotType) {
     try {
@@ -380,25 +377,24 @@ function PromotionModeration() {
 function ReportsModeration() {
   const [tab, setTab] = useState<(typeof REPORT_TABS)[number]>("OPEN");
   const [reports, setReports] = useState<PostReport[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedTab, setLoadedTab] = useState<(typeof REPORT_TABS)[number] | null>(null);
   const [confirm, setConfirm] = useState<PostReport | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      // adminReports.list returns Paged<PostReport> — read .content (unlike the bare-array admin.* calls).
-      const res = await adminReports.list(tab as CommunityReportStatus);
-      setReports(res.content);
-    } catch {
-      setReports([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [tab]);
+  const loading = loadedTab !== tab;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void (async () => {
+      try {
+        // adminReports.list returns Paged<PostReport> — read .content (unlike the bare-array admin.* calls).
+        const res = await adminReports.list(tab as CommunityReportStatus);
+        setReports(res.content);
+      } catch {
+        setReports([]);
+      } finally {
+        setLoadedTab(tab);
+      }
+    })();
+  }, [tab]);
 
   async function resolve(
     report: PostReport,

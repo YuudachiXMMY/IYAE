@@ -52,8 +52,12 @@ function formatLabel(value: string): string {
 export default function DesignerProductsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  // `null` is "not fetched yet", which is the skeleton state — so the fetch
+  // never has to set a loading flag. A non-designer never fetches, and their
+  // gate renders ahead of the list.
+  const [products, setProducts] = useState<Product[] | null>(null);
+  const loading = products === null;
+  const items = useMemo(() => products ?? [], [products]);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -64,40 +68,31 @@ export default function DesignerProductsPage() {
     if (!user) router.replace("/login");
   }, [user, authLoading, router]);
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.get<Product[]>("/api/designer/products");
-      setProducts(data);
-    } catch {
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (!authLoading && user && user.role === "DESIGNER") {
-      void fetchProducts();
-    } else if (!authLoading && user) {
-      setLoading(false);
+    if (authLoading || !user || user.role !== "DESIGNER") return;
+    async function fetchProducts() {
+      try {
+        const data = await api.get<Product[]>("/api/designer/products");
+        setProducts(data);
+      } catch {
+        setProducts([]);
+      }
     }
-  }, [authLoading, user, fetchProducts]);
+    void fetchProducts();
+  }, [authLoading, user]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { ALL: products.length };
-    for (const p of products) {
+    const counts: Record<string, number> = { ALL: items.length };
+    for (const p of items) {
       counts[p.status] = (counts[p.status] ?? 0) + 1;
     }
     return counts;
-  }, [products]);
+  }, [items]);
 
   const filteredProducts = useMemo(
     () =>
-      activeTab === "ALL"
-        ? products
-        : products.filter((p) => p.status === activeTab),
-    [products, activeTab],
+      activeTab === "ALL" ? items : items.filter((p) => p.status === activeTab),
+    [items, activeTab],
   );
 
   const handleDelete = useCallback(async () => {
@@ -106,7 +101,7 @@ export default function DesignerProductsPage() {
     setDeleteError(null);
     try {
       await api.delete(`/api/designer/products/${deleteTarget.id}`);
-      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      setProducts((prev) => (prev ?? []).filter((p) => p.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch {
       setDeleteError("Failed to delete product. Please try again.");
@@ -191,8 +186,8 @@ export default function DesignerProductsPage() {
             </h1>
             {!loading && (
               <p className="mt-1 text-sm text-muted-foreground">
-                {products.length}{" "}
-                {products.length === 1 ? "product" : "products"} in your catalog
+                {items.length} {items.length === 1 ? "product" : "products"} in
+                your catalog
               </p>
             )}
           </div>
@@ -206,7 +201,7 @@ export default function DesignerProductsPage() {
         </div>
 
         {/* ─── Status filter pills ─── */}
-        {!loading && products.length > 0 && (
+        {!loading && items.length > 0 && (
           <nav
             className="mb-6 flex gap-1 overflow-x-auto pb-1"
             aria-label="Filter by status"

@@ -53,7 +53,7 @@ export default function ProfilePage() {
   const { user } = useAuth();
 
   const [serverProfile, setServerProfile] = useState<PublicProfileResponse | null | undefined>(undefined);
-  const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
+  const [counts, setCounts] = useState<{ userId: number; followers: number; following: number } | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -67,15 +67,16 @@ export default function ProfilePage() {
 
   // Real follower/following counts (derived server COUNTs). No id → show 0 (never fabricate).
   const targetUserId = serverProfile?.id ?? (isOwnProfile ? user?.id : undefined);
+  // Counts are tagged with the id they were fetched for, so counts for another
+  // profile (or no id at all) read as unknown without being cleared by hand.
+  const followCounts = counts?.userId === targetUserId ? counts : null;
+
   useEffect(() => {
-    if (targetUserId == null) {
-      setFollowCounts(null);
-      return;
-    }
+    if (targetUserId == null) return;
     const ctrl = new AbortController();
     follows.counts(targetUserId, ctrl.signal)
-      .then(setFollowCounts)
-      .catch(() => setFollowCounts(null));
+      .then((c) => setCounts({ userId: targetUserId, ...c }))
+      .catch(() => setCounts(null));
     return () => ctrl.abort();
   }, [targetUserId]);
 
@@ -132,19 +133,25 @@ export default function ProfilePage() {
     followedUsernames: string[];
     posts: SocialPost[];
   } | null>(null);
+  const [loadedFor, setLoadedFor] = useState<typeof user>(null);
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [outfitTab, setOutfitTab] = useState<"posts" | "tagged">("posts");
 
-  useEffect(() => {
-    if (!user) return;
-    const loaded = loadCommunityState(
-      String(user.id),
-      user.name ?? "",
-      user.username ?? "",
-      user.styleAesthetics?.[0] ?? "Everyday"
+  // `user` arrives asynchronously from AuthContext, so the stored community
+  // state is read during the render it appears in (React's adjust-state-when-a-
+  // prop-changes pattern) rather than from an effect, which would commit an
+  // empty-profile pass first.
+  if (user && user !== loadedFor) {
+    setLoadedFor(user);
+    setState(
+      loadCommunityState(
+        String(user.id),
+        user.name ?? "",
+        user.username ?? "",
+        user.styleAesthetics?.[0] ?? "Everyday"
+      )
     );
-    setState(loaded);
-  }, [user]);
+  }
 
   const userPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
   const taggedPosts =

@@ -215,13 +215,12 @@ export default function AIStylistSection() {
     const appearDelay = isAI ? 1100 + Math.random() * 300 : 500;
 
     let t1: ReturnType<typeof setTimeout>;
-    let t2: ReturnType<typeof setTimeout>;
 
     if (isAI) {
       t1 = setTimeout(() => setIsTyping(true), typingDelay - 800);
     }
 
-    t2 = setTimeout(() => {
+    const t2 = setTimeout(() => {
       setIsTyping(false);
       setMessages((prev) => [...prev, next]);
       setScriptIndex((i) => i + 1);
@@ -233,14 +232,6 @@ export default function AIStylistSection() {
     };
   }, [hasStarted, scriptIndex, reduce]);
 
-  /* reduced-motion: show all messages immediately */
-  useEffect(() => {
-    if (reduce && hasStarted && messages.length === 0) {
-      setMessages(SCRIPT);
-      setScriptIndex(SCRIPT.length);
-    }
-  }, [reduce, hasStarted, messages.length]);
-
   /* IntersectionObserver to trigger the animation */
   useEffect(() => {
     if (hasStarted) return;
@@ -251,6 +242,11 @@ export default function AIStylistSection() {
       ([entry]) => {
         if (entry.isIntersecting) {
           setHasStarted(true);
+          /* reduced-motion: skip the drip-feed and show the whole script */
+          if (reduce) {
+            setMessages(SCRIPT);
+            setScriptIndex(SCRIPT.length);
+          }
           observer.disconnect();
         }
       },
@@ -258,7 +254,7 @@ export default function AIStylistSection() {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasStarted]);
+  }, [hasStarted, reduce]);
 
   const handleChipClick = useCallback(() => {
     router.push("/login");

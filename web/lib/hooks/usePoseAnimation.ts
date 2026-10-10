@@ -46,24 +46,21 @@ export function usePoseAnimation(
   const mixerRootRef = useRef<Object3D | null>(null);
   const currentActionRef = useRef<AnimationAction | null>(null);
   const currentClipRef = useRef<AnimationClip | null>(null);
-  const [state, setState] = useState<{ isLoading: boolean; error: string | null }>({
-    isLoading: false,
-    error: null,
-  });
+  // Outcome of the last finished load, tagged with the pose it belongs to: a pose
+  // switch then reads as "loading" by derivation, with no reset to setState.
+  const [settled, setSettled] = useState<{ poseId: string; error: string | null } | null>(
+    null
+  );
 
   useEffect(() => {
     if (!poseId) return;
 
     const poseDef = getPoseById(poseId);
-    if (!poseDef) {
-      setState({ isLoading: false, error: `Unknown pose: ${poseId}` });
-      return;
-    }
+    // An unknown pose never loads; its error is derived from poseId below.
+    if (!poseDef) return;
 
     const root = rootRef.current;
     if (!root) return;
-
-    setState({ isLoading: true, error: null });
 
     let cancelled = false;
     const loader = new GLTFLoader();
@@ -75,14 +72,14 @@ export function usePoseAnimation(
 
         const sourceClip = gltf.animations[0];
         if (!sourceClip) {
-          setState({ isLoading: false, error: `Pose "${poseDef.label}" has no animation data` });
+          setSettled({ poseId, error: `Pose "${poseDef.label}" has no animation data` });
           return;
         }
 
         const clip = filterClipToBodyJoints(sourceClip);
 
         if (clip.tracks.length === 0) {
-          setState({ isLoading: false, error: `Pose "${poseDef.label}" has no body joint tracks` });
+          setSettled({ poseId, error: `Pose "${poseDef.label}" has no body joint tracks` });
           return;
         }
 
@@ -139,12 +136,12 @@ export function usePoseAnimation(
         }
 
         currentActionRef.current = newAction;
-        setState({ isLoading: false, error: null });
+        setSettled({ poseId, error: null });
       },
       undefined,
       () => {
         if (cancelled) return;
-        setState({ isLoading: false, error: `Failed to load pose "${poseDef.label}"` });
+        setSettled({ poseId, error: `Failed to load pose "${poseDef.label}"` });
       }
     );
 
@@ -168,5 +165,11 @@ export function usePoseAnimation(
     mixerRef.current?.update(delta);
   });
 
-  return { isLoading: state.isLoading, error: state.error };
+  const poseDef = poseId ? getPoseById(poseId) : null;
+  const outcome = settled?.poseId === poseId ? settled : null;
+
+  return {
+    isLoading: Boolean(poseDef) && outcome === null,
+    error: poseId && !poseDef ? `Unknown pose: ${poseId}` : (outcome?.error ?? null),
+  };
 }

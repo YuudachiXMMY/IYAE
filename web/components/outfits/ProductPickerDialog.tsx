@@ -71,30 +71,69 @@ export function ProductPickerDialog({
   excludeProductIds = [],
   slotLabel,
 }: ProductPickerDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex h-[85vh] max-w-4xl flex-col gap-0 p-0">
+        <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
+          <DialogTitle className="text-foreground">
+            {slotLabel ? `Choose ${slotLabel}` : "Choose Product"}
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* The body seeds its filter from the slot's category on mount, so it is
+            remounted per open rather than re-seeded by an effect. */}
+        <PickerBody
+          key={`${open}-${initialCategory}`}
+          initialCategory={initialCategory}
+          excludeProductIds={excludeProductIds}
+          onSelect={onSelect}
+          onClose={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PickerBody({
+  initialCategory,
+  excludeProductIds,
+  onSelect,
+  onClose,
+}: {
+  initialCategory: string;
+  excludeProductIds: number[];
+  onSelect: (product: SelectableProduct) => void;
+  onClose: () => void;
+}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState(initialCategory);
-
-  useEffect(() => {
-    if (open) setCategory(initialCategory);
-  }, [open, initialCategory]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [products, setProducts] = useState<SelectableProduct[]>([]);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
+  // Tagged with the query it answers, so "no result for this query yet" — the
+  // loading state — is derived instead of being flipped by the fetch effect.
+  const queryKey = `${debouncedSearch}\u0000${category}`;
+  const [result, setResult] = useState<{
+    queryKey: string;
+    products: SelectableProduct[];
+    page: number;
+    totalPages: number;
+  } | null>(null);
+  const current = result?.queryKey === queryKey ? result : null;
+  const loading = current === null;
+  const page = current?.page ?? 0;
+  const totalPages = current?.totalPages ?? 0;
+
   useEffect(() => {
-    if (!open) return;
     const controller = new AbortController();
     api
       .get<string[]>("/api/products/categories", { signal: controller.signal })
       .then((data) => setCategories(data))
       .catch(() => {});
     return () => controller.abort();
-  }, [open]);
+  }, []);
 
   const fetchProducts = useCallback(
     async (pageNum: number, signal: AbortSignal) => {
@@ -110,39 +149,35 @@ export function ProductPickerDialog({
         { signal }
       );
 
-      const mapped: SelectableProduct[] = data.content
-        .filter((p) => !excludeProductIds.includes(p.id))
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          category: p.category,
-          media: parseMedia(p.media),
-          glbUrl: p.glbUrl,
-        }));
+      const mapped: SelectableProduct[] = data.content.map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        category: p.category,
+        media: parseMedia(p.media),
+        glbUrl: p.glbUrl,
+      }));
 
       return { products: mapped, totalPages: data.totalPages };
     },
-    [debouncedSearch, category, excludeProductIds]
+    [debouncedSearch, category]
   );
 
   useEffect(() => {
-    if (!open) return;
     const controller = new AbortController();
-    setPage(0);
-    setProducts([]);
-    setLoading(true);
 
     fetchProducts(0, controller.signal)
-      .then(({ products: fetched, totalPages: tp }) => {
-        setProducts(fetched);
-        setTotalPages(tp);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then(({ products: fetched, totalPages: tp }) =>
+        setResult({ queryKey, products: fetched, page: 0, totalPages: tp })
+      )
+      // Settle the query anyway so the empty state replaces the skeleton. A
+      // newer query has its own key, so a late abort cannot resurrect this one.
+      .catch(() =>
+        setResult({ queryKey, products: [], page: 0, totalPages: 0 })
+      );
 
     return () => controller.abort();
-  }, [open, fetchProducts]);
+  }, [queryKey, fetchProducts]);
 
   const handleLoadMore = async () => {
     const nextPage = page + 1;
@@ -153,9 +188,16 @@ export function ProductPickerDialog({
         nextPage,
         controller.signal
       );
-      setProducts((prev) => [...prev, ...more]);
-      setTotalPages(tp);
-      setPage(nextPage);
+      setResult((prev) =>
+        prev?.queryKey === queryKey
+          ? {
+              queryKey,
+              products: [...prev.products, ...more],
+              page: nextPage,
+              totalPages: tp,
+            }
+          : prev
+      );
     } catch {
       // aborted or error — ignore
     } finally {
@@ -168,72 +210,69 @@ export function ProductPickerDialog({
     onClose();
   };
 
+  // Slots already filled are hidden here rather than in the request, so a fresh
+  // `excludeProductIds` array from the parent cannot re-trigger the fetch.
+  const products = (current?.products ?? []).filter(
+    (p) => !excludeProductIds.includes(p.id)
+  );
   const hasMore = page + 1 < totalPages;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex h-[85vh] max-w-4xl flex-col gap-0 p-0">
-        <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
-          <DialogTitle className="text-foreground">
-            {slotLabel ? `Choose ${slotLabel}` : "Choose Product"}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <div className="shrink-0 flex flex-col gap-3 border-b border-border px-6 py-4 sm:flex-row">
+        <Input
+          placeholder="Search products..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1"
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand sm:w-48"
+        >
+          <option value="">All Categories</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <div className="shrink-0 flex flex-col gap-3 border-b border-border px-6 py-4 sm:flex-row">
-          <Input
-            placeholder="Search products..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1"
-          />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand sm:w-48"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {loading ? (
-            <SkeletonGrid />
-          ) : products.length === 0 ? (
-            <div className="flex h-full min-h-[200px] items-center justify-center">
-              <p className="text-sm text-muted-foreground">No products found</p>
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        {loading ? (
+          <SkeletonGrid />
+        ) : products.length === 0 ? (
+          <div className="flex h-full min-h-[200px] items-center justify-center">
+            <p className="text-sm text-muted-foreground">No products found</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {products.map((product) => (
+                <ProductSelectCard
+                  key={product.id}
+                  product={product}
+                  onSelect={() => handleSelect(product)}
+                />
+              ))}
             </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {products.map((product) => (
-                  <ProductSelectCard
-                    key={product.id}
-                    product={product}
-                    onSelect={() => handleSelect(product)}
-                  />
-                ))}
-              </div>
 
-              {hasMore && (
-                <div className="mt-6 flex justify-center">
-                  <Button
-                    variant="outline"
-                    onClick={handleLoadMore}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? "Loading..." : "Load More"}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            {hasMore && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading..." : "Load More"}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }

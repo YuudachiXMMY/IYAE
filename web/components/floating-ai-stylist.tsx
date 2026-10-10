@@ -51,7 +51,13 @@ export function FloatingAIStylist() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [currentSuggestions, setCurrentSuggestions] = useState<string[]>([]);
+  // The opening chips are a one-off pick, so they come from a lazy initialiser
+  // rather than an effect; `serverSuggestions` takes over once the conversation
+  // starts (null means "nothing from the server yet").
+  const [openingSuggestions] = useState(pickRandomSuggestions);
+  const [serverSuggestions, setServerSuggestions] = useState<string[] | null>(null);
+  const currentSuggestions =
+    serverSuggestions ?? (user && messages.length === 0 ? openingSuggestions : []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,10 +66,7 @@ export function FloatingAIStylist() {
     if (expanded && inputRef.current && user) {
       inputRef.current.focus();
     }
-    if (expanded && user && messages.length === 0 && currentSuggestions.length === 0) {
-      setCurrentSuggestions(pickRandomSuggestions());
-    }
-  }, [expanded, user, messages.length, currentSuggestions.length]);
+  }, [expanded, user]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -78,7 +81,7 @@ export function FloatingAIStylist() {
     if (!text.trim() || sending) return;
     const userMsg = text.trim();
     setInput("");
-    setCurrentSuggestions([]);
+    setServerSuggestions([]);
     setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setSending(true);
     try {
@@ -101,7 +104,7 @@ export function FloatingAIStylist() {
         ...prev,
         { role: "assistant", content: cleanContent },
       ]);
-      setCurrentSuggestions(response.suggestions ?? []);
+      setServerSuggestions(response.suggestions ?? []);
     } catch {
       toast.error("Failed to send message");
     } finally {
