@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { AuthProvider } from '@/lib/auth-context'
 import { CartProvider, useCart } from '@/lib/cart-context'
-import type { ReactNode } from 'react'
+import { StrictMode, type ReactNode } from 'react'
 
 const mockFetch = vi.fn()
 
@@ -156,6 +156,144 @@ describe('CartContext', () => {
       await waitFor(() => expect(result.current.demoItems).toHaveLength(1))
 
       expect(result.current.demoItems[0].selectedSize).toBe('ONE_SIZE')
+    })
+  })
+
+  // The three setDemoItems updaters used to call saveDemoItems() — and
+  // addDemoItem used to call generateDemoId() — from inside the updater body.
+  // An updater must be pure: React invokes it twice under StrictMode and
+  // re-invokes it whenever a pending queue is replayed, so a write in there
+  // fires more than once per change and can fire for a render React then
+  // discards. These pin the properties that follow from moving the write out.
+  describe('demo item persistence is a pure-updater mirror', () => {
+    const DEMO_KEY = 'clossette_demo_cart_items'
+
+    /** Structural, so it accepts the spy without naming vitest's MockInstance. */
+    type SetItemSpy = { mock: { calls: [key: string, value: string][] } }
+
+    function demoWrites(spy: SetItemSpy): string[] {
+      return spy.mock.calls
+        .filter(([key]) => key === DEMO_KEY)
+        .map(([, value]) => value)
+    }
+
+    function strictWrapper() {
+      return function Wrapper({ children }: { children: ReactNode }) {
+        return (
+          <StrictMode>
+            <AuthProvider>
+              <CartProvider>{children}</CartProvider>
+            </AuthProvider>
+          </StrictMode>
+        )
+      }
+    }
+
+    it('writes nothing on mount, because that state came from storage', async () => {
+      localStorage.setItem(DEMO_KEY, JSON.stringify([
+        { id: -7, name: 'Already There', price: 12, quantity: 1, imageUrl: null, selectedSize: 'M' },
+      ]))
+      mockFetch.mockResolvedValue(makeResponse({ message: 'Not Found' }, 404))
+      const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
+      const { result } = renderHook(() => useCart(), { wrapper: createWrapper() })
+
+      await waitFor(() => expect(result.current.demoItems).toHaveLength(1))
+      expect(demoWrites(setItem)).toEqual([])
+
+      setItem.mockRestore()
+    })
+
+    it('writes once per committed change even under StrictMode', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ message: 'Not Found' }, 404))
+
+      const { result } = renderHook(() => useCart(), { wrapper: strictWrapper() })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      // Spy after mount so this counts the change, not the hydration.
+      const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      act(() => {
+        result.current.addDemoItem({ name: 'Once', price: 49, quantity: 1, imageUrl: null, selectedSize: 'M' })
+      })
+
+      // StrictMode double-invokes the updater. The write must still happen once.
+      expect(demoWrites(setItem)).toHaveLength(1)
+      expect(JSON.parse(demoWrites(setItem)[0])).toHaveLength(1)
+
+      setItem.mockRestore()
+    })
+
+    it('persists exactly the list that was committed', async () => {
+      mockFetch.mockResolvedValue(makeResponse({ message: 'Not Found' }, 404))
+
+      const { result } = renderHook(() => useCart(), { wrapper: createWrapper() })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      act(() => {
+        result.current.addDemoItem({ name: 'A', price: 10, quantity: 1, imageUrl: null, selectedSize: 'S' })
+      })
+      act(() => {
+        result.current.addDemoItem({ name: 'B', price: 20, quantity: 2, imageUrl: null, selectedSize: 'L' })
+      })
+
+      expect(JSON.parse(localStorage.getItem(DEMO_KEY)!)).toEqual(result.current.demoItems)
+    })
+
+    it('gives two items added in the same millisecond distinct ids', async () => {
+      // The old id was `-floor(Date.now() + random * 1000)`. Freezing both
+      // sources collapses it to a single value for every item in the cart;
+      // the id is the React key and what removeDemoItem matches on.
+      vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+      vi.spyOn(Math, 'random').mockReturnValue(0.5)
+      mockFetch.mockResolvedValue(makeResponse({ message: 'Not Found' }, 404))
+
+      const { result } = renderHook(() => useCart(), { wrapper: createWrapper() })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      act(() => {
+        result.current.addDemoItem({ name: 'First', price: 10, quantity: 1, imageUrl: null, selectedSize: 'S' })
+        result.current.addDemoItem({ name: 'Second', price: 20, quantity: 1, imageUrl: null, selectedSize: 'S' })
+      })
+
+      const ids = result.current.demoItems.map((i) => i.id)
+      expect(ids).toHaveLength(2)
+      expect(new Set(ids).size).toBe(2)
+    })
+
+    it('assigns an id below every id already in the cart', async () => {
+      localStorage.setItem(DEMO_KEY, JSON.stringify([
+        { id: -2, name: 'Low', price: 10, quantity: 1, imageUrl: null, selectedSize: 'S' },
+        { id: -9, name: 'Lower', price: 10, quantity: 1, imageUrl: null, selectedSize: 'M' },
+      ]))
+      mockFetch.mockResolvedValue(makeResponse({ message: 'Not Found' }, 404))
+
+      const { result } = renderHook(() => useCart(), { wrapper: createWrapper() })
+      await waitFor(() => expect(result.current.demoItems).toHaveLength(2))
+
+      act(() => {
+        result.current.addDemoItem({ name: 'Newest', price: 10, quantity: 1, imageUrl: null, selectedSize: 'L' })
+      })
+
+      const added = result.current.demoItems.find((i) => i.name === 'Newest')!
+      expect(added.id).toBe(-10)
+    })
+
+    it('removing a demo item persists the removal', async () => {
+      localStorage.setItem(DEMO_KEY, JSON.stringify([
+        { id: -3, name: 'Keep', price: 10, quantity: 1, imageUrl: null, selectedSize: 'S' },
+        { id: -4, name: 'Drop', price: 10, quantity: 1, imageUrl: null, selectedSize: 'M' },
+      ]))
+      mockFetch.mockResolvedValue(makeResponse({ message: 'Not Found' }, 404))
+
+      const { result } = renderHook(() => useCart(), { wrapper: createWrapper() })
+      await waitFor(() => expect(result.current.demoItems).toHaveLength(2))
+
+      act(() => {
+        result.current.removeDemoItem(-4)
+      })
+
+      const stored = JSON.parse(localStorage.getItem(DEMO_KEY)!) as Array<{ id: number }>
+      expect(stored.map((i) => i.id)).toEqual([-3])
     })
   })
 
