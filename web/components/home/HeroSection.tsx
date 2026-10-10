@@ -58,7 +58,10 @@ export default function HeroSection() {
         transition={{ delay: 0.9, duration: 0.8 }}
         className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-3"
       >
-        <span className="text-[10px] uppercase tracking-widest text-foreground/60">
+        {/* A token, not an ad-hoc opacity on the ink: the 60%-opacity variant
+            resolved to #737373 — 4.74:1 on white, 0.24 above AA, and outside
+            the tokens token-contrast.test.ts pins. This one is 6.39:1. */}
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
           Scroll to Discover
         </span>
         <span className="h-[30px] w-px bg-brand" aria-hidden="true" />
