@@ -8,7 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { api, ApiError } from "./api";
+import { api } from "./api";
 import { useAuth } from "./auth-context";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -80,6 +80,9 @@ interface CartContextType {
 
 const DEMO_STORAGE_KEY = "clossette_demo_cart_items";
 
+/** Shared empty list, so a signed-out `serverItems` keeps a stable identity. */
+const NO_SERVER_ITEMS: CartItem[] = [];
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -114,35 +117,33 @@ function generateDemoId(): number {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [serverItems, setServerItems] = useState<CartItem[]>([]);
-  const [demoItems, setDemoItems] = useState<DemoCartItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [fetchedItems, setFetchedItems] = useState<CartItem[]>([]);
+  const [fetchedForUserId, setFetchedForUserId] = useState<number | null>(null);
+  const [demoItems, setDemoItems] = useState<DemoCartItem[]>(loadDemoItems);
+
+  // Both derived from which user's cart has landed: signed out there is no
+  // server cart, and until this user's fetch settles the items on hand belong
+  // to nobody we can show them to. That keeps the fetch effect below free of
+  // synchronous state resets.
+  const serverItems =
+    user && fetchedForUserId === user.id ? fetchedItems : NO_SERVER_ITEMS;
+  const loading = !!user && fetchedForUserId !== user.id;
 
   const totalCount = serverItems.length + demoItems.length;
 
-  // Load demo items from localStorage on mount
-  useEffect(() => {
-    setDemoItems(loadDemoItems());
-  }, []);
-
   // Fetch server cart when user logs in
-  const refreshCart = useCallback(async () => {
-    if (!user) {
-      setServerItems([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.get<ServerCartResponse>("/api/cart");
-      setServerItems(res.items.map(mapServerItem));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setServerItems([]);
-      }
-      // Silently handle other errors — cart badge degrades gracefully
-    } finally {
-      setLoading(false);
-    }
+  const refreshCart = useCallback((): Promise<void> => {
+    if (!user) return Promise.resolve();
+    const userId = user.id;
+    return api
+      .get<ServerCartResponse>("/api/cart")
+      .then((res) => setFetchedItems(res.items.map(mapServerItem)))
+      // A 404 means no cart row yet; anything else is handled silently — the
+      // cart badge degrades gracefully. Either way the list is emptied rather
+      // than left holding items fetched for whoever was signed in before.
+      .catch(() => setFetchedItems([]))
+      // Settles `loading`, whichever way the request went.
+      .finally(() => setFetchedForUserId(userId));
   }, [user]);
 
   useEffect(() => {
@@ -158,7 +159,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         quantity,
         selectedSize,
       });
-      setServerItems(res.items.map(mapServerItem));
+      setFetchedItems(res.items.map(mapServerItem));
     },
     [],
   );
@@ -169,14 +170,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const res = await api.delete<ServerCartResponse>(
           `/api/cart/items/${itemId}`,
         );
-        setServerItems(res.items.map(mapServerItem));
+        setFetchedItems(res.items.map(mapServerItem));
         return;
       }
       const res = await api.put<ServerCartResponse>(
         `/api/cart/items/${itemId}`,
         { quantity },
       );
-      setServerItems(res.items.map(mapServerItem));
+      setFetchedItems(res.items.map(mapServerItem));
     },
     [],
   );
@@ -185,7 +186,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const res = await api.delete<ServerCartResponse>(
       `/api/cart/items/${itemId}`,
     );
-    setServerItems(res.items.map(mapServerItem));
+    setFetchedItems(res.items.map(mapServerItem));
   }, []);
 
   // ── Demo item operations ───────────────────────────────────────────────────

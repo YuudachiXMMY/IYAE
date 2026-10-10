@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 
 const LEGACY_STORAGE_KEY = "clossette_profile_surface";
 const LEGACY_EVENT = "clossette:profile-surface-changed";
@@ -33,14 +33,35 @@ const defaultSurface: ProfileSurface = {
   bio: "",
 };
 
-function readSurface(storageKey: string): ProfileSurface {
-  if (typeof window === "undefined") return defaultSurface;
+/**
+ * The stored JSON rather than the parsed surface: a `useSyncExternalStore`
+ * snapshot has to be stable by value, and a fresh object per read would loop.
+ */
+function readRaw(storageKey: string): string {
+  if (typeof window === "undefined") return "";
   try {
-    const raw = localStorage.getItem(storageKey);
-    return raw ? { ...defaultSurface, ...JSON.parse(raw) } : defaultSurface;
+    return localStorage.getItem(storageKey) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Server render has no storage; the default surface avoids a hydration mismatch. */
+function readServerRaw(): string {
+  return "";
+}
+
+function parseSurface(raw: string): ProfileSurface {
+  if (!raw) return defaultSurface;
+  try {
+    return { ...defaultSurface, ...JSON.parse(raw) };
   } catch {
     return defaultSurface;
   }
+}
+
+function readSurface(storageKey: string): ProfileSurface {
+  return parseSurface(readRaw(storageKey));
 }
 
 function writeSurface(storageKey: string, eventName: string, surface: ProfileSurface): void {
@@ -53,42 +74,38 @@ export function useProfileSurface(userId?: string) {
   const storageKey = getStorageKey(userId);
   const eventName = getEventName(userId);
 
-  const [surface, setSurface] = useState<ProfileSurface>(defaultSurface);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      window.addEventListener(eventName, onChange);
+      window.addEventListener("storage", onChange);
 
-  useEffect(() => {
-    setSurface(readSurface(storageKey));
+      return () => {
+        window.removeEventListener(eventName, onChange);
+        window.removeEventListener("storage", onChange);
+      };
+    },
+    [eventName]
+  );
 
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<ProfileSurface>).detail;
-      setSurface(detail);
-    };
+  const getSnapshot = useCallback(() => readRaw(storageKey), [storageKey]);
 
-    const storageHandler = () => setSurface(readSurface(storageKey));
-
-    window.addEventListener(eventName, handler);
-    window.addEventListener("storage", storageHandler);
-
-    return () => {
-      window.removeEventListener(eventName, handler);
-      window.removeEventListener("storage", storageHandler);
-    };
-  }, [storageKey, eventName]);
+  const raw = useSyncExternalStore(subscribe, getSnapshot, readServerRaw);
+  const surface = useMemo(() => parseSurface(raw), [raw]);
 
   const updateSurface = useCallback(
     (updates: Partial<ProfileSurface>) => {
       const next = { ...readSurface(storageKey), ...updates };
       writeSurface(storageKey, eventName, next);
-      setSurface(next);
     },
     [storageKey, eventName]
   );
 
   const clearSurface = useCallback(() => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(storageKey);
-    }
-    setSurface(defaultSurface);
-  }, [storageKey]);
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(storageKey);
+    // Announced like any other write so the store re-reads the now-absent entry.
+    window.dispatchEvent(new CustomEvent(eventName, { detail: defaultSurface }));
+  }, [storageKey, eventName]);
 
   return { surface, updateSurface, clearSurface };
 }

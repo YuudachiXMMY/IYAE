@@ -1,5 +1,19 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
+/**
+ * localStorage key holding the JWT.
+ *
+ * The literal is still inlined in auth-context.tsx and ImageUploader.tsx; this
+ * is the authoritative definition for anything that needs it from here on.
+ * (e2e/session.ts deliberately keeps its own copy — it must not import app code.)
+ */
+export const AUTH_TOKEN_KEY = "clossette_token";
+
+/** Whether a JWT is present. Not a validity check — the server decides that. */
+export function hasAuthToken(): boolean {
+  return typeof window !== "undefined" && localStorage.getItem(AUTH_TOKEN_KEY) !== null;
+}
+
 let isRedirecting = false;
 
 interface RequestOptions {
@@ -17,7 +31,7 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("clossette_token") : null;
+  const token = typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_KEY) : null;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -40,7 +54,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       // Token expired or invalid - clear and redirect
       if (typeof window !== "undefined" && !isRedirecting) {
         isRedirecting = true;
-        localStorage.removeItem("clossette_token");
+        localStorage.removeItem(AUTH_TOKEN_KEY);
         window.location.href = "/login";
       }
     }
@@ -242,6 +256,39 @@ export interface SizeRecommendationResponse {
 export const sizing = {
   getRecommendedSize: (productId: number, signal?: AbortSignal) =>
     api.get<SizeRecommendationResponse>(`/api/products/${productId}/recommended-size`, { signal }),
+};
+
+// ── Saved products (wishlist) ───────────────────────────────────────────────────
+
+/**
+ * The server embeds its full ProductResponse here; this declares only the
+ * fields a wishlist surface needs, which is all `@/lib/api` should promise.
+ * `status` matters: a product can be archived after it was saved, and the entry
+ * stays.
+ */
+export interface SavedProductSummary {
+  id: number;
+  name: string;
+  price: number;
+  currency: string;
+  media: string[];
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+}
+
+export interface SavedProductEntry {
+  id: number;
+  productId: number;
+  product: SavedProductSummary;
+  createdAt: string;
+}
+
+export const savedProducts = {
+  list: (signal?: AbortSignal) =>
+    api.get<SavedProductEntry[]>("/api/saved-products", { signal }),
+  // PUT and DELETE are both idempotent server-side, so a replayed call is safe.
+  save: (productId: number) =>
+    api.put<SavedProductEntry>(`/api/saved-products/${productId}`),
+  remove: (productId: number) => api.delete<void>(`/api/saved-products/${productId}`),
 };
 
 // ── Fulfillment: Toronto pickup + multi-carrier shipping (Phase 8) ───────────────

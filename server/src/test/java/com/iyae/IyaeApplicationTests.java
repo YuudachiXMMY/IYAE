@@ -47,6 +47,9 @@ class IyaeApplicationTests {
     SavedLookRepository savedLookRepository;
 
     @MockBean
+    SavedProductRepository savedProductRepository;
+
+    @MockBean
     ChatSessionRepository chatSessionRepository;
 
     @MockBean

@@ -13,34 +13,44 @@ function isAbortError(err: unknown): boolean {
 
 export function useAvatarStatus() {
   const [status, setStatus] = useState<AvatarStatus | null>(null);
-  const [loading, setLoading] = useState(false);
+  // The mount fetch below always runs, so `loading` starts true instead of being
+  // flipped by the effect.
+  const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // The request starts inside the promise chain so that a synchronous throw lands
+  // in `.catch` too, as it did in the `async`/`try` version this replaced.
+  const loadStatus = useCallback(
+    (signal?: AbortSignal) =>
+      Promise.resolve()
+        .then(() => avatar.getStatus(signal))
+        .then((data) => setStatus(data))
+        .catch((err: unknown) => {
+          // A resolve-after-unmount abort must not clobber state (or flip to null).
+          if (isAbortError(err)) return;
+          setStatus(null);
+        }),
+    []
+  );
+
   const fetchStatus = useCallback(
-    async (opts: { silent?: boolean; signal?: AbortSignal } = {}) => {
+    (opts: { silent?: boolean; signal?: AbortSignal } = {}) => {
       const { silent = false, signal } = opts;
       if (!silent) setLoading(true);
-      try {
-        const data = await avatar.getStatus(signal);
-        setStatus(data);
-      } catch (err) {
-        // A resolve-after-unmount abort must not clobber state (or flip to null).
-        if (isAbortError(err)) return;
-        setStatus(null);
-      } finally {
+      return loadStatus(signal).finally(() => {
         if (!silent) setLoading(false);
-      }
+      });
     },
-    []
+    [loadStatus]
   );
 
   // Initial fetch on mount — aborted on unmount so a late resolve can't setState
   // on an unmounted component (M6: refresh is now public API).
   useEffect(() => {
     const controller = new AbortController();
-    fetchStatus({ signal: controller.signal });
+    loadStatus(controller.signal).finally(() => setLoading(false));
     return () => controller.abort();
-  }, [fetchStatus]);
+  }, [loadStatus]);
 
   // Poll every 5 seconds while avatar generation is in progress (silent to avoid
   // UI flicker). Its own controller so it aborts independently of the mount fetch.

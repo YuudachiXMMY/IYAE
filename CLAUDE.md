@@ -35,26 +35,26 @@ graph TD
     A --> D["worker"]
     A --> E["nginx"]
 
-    B --> B1["controller (21)"]
-    B --> B2["service (27)"]
-    B --> B3["entity (22 + 9 enums)"]
+    B --> B1["controller (27)"]
+    B --> B2["service (34)"]
+    B --> B3["entity (29 + 17 enums)"]
     B --> B4["ai (7: interface + factory + exception + 4 impls)"]
     B --> B5["security (JWT + RateLimitFilter)"]
     B --> B6["config (10, incl. BrandProperties)"]
-    B --> B7["db/migration (Flyway, 10 files)"]
-    B --> B8["test (48 test files, 336 methods + 4 test support)"]
+    B --> B7["db/migration (Flyway, 21 files)"]
+    B --> B8["test (66 test classes, 565 methods + 4 test support)"]
     B --> B9["util (GlbPlaceholderGenerator)"]
 
     C --> C1["app/ (37 page routes + 1 internal API route + error boundaries)"]
     C --> C2["components/ (74 app + 19 shadcn/ui)"]
     C --> C3["lib/ (api, auth, cart, 11 hooks, 14 domain modules incl. brand.ts)"]
-    C --> C4["__tests__/ (vitest, 16 test files, 222 cases)"]
-    C --> C5["e2e/ (Playwright, 8 spec files, 60 tests)"]
+    C --> C4["__tests__/ (vitest, 36 test files, 380 cases)"]
+    C --> C5["e2e/ (Playwright, 10 spec files, 111 tests)"]
 
     D --> D1["task_queue + avatar_task_queue + rigging_task_queue (3 queues)"]
     D --> D2["providers (stub, tripo3d, meshy, smplx, smplx_stub, 3 rigging, skeleton, preflight, weight_transfer, glb_writer, a_pose, scale_normalizer)"]
     D --> D3["validator (GLB header, triangle count, bbox, NaN, rigged GLB)"]
-    D --> D4["tests (15 test files, 292 tests)"]
+    D --> D4["tests (18 test files, 384 tests)"]
 
     E --> E1["nginx.conf"]
     E --> E2["conf.d/default.conf"]
@@ -199,10 +199,10 @@ Nginx adds security headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options
 
 | Module | Framework | Tests Present | Test Files | Coverage |
 |--------|-----------|---------------|------------|----------|
-| server | JUnit 5 + Mockito + MockMvc | Yes | 48 files (336 test methods + 4 test support) | Comprehensive (24 service tests + 20 controller tests + 4 other: auth, cart w/ size selection, JWT, health, generation, product, GLB util, secure token, rate limit, email (Resend-only), rigging, chat w/ suggestions, body profile, saved looks, reviews, outfits, avatar, checkout w/ Stripe, promotions, orders, posts, follows, designer profile, file storage, garment asset, user, model orchestration; all controllers WebMvcTest with security config) |
-| web | Vitest + Testing Library + jsdom | Yes | 16 files (222 test cases) | Partial (API client, AuthContext, CartContext w/ size, community feed, profile surface, profile dashboard, middleware CSP, useDebounce, useRequireAuth, useGenerationStatus, useRedirectIfAuthenticated, FittingHelper, SizeSelector, useOutfitRiggingStatus, pose-config, internal mail send route) |
-| web (E2E) | Playwright | Yes | 8 specs (60 tests) | Moderate (auth flows, registration wizard, pose selector, AI stylist, cart w/ size, checkout flow, community, designer CRUD) |
-| worker | pytest | Yes | 15 files (292 tests) | Partial (task_queue claim/retry/reclaim, validator GLB/USDZ/metadata/bbox/NaN/rigged-GLB/skin/bones, StubGenerator output/payload/integration, MeshyGenerator init/generate/errors/payload/image-url-resolve, AvatarTaskQueue claim/complete/fail/reclaim, SmplxProvider generate/measurements/errors/stub/gender/LFS/caching, RiggingTaskQueue claim/complete/fail/reclaim, PythonRiggingProvider validation/output/call-chain/scale-normalization, BlenderRiggingProvider, weight transfer surface-match/inpainting/prune-normalize, mesh preflight/garment-size-warnings, skinned GLB writer/joint-hierarchy/positioning, A-pose vector, scale normalizer, pose GLB generation) |
+| server | JUnit 5 + Mockito + MockMvc | Yes | 66 test classes (565 test methods + 4 test support) | Comprehensive (24 service tests + 20 controller tests + 4 other: auth, cart w/ size selection, JWT, health, generation, product, GLB util, secure token, rate limit, email (Resend-only), rigging, chat w/ suggestions, body profile, saved looks, reviews, outfits, avatar, checkout w/ Stripe, promotions, orders, posts, follows, designer profile, file storage, garment asset, user, model orchestration; all controllers WebMvcTest with security config) |
+| web | Vitest + Testing Library + jsdom | Yes | 36 files (380 test cases) | Partial (API client, AuthContext, CartContext w/ size, community feed, profile surface, profile dashboard, middleware CSP, useDebounce, useRequireAuth, useGenerationStatus, useRedirectIfAuthenticated, FittingHelper, SizeSelector, useOutfitRiggingStatus, pose-config, internal mail send route) |
+| web (E2E) | Playwright | Yes | 10 specs (111 tests) | Moderate (auth flows, registration wizard, pose selector, AI stylist, cart w/ size, checkout flow, community, designer CRUD) |
+| worker | pytest | Yes | 18 files (384 tests) | Partial (task_queue claim/retry/reclaim, validator GLB/USDZ/metadata/bbox/NaN/rigged-GLB/skin/bones, StubGenerator output/payload/integration, MeshyGenerator init/generate/errors/payload/image-url-resolve, AvatarTaskQueue claim/complete/fail/reclaim, SmplxProvider generate/measurements/errors/stub/gender/LFS/caching, RiggingTaskQueue claim/complete/fail/reclaim, PythonRiggingProvider validation/output/call-chain/scale-normalization, BlenderRiggingProvider, weight transfer surface-match/inpainting/prune-normalize, mesh preflight/garment-size-warnings, skinned GLB writer/joint-hierarchy/positioning, A-pose vector, scale normalizer, pose GLB generation) |
 
 ```bash
 cd server && ./gradlew test            # Server (JUnit 5, mocked repos)
@@ -373,7 +373,7 @@ cd worker && pytest                    # Worker (unit tests)
 | `docs/guides/GEN-Pose.md` | Pose generation guide (programmatic, FBX import, SMPL-X import) |
 | `docs/huly/` | Huly knowledge base setup and Claude Cowork configuration (3 files) |
 | `.gitignore` | Ignore rules for all modules |
-| `.github/workflows/e2e.yml` | CI: Playwright E2E on every PR — brings the stack up via `docker compose` (mysql + server + web), waits for `DataSeeder` to populate the catalogue, then runs the `regression` and `audit` projects at different concurrency. The only CI in the repo; unit/server/worker suites still run locally only. |
+| `.github/workflows/e2e.yml` | CI on every PR. Four parallel jobs: **Web** (`tsc --noEmit` + `eslint` + 380 vitest), **Server** (565 JUnit against H2 — no database needed; uses `gradle/actions/setup-gradle` because `gradle-wrapper.jar` is gitignored), **Worker** (384 pytest, CPU-only torch wheel), **Playwright** (brings the stack up via `docker compose`, waits for `DataSeeder`, then runs the `regression` and `audit` projects at different concurrency). Filename is historical — the workflow is named `CI` and is no longer E2E-only. |
 
 ## Changelog
 
@@ -390,4 +390,5 @@ cd worker && pytest                    # Worker (unit tests)
 | 2026-09-05 | PR#10 review follow-up on `fix/pr10-h1-l6-measurements`: H1 (designer-edit measurement data-loss) + L6 (orphan-measurement prune) fixed; M2 authz fix — admin `ARCHIVED` now durably locks a listing (`products.moderation_locked`, V12 migration) so the owning designer can't republish it via `PUT /api/designer/products/{id}` (403); test gaps M3 (new `ProductSpecificationsDataJpaTest` @DataJpaTest), M4 (measurement write-path + `getProductById` enrichment), M5 (asymmetric size weighting), L7 (admin posts/promotions endpoints) closed. Server tests 361→388 (+H2 test dep). Flagged pre-existing latent bug: `PasswordResetTokenRepository.consumeToken` assigns `CURRENT_TIMESTAMP` to an `Instant` (breaks full JPA bootstrap; unfixed, out of scope) |
 | 2026-09-06 | Phase 6 Community (PR-A server + PR-B/F1 web client): V15 migration + named feeds (Following/Discover/Toronto/Body-confidence, all constrain `status=ACTIVE`), real follower/following counts (derived COUNT, no denormalized columns), Share-a-Look FKs (`posts.saved_look_id`/`product_ids`), user report intake (`post_reports`) + admin report/comment moderation; new `PostReport` entity, `CommentStatus`/`ReportStatus` enums. Server tests 388→494. Web `api.ts` gains typed `posts`/`follows`/`adminReports` clients (F1). **Remaining** (not yet built): PR-B F2–F4 (community-feed server adapter, delete the 3 fabrication sites, useCommunityState write-through) + PR-C F5–F9 (4 feed tabs, multi-surface Share-a-Look, report UI, admin reports tab, e2e). NOTE blocker: real profile follower counts need the public-profile API to expose the numeric user id (currently username-only). |
 | 2026-09-06 | Code-review (phase3+phase4) fix pass on `worktree-fix-review-crit-high-med`: **C1** `write_skinned_glb` now emits POSITION min/max (validator no longer rejects every real SMPL-X avatar + python-rigged garment); **H1** Meshy `glb_size_bytes` from `os.path.getsize` (not the consumed stream); **H2** self-reported size category routing reordered (shoe-before-dress) + synonyms; **H3** `AvatarService.deleteAvatarData` now purges the on-disk avatar GLB (`worker.output-dir`/avatars/{id}); **H4** weather refresh interval floored via `SchedulerConfig.weatherRefreshMs` (SpEL) so `WEATHER_CACHE_TTL=0` can't crash startup; **M1** chat rate rule scoped to POST (GET /api/chat/weather no longer throttled); **M2** NaN-preserving bbox union; **M3** Meshy Tier-2 has_nan detects Inf; **M4** chart tier returns available-cased label; **M5** PDP size preselect unified on the guarded `/recommended-size` source; **M6** ProductService info-leak fixed (buyer→"Product not found") + sync comment (full guard extraction deferred — see report). Worker +5 tests, server +6 tests |
+| 2026-10-10 | Follow-ups to the button-audit PR: **server-side wishlist** (V21 `saved_products` + entity/repo/service/controller/DTO, `GET`/`PUT`/`DELETE /api/saved-products`; `web/lib/saved-products.ts` is now server-backed with localStorage demoted to a cache and replayed up on sign-in); **CI extended** from E2E-only to four parallel jobs (web/server/worker/Playwright) and the workflow renamed `CI`; **worker suite un-redded** (`Pillow` was an undeclared runtime dependency of the rigging texture path, and the SMPL-X real-model test gated on the library rather than on its licensed weights); **placeholder social sign-in removed**; **ad-hoc text-opacity contrast guard** added (turned up 28 pre-existing sub-AA uses of `text-muted-foreground/30..70`, recorded as pinned debt); **`test.use({ reducedMotion })` corrected** — on Playwright 1.60 it is a `contextOptions` property and the top-level form was silently ignored; **all 53 ESLint errors fixed** (47 `react-hooks/set-state-in-effect` across 35 files). Counts corrected against the tree: server 27 controllers / 34 services / 31 repositories / 29 entities + 17 enums / 69 DTOs / 21 migrations / 66 test classes (565 tests); web 36 test files (380); worker 18 (384); E2E 10 specs (111) |
 | 2026-09-06 | Phase 8 — Toronto Physical Touchpoints + Shipping (lightweight v1): checkout gains a Ship/Pickup choice — multi-carrier flat-rate shipping (UPS/Purolator/FedEx/Canada Post, never CP-only) or in-city Toronto pickup at a seeded location; order persists fulfillment_method/pickup_location_id/shipping_carrier/shipping_fee and total includes shipping; V17 migration; new FulfillmentService/Controller + `GET /api/fulfillment/**`; web checkout selector + order/success surfaces. Server tests → 528; web +fulfillment client/test. |
