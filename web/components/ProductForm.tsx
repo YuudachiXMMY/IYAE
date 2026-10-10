@@ -406,7 +406,7 @@ export function ProductForm({ mode, initialData, onSubmit, submitting = false }:
           <Button
             type="submit"
             disabled={submitting}
-            className="w-full sm:w-auto bg-brand hover:bg-brand-hover text-white"
+            className="w-full sm:w-auto bg-brand hover:bg-brand-hover text-primary-foreground"
           >
             {submitting
               ? mode === "create"

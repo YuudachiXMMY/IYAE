@@ -113,7 +113,7 @@ export function PoseSelector({
                           "min-h-10 min-w-16 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                           "inline-flex items-center justify-center gap-1",
                           isActive
-                            ? "bg-brand text-white"
+                            ? "bg-brand text-primary-foreground"
                             : "bg-card border border-border text-foreground hover:border-primary/50",
                         ].join(" ")}
                         aria-pressed={isActive}

@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { useProfileSurface } from "@/lib/profile-surface";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ProfileSettingsDialog } from "@/components/profile/ProfileSettingsDialog";
 import {
   DropdownMenu,
@@ -179,6 +180,10 @@ export function SiteHeader({ variant = "app" }: SiteHeaderProps) {
           >
             BAG ({totalCount})
           </Link>
+
+          {/* Not `hidden md:block` like its neighbours: the mobile nav lives in a
+              Sheet, and a theme switch is wanted on phones at least as much. */}
+          <ThemeToggle />
 
           {user ? (
             <div

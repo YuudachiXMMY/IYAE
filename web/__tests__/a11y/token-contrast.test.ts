@@ -61,14 +61,17 @@ function composite(top: Rgb, alpha: number, bottom: Rgb): Rgb {
   };
 }
 
-// Extract a light-mode token: the FIRST declaration, which lives in the
-// `@theme inline` block that precedes the `.dark { … }` override.
+// Extract a light-mode token. Raw colour values live in the `:root` block that
+// precedes the `.dark { … }` override, under the bare token name — `@theme`
+// only maps `--color-<name>` onto `var(--<name>)`, so it holds no hex to read.
+// (Before 2026-10-10 the hexes were in `@theme inline` itself; they moved so
+// that the generated utilities carry a var() the `.dark` block can override.)
 function lightToken(css: string, name: string): string {
   const lightBlock = css.split(/\.dark\s*\{/)[0];
   const match = lightBlock.match(
-    new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{3,8})`)
+    new RegExp(`(?<![\\w-])--${name}:\\s*(#[0-9a-fA-F]{3,8})`)
   );
-  if (!match) throw new Error(`light --color-${name} not found in globals.css`);
+  if (!match) throw new Error(`light --${name} not found in globals.css :root`);
   return match[1];
 }
 
@@ -95,6 +98,116 @@ describe('globals.css light-mode token contrast (WCAG 2.1 AA)', () => {
     const oldBannerBg = composite(hexToRgb('#dc2626'), 0.1, background);
     const oldRatio = contrastRatio(hexToRgb('#dc2626'), oldBannerBg);
     expect(oldRatio).toBeLessThan(WCAG_AA_NORMAL);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The same guard for the dark palette, which until 2026-10-10 nothing checked
+// because nothing could render it: `@theme` baked the light values into the
+// generated utilities, no toggle was mounted, and `enableSystem` was false. So
+// the `.dark` block accumulated five real AA failures in the dark with no way
+// for anyone to see them:
+//
+//   text-primary-foreground on bg-primary   4.36   (#ffffff on #cb4d6d)
+//   text-destructive-foreground on bg-destructive  3.76   (#ffffff on #ef4444)
+//   text-destructive on bg-destructive/10   4.33
+//   text-brand on bg-background             4.13
+//   text-brand on bg-card                   3.66
+//
+// All five are fixed; this covers every pairing the design system promises so
+// the next dark-token edit cannot reintroduce one. Light mode is checked above
+// against hand-picked cases; here the pairings are enumerated, because the dark
+// palette has no Figma source and is therefore the one more likely to drift.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Raw value from the `.dark` block, falling back to `:root` for the tokens that
+// are deliberately theme-invariant (paper) or have no override.
+function darkToken(css: string, name: string): string {
+  const darkBlock = css.split(/\.dark\s*\{/)[1] ?? '';
+  const match = darkBlock
+    .split(/\n\}/)[0]
+    .match(new RegExp(`(?<![\\w-])--${name}:\\s*(#[0-9a-fA-F]{3,8})`));
+  return match ? match[1] : lightToken(css, name);
+}
+
+// `[text token, surface token]` — the pairing the design system promises, which
+// is what `text-<x>-foreground` / `bg-<x>` means as a contract.
+const PROMISED_PAIRINGS: ReadonlyArray<readonly [string, string]> = [
+  ['foreground', 'background'],
+  ['foreground', 'card'],
+  ['foreground', 'muted'],
+  ['card-foreground', 'card'],
+  ['muted-foreground', 'background'],
+  ['muted-foreground', 'card'],
+  ['muted-foreground', 'muted'],
+  ['primary-foreground', 'primary'],
+  ['secondary-foreground', 'secondary'],
+  ['popover-foreground', 'popover'],
+  ['accent-foreground', 'accent'],
+  ['destructive-foreground', 'destructive'],
+  ['success-foreground', 'success'],
+  ['warning-foreground', 'warning'],
+  ['info-foreground', 'info'],
+  // brand/landing-accent are text colours on the page and on cards, not just
+  // surfaces — this is the constraint that forced the dark burgundy lighter.
+  ['brand', 'background'],
+  ['brand', 'card'],
+  ['landing-accent', 'background'],
+  ['landing-accent', 'card'],
+];
+
+describe('globals.css dark-mode token contrast (WCAG 2.1 AA)', () => {
+  const css = readFileSync(GLOBALS_CSS, 'utf8');
+
+  it.each(PROMISED_PAIRINGS.map(([t, s]) => [`text-${t} on bg-${s}`, t, s] as const))(
+    '%s clears AA 4.5:1',
+    (_label, text, surface) => {
+      const ratio = contrastRatio(
+        hexToRgb(darkToken(css, text)),
+        hexToRgb(darkToken(css, surface))
+      );
+      expect(ratio).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+    }
+  );
+
+  it('destructive error banner (text-destructive on bg-destructive/10) clears AA 4.5:1', () => {
+    // The pattern in 27 files. In dark the /10 tint resolves against the dark
+    // page, so it needs checking separately from the solid button above.
+    const destructive = hexToRgb(darkToken(css, 'destructive'));
+    const background = hexToRgb(darkToken(css, 'background'));
+    const ratio = contrastRatio(destructive, composite(destructive, 0.1, background));
+    expect(ratio).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+  });
+
+  it('regression guard: the five pre-fix dark values would have failed AA', () => {
+    // Locks the intent rather than the replacement values. If someone reverts a
+    // token to one of these, the enumerated cases above fail — this says why.
+    const card = hexToRgb(darkToken(css, 'card'));
+    const background = hexToRgb(darkToken(css, 'background'));
+    const oldBrand = hexToRgb('#cb4d6d');
+    const oldDestructive = hexToRgb('#ef4444');
+
+    expect(contrastRatio(hexToRgb('#ffffff'), oldBrand)).toBeLessThan(WCAG_AA_NORMAL);
+    expect(contrastRatio(hexToRgb('#ffffff'), oldDestructive)).toBeLessThan(WCAG_AA_NORMAL);
+    expect(contrastRatio(oldBrand, background)).toBeLessThan(WCAG_AA_NORMAL);
+    expect(contrastRatio(oldBrand, card)).toBeLessThan(WCAG_AA_NORMAL);
+    expect(
+      contrastRatio(oldDestructive, composite(oldDestructive, 0.1, background))
+    ).toBeLessThan(WCAG_AA_NORMAL);
+  });
+
+  it('white text can never sit on the dark brand surface', () => {
+    // Why the ten `bg-brand text-white` sites became `text-primary-foreground`:
+    // in dark mode the constraints on --brand have no overlap. White-on-brand
+    // needs luminance <= 0.176; brand-as-text on bg-card needs >= 0.240. Any
+    // value satisfying one fails the other, so a hardcoded white is unfixable
+    // by token choice alone. This asserts the squeeze still holds.
+    const card = hexToRgb(darkToken(css, 'card'));
+    const maxForWhite =
+      (1.05 / WCAG_AA_NORMAL) - 0.05;
+    const minForCardText =
+      WCAG_AA_NORMAL * (relativeLuminance(card) + 0.05) - 0.05;
+    expect(minForCardText).toBeGreaterThan(maxForWhite);
   });
 });
 

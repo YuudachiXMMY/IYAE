@@ -366,7 +366,7 @@ export default function DesignPage() {
                   <Storefront
                     size={28}
                     weight="duotone"
-                    className="text-white"
+                    className="text-primary-foreground"
                   />
                 </div>
 
@@ -410,7 +410,7 @@ export default function DesignPage() {
                   <ChartLineUp
                     size={24}
                     weight="duotone"
-                    className="text-white"
+                    className="text-primary-foreground"
                   />
                 </div>
                 <h3 className="font-display text-2xl font-semibold mb-3 text-foreground">
@@ -437,7 +437,7 @@ export default function DesignPage() {
                   <UsersThree
                     size={24}
                     weight="duotone"
-                    className="text-white"
+                    className="text-primary-foreground"
                   />
                 </div>
                 <h3 className="font-display text-2xl font-semibold mb-3 text-foreground">
@@ -477,7 +477,7 @@ export default function DesignPage() {
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Link
                     href="/register"
-                    className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-4 bg-paper text-landing-contrast text-sm font-bold rounded-full hover:bg-landing-surface transition-all duration-300 hover:shadow-xl active:scale-[0.98]"
+                    className="group w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-4 bg-paper text-landing-contrast text-sm font-bold rounded-full hover:bg-paper-hover transition-all duration-300 hover:shadow-xl active:scale-[0.98]"
                   >
                     Apply as a Designer
                     <ArrowRight

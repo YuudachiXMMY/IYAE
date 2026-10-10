@@ -1,45 +1,124 @@
 @import "tailwindcss";
 
-@theme inline {
-  /* Semantic color tokens — light mode defaults (Pure White / Burgundy / Ink)
-     Brand colors SIGNED OFF against FORME Figma (2026-09-05 audit): brand #8A0F2D,
-     ink #171717, pure-white surfaces, neutral border/muted-foreground. Typography
-     (DM Sans body + tracking tokens) and radius (12px) alignment are tracked separately;
-     dark mode has no Figma source and remains a code-side theme. */
-  --color-background: #ffffff;
-  --color-foreground: #171717;
-  --color-card: #ffffff;
-  --color-card-foreground: #171717;
-  --color-muted: #f4f1ee;
-  --color-muted-foreground: #5f5f5f;
-  --color-border: rgba(23, 23, 23, 0.18);
-  --color-input: rgba(23, 23, 23, 0.08);
-  --color-ring: #8a0f2d;
-  --color-primary: #8a0f2d;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f4f1ee;
-  --color-secondary-foreground: #171717;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #171717;
-  --color-accent: #f4f1ee;
-  --color-accent-foreground: #171717;
-  --color-destructive: #b91c1c; /* red-700: WCAG AA (4.5:1) on the bg-destructive/10 error-banner tint — do not lighten below AA */
-  --color-destructive-foreground: #ffffff;
+/* ─────────────────────────────────────────────────────────────────────────────
+   Theme-dependent raw values.
+
+   These live HERE rather than in `@theme`, and `@theme inline` below maps each
+   Tailwind token onto a `var()` reference to them. The indirection is load-
+   bearing, not stylistic: Tailwind 4.3 resolves a theme value into the utility
+   it generates, so `@theme { --color-background: #ffffff }` compiles to
+
+     .bg-background { background-color: #ffffff }
+
+   — a literal, which no `.dark` override can reach. Dropping the `inline`
+   keyword does NOT change that (measured on 4.3.0: both forms inline). Mapping
+   the token to `var(--background)` instead compiles to
+
+     .bg-background { background-color: var(--background) }
+
+   which re-resolves per element, so the `.dark` block below actually applies.
+   This is the shape shadcn/ui ships for Tailwind v4, which also keeps the
+   `components.json` CLI from fighting us.
+
+   `.dark` MUST stay after `:root`: `:root` and `.dark` have equal specificity
+   (0,1,0) and both match <html>, so source order is the only tiebreak.
+
+   Light mode is the signed-off reference: brand colors SIGNED OFF against FORME
+   Figma (2026-09-05 audit) — brand #8A0F2D, ink #171717, pure-white surfaces,
+   neutral border/muted-foreground. Dark mode has no Figma source and remains a
+   code-side theme.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --muted: #f4f1ee;
+  --muted-foreground: #5f5f5f;
+  --border: rgba(23, 23, 23, 0.18);
+  --input: rgba(23, 23, 23, 0.08);
+  --ring: #8a0f2d;
+  --primary: #8a0f2d;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f1ee;
+  --secondary-foreground: #171717;
+  --popover: #ffffff;
+  --popover-foreground: #171717;
+  --accent: #f4f1ee;
+  --accent-foreground: #171717;
+  --destructive: #b91c1c; /* red-700: WCAG AA (4.5:1) on the bg-destructive/10 error-banner tint — do not lighten below AA */
+  --destructive-foreground: #ffffff;
 
   /* Status colors — semantic tokens for badges/banners */
-  --color-success: #2f7d5b;
-  --color-success-foreground: #ffffff;
-  --color-warning: #96650f;
-  --color-warning-foreground: #ffffff;
-  --color-info: #2563eb;
-  --color-info-foreground: #ffffff;
+  --success: #2f7d5b;
+  --success-foreground: #ffffff;
+  --warning: #96650f;
+  --warning-foreground: #ffffff;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
 
   /* Brand colors (burgundy) */
-  --color-brand: #8a0f2d;
-  --color-brand-hover: #6d0b23;
+  --brand: #8a0f2d;
+  --brand-hover: #6d0b23;
 
-  /* Paper — warm editorial cream used on dark home sections (centralizes inline #F5F0EB) */
+  /* Landing page brand colors (White / Burgundy / Ink) */
+  --landing-surface: #ffffff;
+  --landing-soft: #f4f1ee;
+  --landing-contrast: #171717;
+  --landing-tone: #8a0f2d;
+  --landing-accent: #8a0f2d;
+  --landing-highlight: #8a0f2d;
+
+  /* Colour half of `--shadow-heavy` (composed in `@theme` below) */
+  --shadow-heavy-color: rgba(23, 23, 23, 0.08);
+}
+
+@theme inline {
+  /* Semantic color tokens — each maps onto the cascading var above so the
+     generated utility carries a reference rather than a baked-in literal.
+     A new color token needs BOTH halves: a raw value in `:root` (+ `.dark`)
+     and a mapping here. Adding only the mapping yields an undefined var;
+     adding only the raw value yields no utility. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Status colors — semantic tokens for badges/banners */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Brand colors (burgundy) */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+
+  /* Paper — warm editorial cream used on dark home sections (centralizes inline
+     #F5F0EB). Deliberately theme-invariant, so it needs no indirection.
+     `paper-hover` exists because the two `bg-paper text-landing-contrast`
+     buttons used to hover to `bg-landing-surface`, which is cream in light mode
+     but #2a2624 in dark — putting ink text on a dark surface at 1.3:1. The
+     surface is theme-invariant, so its hover has to be too. */
   --color-paper: #F5F0EB;
+  --color-paper-hover: #ffffff;
 
   /* Typography — FORME Figma: Cormorant Garamond display / DM Sans body.
      Tracking rule: serif 0, sans 0.01em (audit 2.3). */
@@ -53,9 +132,13 @@
   --radius-button: 24px;
   --radius-chip: 17px;
 
-  /* Shadows */
+  /* Shadows. `--shadow-heavy-color` is theme-dependent and referenced through
+     a var, so `hover:shadow-heavy` darkens correctly under `.dark`. The
+     `--shadow-heavy` token itself was missing until 2026-10-10 — seven files
+     used `hover:shadow-heavy`, Tailwind emitted no such utility, and the hover
+     elevation silently did nothing in either theme. */
   --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.04);
-  --shadow-heavy-color: rgba(23, 23, 23, 0.08);
+  --shadow-heavy: 0 12px 40px var(--shadow-heavy-color);
   --gradient-page-start: #ffffff;
   --gradient-page-mid: #fbfaf9;
   --gradient-page-end: #f6f3f0;
@@ -67,12 +150,12 @@
   --gradient-hero-end: #14110f;
 
   /* Landing page brand colors (White / Burgundy / Ink) */
-  --color-landing-surface: #ffffff;
-  --color-landing-soft: #f4f1ee;
-  --color-landing-contrast: #171717;
-  --color-landing-tone: #8a0f2d;
-  --color-landing-accent: #8a0f2d;
-  --color-landing-highlight: #8a0f2d;
+  --color-landing-surface: var(--landing-surface);
+  --color-landing-soft: var(--landing-soft);
+  --color-landing-contrast: var(--landing-contrast);
+  --color-landing-tone: var(--landing-tone);
+  --color-landing-accent: var(--landing-accent);
+  --color-landing-highlight: var(--landing-highlight);
 
   /* Animations */
   --animate-editorial-float: editorialFloat 12s ease-in-out infinite;
@@ -81,47 +164,62 @@
   --animate-landing-fade-up: landingFadeUp 0.8s ease-out forwards;
 }
 
-/* Dark mode token overrides */
+/* Dark mode token overrides. These target the raw vars from `:root` above, not
+   the `--color-*` theme names — overriding the theme name would be a no-op, as
+   the utility no longer reads it. Must stay AFTER `:root` (equal specificity). */
 .dark {
-  --color-background: #1a1614;
-  --color-foreground: #ece6e0;
-  --color-card: #25211f;
-  --color-card-foreground: #ece6e0;
-  --color-muted: #2a2624;
-  --color-muted-foreground: #a8a29e;
-  --color-border: rgba(236, 230, 224, 0.15);
-  --color-input: rgba(236, 230, 224, 0.08);
-  --color-ring: #cb4d6d;
-  --color-primary: #cb4d6d;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #2a2624;
-  --color-secondary-foreground: #ece6e0;
-  --color-popover: #25211f;
-  --color-popover-foreground: #ece6e0;
-  --color-accent: #2a2624;
-  --color-accent-foreground: #ece6e0;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
-  --color-success: #4fae82;
-  --color-success-foreground: #0f0d0c;
-  --color-warning: #d99a3c;
-  --color-warning-foreground: #0f0d0c;
-  --color-info: #5b8def;
-  --color-info-foreground: #0f0d0c;
-  --color-brand: #cb4d6d;
-  --color-brand-hover: #dd6280;
+  --background: #1a1614;
+  --foreground: #ece6e0;
+  --card: #25211f;
+  --card-foreground: #ece6e0;
+  --muted: #2a2624;
+  --muted-foreground: #a8a29e;
+  --border: rgba(236, 230, 224, 0.15);
+  --input: rgba(236, 230, 224, 0.08);
+  --ring: #d46b86;
+  /* Burgundy lightened from #cb4d6d and its foreground flipped to ink. The
+     token is used both as a surface (bg-brand/bg-primary) and as a text colour
+     (text-brand on bg-background/bg-card), and in dark mode those constraints
+     have no overlap: white-on-brand needs luminance <= 0.176, brand-as-text on
+     bg-card needs >= 0.240. Lightening + ink foreground satisfies both, and
+     matches what the dark success/warning/info tokens already do. */
+  --primary: #d46b86;
+  --primary-foreground: #0f0d0c;
+  --secondary: #2a2624;
+  --secondary-foreground: #ece6e0;
+  --popover: #25211f;
+  --popover-foreground: #ece6e0;
+  --accent: #2a2624;
+  --accent-foreground: #ece6e0;
+  /* Lightened from #ef4444 so BOTH the solid button (ink on it, 5.78:1) and
+     the `text-destructive on bg-destructive/10` error banner used in 27 files
+     (4.78:1) clear AA. At #ef4444 they were 3.76 and 4.33. */
+  --destructive: #f15858;
+  --destructive-foreground: #0f0d0c;
+  --success: #4fae82;
+  --success-foreground: #0f0d0c;
+  --warning: #d99a3c;
+  --warning-foreground: #0f0d0c;
+  --info: #5b8def;
+  --info-foreground: #0f0d0c;
+  --brand: #d46b86;
+  --brand-hover: #e08ba1;
+  --landing-surface: #2a2624;
+  --landing-soft: #25211f;
+  --landing-contrast: #0f0d0c;
+  /* Tracks --brand: `text-landing-accent` is used exactly like `text-brand`
+     (14 sites, on bg-background/bg-card), so it needs the same lift to clear AA. */
+  --landing-tone: #d46b86;
+  --landing-accent: #d46b86;
+  --landing-highlight: #d46b86;
   --shadow-heavy-color: rgba(0, 0, 0, 0.35);
+  /* Gradients are consumed as raw `var()` in inline styles, never through a
+     utility, so they needed no indirection and keep their original names. */
   --gradient-page-start: #14110f;
   --gradient-page-mid: #1a1614;
   --gradient-page-end: #161311;
   --gradient-profile-banner-start: #3a0f1c;
   --gradient-profile-banner-end: #241a1c;
-  --color-landing-surface: #2a2624;
-  --color-landing-soft: #25211f;
-  --color-landing-contrast: #0f0d0c;
-  --color-landing-tone: #cb4d6d;
-  --color-landing-accent: #cb4d6d;
-  --color-landing-highlight: #cb4d6d;
 }
 
 @keyframes editorialFloat {

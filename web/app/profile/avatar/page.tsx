@@ -381,7 +381,7 @@ export default function AvatarPage() {
                     </p>
                     <Button
                       onClick={regenerate}
-                      className="rounded-full bg-brand text-white hover:bg-brand-hover"
+                      className="rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
                       size="sm"
                     >
                       Retry
@@ -439,7 +439,7 @@ export default function AvatarPage() {
                   <Button
                     onClick={generate}
                     disabled={!hasProfile || statusLoading}
-                    className="w-full rounded-full bg-brand text-white hover:bg-brand-hover transition-all active:scale-[0.98]"
+                    className="w-full rounded-full bg-brand text-primary-foreground hover:bg-brand-hover transition-all active:scale-[0.98]"
                   >
                     Generate Avatar
                   </Button>
@@ -447,7 +447,7 @@ export default function AvatarPage() {
                 {isReady && (
                   <Button
                     onClick={regenerate}
-                    className="w-full rounded-full bg-brand text-white hover:bg-brand-hover transition-all active:scale-[0.98]"
+                    className="w-full rounded-full bg-brand text-primary-foreground hover:bg-brand-hover transition-all active:scale-[0.98]"
                   >
                     Regenerate Avatar
                   </Button>
