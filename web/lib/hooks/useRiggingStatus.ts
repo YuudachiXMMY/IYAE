@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { rigging, RiggingStatusResponse, ApiError } from "../api";
 
 export function useRiggingStatus(productId: number | null) {
@@ -10,41 +10,70 @@ export function useRiggingStatus(productId: number | null) {
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // The caller passes the signal of whatever started the load — an effect, or
+  // the manual `refetch` — so the response is only committed while that thing is
+  // still the current one. Without it a status request outlived the render that
+  // asked for it: `productId` changes on the same route (PDP → PDP), so the
+  // component is never unmounted, and a late reply for the product the user had
+  // already left overwrote the one on screen.
+  //
   // The request starts inside the promise chain so that a synchronous throw lands
   // in `.catch` too, as it did in the `async`/`try` version this replaced.
-  const loadStatus = useCallback(() => {
-    if (!productId) return Promise.resolve();
-    const controller = new AbortController();
-    return Promise.resolve()
-      .then(() => rigging.getStatus(productId, controller.signal))
-      .then((data) => setStatus(data))
-      .catch((err: unknown) => {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setStatus(null);
-      });
-  }, [productId]);
-
-  const fetchStatus = useCallback(
-    (silent = false) => {
+  const loadStatus = useCallback(
+    (signal: AbortSignal) => {
       if (!productId) return Promise.resolve();
-      if (!silent) setIsLoading(true);
-      return loadStatus().finally(() => {
-        if (!silent) setIsLoading(false);
-      });
+      return Promise.resolve()
+        .then(() => rigging.getStatus(productId, signal))
+        .then((data) => {
+          if (!signal.aborted) setStatus(data);
+        })
+        .catch((err: unknown) => {
+          if (signal.aborted) return;
+          if (err instanceof Error && err.name === "AbortError") return;
+          setStatus(null);
+        });
     },
-    [productId, loadStatus]
+    [productId]
   );
 
+  // `refetch` is user-initiated, so it is not owned by an effect — this ref lets
+  // the unmount effect below cancel it, and a second click supersede the first.
+  const manualLoad = useRef<AbortController | null>(null);
+
+  const fetchStatus = useCallback(() => {
+    if (!productId) return Promise.resolve();
+    manualLoad.current?.abort();
+    const controller = new AbortController();
+    manualLoad.current = controller;
+    setIsLoading(true);
+    return loadStatus(controller.signal).finally(() => {
+      if (!controller.signal.aborted) setIsLoading(false);
+    });
+  }, [productId, loadStatus]);
+
+  useEffect(() => () => manualLoad.current?.abort(), []);
+
   useEffect(() => {
-    loadStatus().finally(() => setIsLoading(false));
+    const controller = new AbortController();
+    loadStatus(controller.signal).finally(() => {
+      if (!controller.signal.aborted) setIsLoading(false);
+    });
+    return () => controller.abort();
   }, [loadStatus]);
 
   useEffect(() => {
-    if (status?.status === "PENDING" || status?.status === "RUNNING") {
-      const interval = setInterval(() => fetchStatus(true), 3000);
-      return () => clearInterval(interval);
-    }
-  }, [fetchStatus, status?.status]);
+    if (status?.status !== "PENDING" && status?.status !== "RUNNING") return;
+    // One controller for the whole polling run: a tick still in flight when the
+    // status leaves PENDING/RUNNING — or when the hook goes away — is cancelled
+    // with it rather than landing afterwards. The poll is silent, so it drives
+    // `loadStatus` directly instead of going through `fetchStatus`.
+    const controller = new AbortController();
+    const interval = setInterval(() => void loadStatus(controller.signal), 3000);
+    return () => {
+      clearInterval(interval);
+      controller.abort();
+    };
+  }, [loadStatus, status?.status]);
 
   const triggerRigging = useCallback(async () => {
     if (!productId) return;
@@ -92,6 +121,6 @@ export function useRiggingStatus(productId: number | null) {
     clearActionError,
     triggerRigging,
     retryRigging,
-    refetch: () => fetchStatus(false),
+    refetch: fetchStatus,
   };
 }
