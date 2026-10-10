@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
@@ -22,18 +22,41 @@ function VerifyEmailContent() {
     token ? "" : "Verification token is missing.",
   );
 
+  // The verification POST, kept across effect invocations.
+  //
+  // The token is single-use — the server clears it on the first success — so
+  // firing the request twice means the second one comes back "Invalid
+  // verification token" for an account that was in fact just verified, and it
+  // is the surviving effect instance whose request loses that race. StrictMode
+  // replays this effect in dev, which is exactly that scenario, so a replay has
+  // to attach new handlers to the same in-flight POST rather than send another.
+  const verification = useRef<Promise<unknown> | null>(null);
+
   useEffect(() => {
     if (!token) return;
 
-    api
-      .post("/api/auth/verify-email", { token })
+    // The redirect is a 3s timer, so it can easily outlive the page that
+    // scheduled it: a user who verifies and then clicks through to somewhere
+    // else inside that window would be yanked to /dashboard out of nowhere.
+    // Both the timer and the work leading up to it are tied to this effect.
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+    let left = false;
+
+    verification.current ??= api.post("/api/auth/verify-email", { token });
+
+    verification.current
       .then(async () => {
+        if (left) return;
         setStatus("success");
         toast.success("Email verified successfully");
         await refreshUser();
-        setTimeout(() => router.push("/dashboard"), 3000);
+        // Re-checked after the await: `refreshUser` is a network round trip, so
+        // the page can be gone by the time it resolves.
+        if (left) return;
+        redirectTimer = setTimeout(() => router.push("/dashboard"), 3000);
       })
       .catch((err: unknown) => {
+        if (left) return;
         const message =
           err instanceof ApiError
             ? err.message
@@ -41,6 +64,11 @@ function VerifyEmailContent() {
         setErrorMessage(message);
         setStatus("error");
       });
+
+    return () => {
+      left = true;
+      clearTimeout(redirectTimer);
+    };
     // Run once on mount — token from URL is stable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
