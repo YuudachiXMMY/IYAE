@@ -27,17 +27,17 @@ The server is the central backend service. It exposes all REST endpoints, manage
 ## Architecture
 
 ```
-controller/ (23)  --> REST endpoints (@Valid DTO binding, incl. StripeWebhookController, GuestAvatarController, SizeRecommendationController, FulfillmentController)
-service/    (29)  --> Business logic + ownership checks + orchestration + email delivery + Stripe checkout (incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway) + GuestAvatarService + SizeRecommendationService + FulfillmentService
-repository/ (23)  --> Spring Data JPA interfaces (incl. PickupLocationRepository)
-entity/     (23)  --> JPA entities (incl. PasswordResetToken, AvatarGenerationTask, RiggingTask, Post, PostLike, PostComment, Follow, PickupLocation); Product carries a size_chart JSON column
-entity/enums/ (11) --> Role, ProductStatus, TaskStatus (incl. MATERIALIZED), SessionStatus, PostStatus, FulfillmentMethod, ShippingCarrier, etc.
-dto/        (50)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse, SizeRecommendationResponse, CheckoutRequest, PickupLocationResponse, ShippingOptionResponse)
+controller/ (27)  --> REST endpoints (@Valid DTO binding, incl. StripeWebhookController, GuestAvatarController, SizeRecommendationController, FulfillmentController)
+service/    (34)  --> Business logic + ownership checks + orchestration + email delivery + Stripe checkout (incl. StripeCheckoutGateway interface + DefaultStripeCheckoutGateway) + GuestAvatarService + SizeRecommendationService + FulfillmentService
+repository/ (31)  --> Spring Data JPA interfaces (incl. PickupLocationRepository)
+entity/     (29)  --> JPA entities (incl. PasswordResetToken, AvatarGenerationTask, RiggingTask, Post, PostLike, PostComment, Follow, PickupLocation); Product carries a size_chart JSON column
+entity/enums/ (17) --> Role, ProductStatus, TaskStatus (incl. MATERIALIZED), SessionStatus, PostStatus, FulfillmentMethod, ShippingCarrier, etc.
+dto/        (69)  --> Request/Response records (incl. GuestAvatarRequest, GuestAvatarStatusResponse, SizeRecommendationResponse, CheckoutRequest, PickupLocationResponse, ShippingOptionResponse)
 ai/          (7)  --> Pluggable AI provider system (interface, factory, exception, 4 impls)
 security/    (3)  --> JWT filter + token provider + UserDetailsService
 config/     (10)  --> SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig, BrandProperties (@ConfigurationProperties "app.brand")
 util/        (1)  --> GlbPlaceholderGenerator (minimal GLB file generation)
-test/       (67)  --> 63 JUnit 5 + Mockito test files (30 service + 25 controller WebMvcTest + 8 other) + 4 test support (528 methods total)
+test/       (70)  --> 66 JUnit 5 + Mockito test classes + 4 test support (565 methods total)
 ```
 
 ## API Endpoints (External Interface)
@@ -78,7 +78,10 @@ test/       (67)  --> 63 JUnit 5 + Mockito test files (30 service + 25 controlle
 | GET/POST | `/api/body-profile` | BodyProfileController | Body measurements |
 | POST | `/api/avatar/generate` | AvatarController | Generate avatar |
 | DELETE | `/api/avatar` | AvatarController | One-tap delete of avatar + body data (returns 204 No Content) |
-| GET/POST/PUT/DELETE | `/api/looks/**` | SavedLookController | Saved looks |
+| GET/POST/PUT/DELETE | `/api/looks/**` | SavedLookController | Saved looks (outfit recommendations) |
+| GET | `/api/saved-products` | SavedProductController | Wishlist of catalogue products, newest first |
+| PUT | `/api/saved-products/{productId}` | SavedProductController | Save a product (idempotent; PUBLISHED only) |
+| DELETE | `/api/saved-products/{productId}` | SavedProductController | Unsave a product (idempotent) |
 | POST/DELETE | `/api/products/{id}/reviews` | ReviewController | Reviews |
 | GET | `/api/orders/**` | OrderController | Order history |
 | POST/GET/DELETE | `/api/posts/**` | PostController | Community posts (create, feed, detail, delete, like, comment) |
@@ -147,7 +150,7 @@ There is no SMTP path in any profile. `AuthMailService` POSTs the mail `{type, t
 
 ## Data Model
 
-Tables managed by Flyway migrations (`V1__baseline_schema.sql` through `V17__fulfillment_and_shipping.sql`). `products.size_chart` is a nullable JSON column that stores a size chart array (per-size measurement entries) used by size recommendation. `pickup_locations` (V17) backs in-city Toronto order pickup, and `orders` carries fulfillment columns (`fulfillment_method`, `pickup_location_id`, `shipping_carrier`, `shipping_fee`).
+Tables managed by Flyway migrations (`V1__baseline_schema.sql` through `V21__saved_products.sql`). `products.size_chart` is a nullable JSON column that stores a size chart array (per-size measurement entries) used by size recommendation. `pickup_locations` (V17) backs in-city Toronto order pickup, and `orders` carries fulfillment columns (`fulfillment_method`, `pickup_location_id`, `shipping_carrier`, `shipping_fee`).
 
 ### Entity Relationship
 
@@ -214,6 +217,7 @@ On first startup (empty database), `DataSeeder` creates:
 | ChatService | AI conversational styling + outfit generation protocol + suggestion chips (`[SUGGESTIONS]` extraction, fallback, XSS-safe truncation) + email verification gate |
 | OutfitService | Outfit recommendation generation + slot matching |
 | SavedLookService | CRUD for saved outfit looks (responses include outfit item names extracted from recommendation JSON) |
+| SavedProductService | Wishlist of catalogue products. Both writes are idempotent so a client can replay a localStorage wishlist on sign-in; only PUBLISHED products are savable and anything else reports the same "Product not found" as a missing id (deliberately narrower than `ProductService.getProductById`, which also exempts the owning designer — that gate already exists in two places that must stay in sync) |
 | ReviewService | Product review management |
 | BodyProfileService | Body measurement profiles |
 | PromotionService | Promotional slot management (FEATURED/SPONSORED) |
@@ -370,7 +374,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - **Framework**: JUnit 5 + Mockito + MockMvc + AssertJ (via `spring-boot-starter-test`)
 - **Test profile**: `application-test.yml` (H2 in-memory, Flyway disabled, mock AI)
 - **Test directory**: `server/src/test/java/com/iyae/`
-- **Current state**: 63 test files, 528 test methods (+ 4 test support files)
+- **Current state**: 66 test classes, 565 test methods (+ 4 test support files)
 
 ### Test Inventory
 
@@ -391,6 +395,8 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `ChatServiceTest` | `@ExtendWith(MockitoExtension)` | 11 | AI provider fallback (error response, session remains active, fallback persisted), normal message save, suggestion extraction (valid/malformed/empty), suggestion marker stripping from persisted content, suggestion truncation (max 3, max 100 chars), blank/whitespace filtering |
 | `BodyProfileServiceTest` | `@ExtendWith(MockitoExtension)` | 6 | Get profile (existing/new), upsert (create/update), ownership checks |
 | `SavedLookServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | List looks, save/update/delete look, ownership checks, invalid outfit |
+| `SavedProductServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | List (embedded product / empty / unknown user), save (new / idempotent-no-write / missing product / unpublished reports not-found), remove (owned / idempotent / lookup scoped to caller) |
+| `SavedProductControllerTest` | `@WebMvcTest` | 6 | GET list shape, PUT 200 + identity pass-through, DELETE 204, and 403 for each unauthenticated |
 | `ReviewServiceTest` | `@ExtendWith(MockitoExtension)` | 9 | Create review, delete review, get reviews, summary, ownership, duplicate prevention |
 | `AvatarServiceTest` | `@ExtendWith(MockitoExtension)` | 8 | Gender identity mapping for avatar payload (null/blank->neutral, Male->male, Female->female, Non-binary->neutral, Prefer-not-to-say->neutral); deleteAvatarData clears avatar URL + body profile + avatar tasks, idempotent when no profile/tasks; declares a `BrandProperties` mock (guest email) |
 | `OutfitServiceTest` | `@ExtendWith(MockitoExtension)` | 10 | Generate outfit (slot matching, scoring), manual outfit builder, get outfits, ownership |
@@ -472,6 +478,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | `src/main/resources/db/migration/V15__community_feeds_share_report.sql` | Phase 6: posts city/topic/saved_look_id FK/product_ids; users.city; post_comments moderation; post_reports table |
 | `src/main/resources/db/migration/V16__resale_listings.sql` | Phase 7: resale_listings table + orders.resale_listing_id (buyer resale of owned items) |
 | `src/main/resources/db/migration/V17__fulfillment_and_shipping.sql` | Phase 8: pickup_locations table (+2 Toronto seed rows) + orders fulfillment columns (fulfillment_method, pickup_location_id, shipping_carrier, shipping_fee) |
+| `src/main/resources/db/migration/V21__saved_products.sql` | Wishlist: `saved_products` set-membership table, unique `(user_id, product_id)` so a repeated save is idempotent in the database |
 
 ## Changelog
 
@@ -492,4 +499,5 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 | 2026-09-06 | Phase 4 size-chart authoring (PR-B server): `SizeRecommendationService.recommend` Tier-1 now falls back to the designer-authored `product_size_measurements` rows (via `ProductSizeMeasurementRepository.findByProductId`) when `products.size_chart` JSON is null/blank, so the shipped studio measurement UI drives a `MEASUREMENT_CHART` recommendation end-to-end. JSON still takes precedence when present (no regression); the match stays on the three shared dims (chest/waist/hips) — Seam B `length_cm` is intentionally NOT mapped to `inseamCm`. No migration, no DTO/`ProductResponse` change. Retired the two `TODO(size-chart-authoring)` markers. +3 SizeRecommendationServiceTest cases. Full suite re-verified: **518 tests, 0 failures** (prior CLAUDE.md header counts of 349/50-files were stale drift — corrected to 518/62-files here) |
 | 2026-09-06 | Code-review fix pass (H2/H3/H4/M1/M4/M6): `SizeRecommendationService.selfReportedSizeForCategory` reordered (shoe-before-dress) + synonyms; chart tier returns the available-cased label (M4); `AvatarService.deleteAvatarData` purges the on-disk avatar GLB under `worker.output-dir`/avatars/{id} (H3); `SchedulerConfig.weatherRefreshMs` SpEL floor so `WEATHER_CACHE_TTL=0`/negative can't crash startup (H4); `RateLimitFilter` chat rule scoped to `POST` so GET `/api/chat/weather` isn't throttled (M1); `ProductService.getProductById` non-owner path returns uniform "Product not found" (info-leak fix, mirrors the SizeRecommendationService gate — M6, full guard extraction deferred). +6 tests (SizeRecommendation category/casing, Avatar file-purge, Scheduler floor, RateLimit weather/POST, Product buyer-info-leak) |
 | 2026-09-06 | Phase 8 — Toronto Physical Touchpoints + Shipping (lightweight v1): V17 migration (pickup_locations + orders fulfillment columns); FulfillmentService/Controller + FulfillmentMethod/ShippingCarrier enums + PickupLocation entity/repo + CheckoutRequest/PickupLocation/ShippingOption DTOs; checkout now takes optional CheckoutRequest body, adds a Stripe shipping line item, persists fulfillment_method/pickup_location_id/shipping_carrier/shipping_fee (total = items + fee); `GET /api/fulfillment/**` public; OrderResponse exposes fulfillment + resolved pickup name. Multi-carrier guardrail (never Canada-Post-only). Server tests → 528. |
+| 2026-10-10 | Server-side wishlist: V21 `saved_products` (set membership, unique `(user_id, product_id)` so a repeated save is idempotent in the DB) + `SavedProduct` entity / `SavedProductRepository` (JOIN FETCH product+designerProfile, since `ProductResponse` reads the designer display name and `open-in-view` is off) / `SavedProductService` / `SavedProductController` / `SavedProductResponse`. `GET /api/saved-products`, `PUT|DELETE /api/saved-products/{productId}` — PUT not POST because set membership is idempotent and the web client replays a localStorage wishlist on first sign-in. Only PUBLISHED products are savable; anything else returns the same "Product not found" as a missing id. Registered the repository in `IyaeApplicationTests` (that context excludes JPA autoconfiguration, so every repository needs an explicit `@MockBean`). Tests 549 -> 565. Also corrected long-standing count drift in this file: controllers 23->27, services 29->34, repositories 23->31, entities 23->29, enums 11->17, DTOs 50->69, migrations through V17->V21, tests "63 files / 528 methods"->66 classes / 565 methods |
 | 2026-09-08 | Tech-debt cleanup: fixed the latent `PasswordResetTokenRepository.consumeToken` bug — JPQL now binds an `Instant :now` param (`SET t.usedAt = :now ... AND t.expiresAt > :now`) instead of assigning `CURRENT_TIMESTAMP` to the `Instant` field (mirrors the correct `ResaleListingRepository` pattern); `AuthService` passes `Instant.now()`, `AuthServiceTest` stub updated to the 2-arg signature. Compile-all + AuthServiceTest green. |
