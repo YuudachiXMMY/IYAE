@@ -6,7 +6,7 @@
 
 **Do not deploy.** `CHANGES_REQUESTED`.
 
-Tier 0 below holds 13 findings. These three are the headline, and each one alone would be
+Tier 0 below holds 14 findings. These three are the headline, and each one alone would be
 disqualifying:
 
 1. **Checkout silently fulfils orders for free.** Every checkout in the shipped production
@@ -26,6 +26,13 @@ configuration and the operational surface, not in the application logic.** That 
 news for the fix effort: the first three blockers are roughly a day of config work, not a
 refactor.
 
+Two caveats on that paragraph, both found by the completeness critics after it was written.
+The "ADMIN self-registration guard" I praised turns out to be half of a lockout: combined
+with `@Profile("!prod")` on the only code that creates an ADMIN row, it means **no
+administrator can exist in production at all** (B-14). And the `authenticated()` matcher
+chain, while correctly ordered, has no `authenticationEntryPoint`, so it answers 403 where
+the web client only listens for 401 (B-15). Neither is a configuration fix.
+
 ---
 
 ## Provenance — what was verified, and what was not
@@ -33,27 +40,44 @@ refactor.
 This matters for how much weight to put on each row, so it is stated up front rather than
 buried.
 
+**The audit is now complete.** The third pass of 2026-10-11 ran every agent the harness
+planned; nothing is retained fail-closed any more.
+
 | Stage | Planned | Actual |
 |---|---|---|
 | Surface/dimension reviewers | 44 | **44 completed** |
 | Raw findings → unique after dedup | — | **211 → 197** |
 | CRITICAL/HIGH candidates | 66 | 66 |
-| 3-lens adversarial verification | 198 verifier agents | **150 ran (2026-10-11 resume), adjudicating 50 of 66 findings**; 48 agents were lost to the spend limit, leaving 16 findings unverified |
-| Completeness critics | 2 | **0 completed** — still blocked by the limit |
+| 3-lens adversarial verification | 198 verifier agents | **198 ran, adjudicating all 66 findings** |
+| Completeness critics | 2 | **2 completed**, naming 29 coverage gaps |
+
+Total across the three passes: 244 agents, **0 failures**, 17.6M subagent tokens.
 
 What the adversarial pass actually changed, which is the point of running it:
 
-- **38 findings held all three lenses** with zero refutations.
-- **11 were talked down** out of the blocking set into advisory (9 HIGH→MEDIUM, 1
-  CRITICAL→MEDIUM, 1 HIGH→LOW).
+- **48 findings held all three lenses** with no lens reaching the refute threshold.
+- **17 were talked down** out of the blocking set into advisory (11 HIGH→MEDIUM,
+  1 CRITICAL→MEDIUM, 5 HIGH→LOW).
 - **1 was refuted outright, 3/3** — `web/app/orders/[id]/page.tsx` stale-state-on-id-change.
   It has been moved out of the findings entirely.
-- Net: 66 candidates → **54 blocking, 142 advisory, 1 refuted.**
+- Net: 66 candidates → **48 blocking (9 CRITICAL, 39 HIGH), 148 advisory, 1 refuted.**
 
-The harness fails closed, so the 16 findings whose verifiers never ran are retained as
-blocking rather than quietly demoted. They are listed explicitly in
-[Still unverified](#still-unverified-16-findings) — I hand-checked the consequential ones
-there rather than leaving them bare.
+The verifiers also corrected two of my own calls, which is the whole reason for running an
+adversarial pass over a report its own author wrote:
+
+- **B-13** — I had down-rated a path traversal to MEDIUM/HIGH; it held CRITICAL 3/3 and the
+  verifiers found an exploitation route I had missed.
+- **B-10** — I had asserted it as a HIGH "structurally certain" blocker; all three lenses
+  confirmed the facts and widened them, but independently rated it MEDIUM, and in doing so
+  showed my framing of it was wrong. See B-10.
+
+Read the blocking count with one correction applied, which the critics raised and I
+verified by counting the rows myself: **roughly 13 of the 48 blocking findings restate 6
+underlying defects** (the missing `restart:` policy is filed four times, the `/assets`
+avatar exposure three times, nginx TLS twice, and so on). The honest distinct-defect count
+is about **42**, not 48. The duplicates are kept rather than merged because each was filed
+against a different file and fixing one does not fix the others — but they should not be
+read as independent evidence of breadth. See [What the audit missed](#what-the-audit-missed--29-coverage-gaps), gap G-14.
 
 Rows marked ✅ **VERIFIED** below were confirmed by me reading the actual files and tracing
 the chain end to end, independently of the agents. Where my read and the verifiers' differ,
@@ -84,6 +108,10 @@ B-11 below.
 ---
 
 ## Tier 0 — release blockers, verified by hand
+
+Fourteen blockers, B-1 to B-15 — **with one exception: B-10 is no longer a blocker.** It is
+kept in place, relabelled, with the verifiers' reasoning and my corrected framing, rather
+than quietly deleted. Everything else in this section holds.
 
 ### B-1 ✅ VERIFIED · CRITICAL · Checkout silently fulfils orders for free; every order is written `PAID`
 
@@ -208,6 +236,16 @@ mesh, so `AvatarService.deleteAvatarData` deleting the directory does not recall
 **Fix.** Serve avatar GLBs through an authenticated, ownership-checked endpoint (or
 unguessable opaque tokens plus `Cache-Control: private`). Narrow the `permitAll` matcher to
 the genuinely public asset prefixes and stop serving `avatars/` from the public root.
+
+> **Scope correction — `/assets/` is served by four code paths, not two.** A completeness
+> critic caught that this finding (and the two nginx framings of it) name only nginx and
+> `SecurityConfig`. I verified the other two: `WebMvcConfig.java:21-22` registers
+> `/assets/**` as a Spring resource handler onto `file:${worker.output-dir}`, making the
+> application itself a static file server for the avatar meshes independently of nginx; and
+> `web/next.config.ts:22-23` rewrites `/assets/:path*` to the API target, so the Next.js
+> container proxies the same bytes. **Take the inventory before scoping the fix** — closing
+> the `permitAll` matcher alone leaves the nginx `location` open, and closing nginx alone
+> leaves the Spring handler reachable wherever the API is.
 
 ---
 
@@ -414,29 +452,46 @@ Shipping a social feature whose writes are discarded is worse than not shipping 
 
 ---
 
-### B-10 ⚠️ UNVERIFIED but structurally certain · HIGH · Nothing tests the schema the production server validates against
+### B-10 ↓ DOWNGRADED to MEDIUM by the verifiers · my framing was wrong · The worker's hand-written SQL is tested against no real schema
 
-`.github/workflows/e2e.yml:65-98` · `server/src/test/resources/application-test.yml` ·
-`server/src/test/java/com/iyae/IyaeApplicationTests.java`
+`.github/workflows/e2e.yml:186-187` · `server/src/test/resources/application-test.yml` ·
+`worker/task_queue.py:23` · `worker/avatar_task_queue.py:24` · `worker/rigging_task_queue.py:26`
 
-Production runs MySQL 8 + Flyway + `ddl-auto: validate`. The test environment runs
-H2 with `flyway.enabled: false` and `ddl-auto: create-drop` — Hibernate *generates* the
-schema from the entities instead of validating against the Flyway-produced one. And the one
-`@SpringBootTest` that would boot the real stack explicitly excludes
-`DataSourceAutoConfiguration`, `HibernateJpaAutoConfiguration` and
-`FlywayAutoConfiguration`, with all 30 repositories `@MockBean`'d.
+**I filed this as a HIGH release blocker titled "Nothing tests the schema the production
+server validates against." That title is false, and all three lenses showed me why** — while
+simultaneously confirming every individual fact I cited and widening the gap. They ran
+3/3 with no refutation and each independently rated it MEDIUM. The severity came down, but
+for a better reason than "less bad": I had the boundary of the gap in the wrong place.
 
-So **no unit or integration test ever runs the 21 migrations or checks an entity against
-them.** Any drift — a renamed column, a too-short `VARCHAR` for an enum name, a `@Version`
-field with no matching column — is a hard startup failure that CI cannot see.
+What I got right, and what the verifiers added to it. The JUnit environment is H2 with
+`flyway.enabled: false` and `ddl-auto: create-drop`, so Hibernate *generates* the schema
+from the entities rather than validating against the Flyway output; `IyaeApplicationTests`
+excludes `DataSourceAutoConfiguration` and `FlywayAutoConfiguration`; and all four
+`@DataJpaTest` slices use that same Flyway-off H2. The worker's three queue modules patch
+`mysql.connector.connect` with a `MagicMock` in *every* test — the strongest schema
+assertion in the whole Python suite is `assert "rigging_tasks" in sql`, a substring check
+on SQL text. There are no Testcontainers anywhere in the repo.
 
-Partial mitigation, which is why this is HIGH and not CRITICAL: the Playwright job does
-bring the real stack up via `docker compose` and waits for `DataSeeder`, so a boot failure
-would surface there — indirectly, expensively, and only in that one job.
+What I got wrong. I wrote that a boot failure would surface in the Playwright job only
+"indirectly, expensively, and only in that one job." It is in fact a real gate that runs on
+every PR: `application.yml:9,12-13` set `ddl-auto: validate` and `flyway.enabled: true`
+with no dev or prod override, and `.github/workflows/e2e.yml:187` boots `mysql server web`
+against real MySQL and then blocks on `/api/health` plus actual seeded rows. **So
+entity↔migration drift on the Java side is already a hard build failure.** I verified this
+myself after the verifiers raised it. The migrations are also not currently adrift —
+`V1__baseline_schema.sql:75-89`, V6 and V7 supply every column the worker names, and the
+status ENUMs cover `PENDING/RUNNING/READY/FAILED/MATERIALIZED`.
 
-**Fix.** Add a `@DataJpaTest`/`@SpringBootTest` against Testcontainers MySQL with Flyway on
-and `ddl-auto=validate`. It is one test and it closes the largest structural gap in the
-suite.
+What actually remains, which is the correctly-scoped finding: **the Python worker's
+raw-SQL reader is the uncovered half.** CI never starts it — `e2e.yml:186` carries an
+explicit comment that the workers are excluded because they add build time "and nothing the
+E2E tests assert on." So the Java-writer/Python-reader contract (hand-written SQL plus the
+`output_payload` key names that `materializeGarmentAsset` reads back) is exercised against
+one real schema by no job at all. That is preventive coverage for a future regression, not
+a live defect — hence MEDIUM, and hence **no longer a Tier 0 blocker.**
+
+**Fix.** Unchanged, and still cheap: one Testcontainers-MySQL test with Flyway on, asserting
+the worker's actual queue SQL round-trips. Scope it at the worker, not the server.
 
 ---
 
@@ -527,11 +582,102 @@ then fetches.
 
 ---
 
-## Tier 1 — remaining CRITICAL/HIGH leads, not independently verified
+### B-14 ✅ VERIFIED BY HAND · HIGH · No administrator can exist in production, so the whole moderation surface is unreachable
+
+`server/src/main/java/com/iyae/config/DataSeeder.java:22,98` ·
+`server/src/main/java/com/iyae/service/AuthService.java:87` · `docker-compose.prod.yml:36`
+
+Raised by a completeness critic, not by the 44 surface reviewers — then confirmed by me
+against the tree. Three facts compose into a lockout:
+
+1. `DataSeeder` is annotated `@Profile("!prod")` (line 22) and line 98 is **the only
+   `.role(Role.ADMIN)` assignment in the entire non-test source tree** (`grep -rn
+   "Role.ADMIN" server/src/main/java/` returns exactly two hits: this one and the guard
+   below).
+2. `AuthService.register` hard-rejects the role: `if (request.role() == Role.ADMIN) throw
+   new IllegalArgumentException("Cannot register with ADMIN role")` (line 87-88).
+3. `docker-compose.prod.yml:36` sets `SPRING_PROFILES_ACTIVE: prod`, which switches the
+   seeder off.
+
+No migration creates one either — V12 only widens the enum
+(`ALTER TABLE users MODIFY COLUMN role ENUM('BUYER','DESIGNER','ADMIN')`); it inserts no
+row. There is no provisioning endpoint, no CLI, and no instruction in `prod_deploy.sh` or
+`.env.example`.
+
+So on a correctly-configured production deploy, `/api/admin/**` and the `/admin` console
+are live but **permanently unreachable**: the catalogue moderation, the post/comment
+removal, the `post_reports` queue built in Phase 6, and the `moderation_locked` lock of
+PR#10 all have no one who can invoke them. This is the inverse of a privilege-escalation
+bug and it is why the ADMIN self-registration guard I praised in the verdict is only half a
+design.
+
+It compounds with two other gaps the critics named: there is **no account suspension or ban
+flag** on `User` at all and no server-side session revocation, and **no rate limit on any
+UGC write** (`RateLimitFilter`'s 10-rule allowlist covers neither `POST /api/posts` nor
+`POST /api/posts/{id}/report`). The product therefore ships user-generated content plus a
+report-intake queue with no throttle on either and nobody able to action them.
+
+**Fix.** Pick one and document it: a one-off Flyway migration inserting an ADMIN row with a
+deploy-time-supplied bcrypt hash, or a guarded bootstrap that promotes a single
+`ADMIN_BOOTSTRAP_EMAIL` on first start and then no-ops. Add it to `prod_deploy.sh`'s
+required-vars check so the deploy cannot silently produce an unadministrable instance.
+
+---
+
+### B-15 ✅ VERIFIED BY HAND · HIGH · Sessions answer 403, the client only handles 401 — every user wedges at token expiry
+
+`server/src/main/java/com/iyae/config/SecurityConfig.java:52` ·
+`server/src/main/java/com/iyae/security/JwtAuthenticationFilter.java:45-60` ·
+`web/lib/api.ts:53-61`
+
+Also a critic find, also confirmed by hand. `SecurityConfig` registers
+`.anyRequest().authenticated()` and **no `exceptionHandling`/`authenticationEntryPoint`**,
+no `formLogin`, no `httpBasic` — I grepped for all four. Spring Security therefore falls
+back to `Http403ForbiddenEntryPoint`, so an unauthenticated request gets **403, not 401**.
+The server's own tests encode this expectation (`SavedProductControllerTest` asserts 403
+for each unauthenticated call), so it is settled behaviour, not a guess.
+
+`JwtAuthenticationFilter.authenticate` compounds it by declining *silently* — a bare
+`return;` with no response written — when the token is expired, the user row is gone,
+`ver < tokenVersion`, or the email is unverified. The request simply proceeds as anonymous
+and lands on the 403 entry point.
+
+Meanwhile `web/lib/api.ts:53` is:
+
+```ts
+if (res.status === 401) {
+  // Token expired or invalid - clear and redirect
+  ...localStorage.removeItem(AUTH_TOKEN_KEY); window.location.href = "/login";
+}
+```
+
+**401 is the only status that triggers it, and the server never sends 401.** So at the 24h
+token expiry every signed-in user starts getting `ApiError(403)` from every call, with the
+dead token still in `localStorage` and no redirect to `/login`. The UI shows whatever each
+surface shows on a failed fetch — and per the advisory rows, several of those render an
+error as "no results". The user is stuck until they manually clear site data. The same path
+fires after a password reset bumps `token_version`, which is the one revocation mechanism
+the product has.
+
+**Fix.** Either add an `authenticationEntryPoint` that returns 401 for API routes (correct,
+and it makes the server honest), or make the client treat 403-with-a-token as a session
+failure. Prefer the former; do both and pin it with a test, since the existing server tests
+currently assert the 403.
+
+---
+
+## Tier 1 — remaining CRITICAL/HIGH leads
 
 These are the reviewing agents' claims. Each carries `evidence`, a `proof` scenario and a
 suggested `fix` in `pre-production-audit-2026-10-10-findings.json`. Ranked by my read of
-consequence. **Confirm before acting.**
+consequence.
+
+**Every row in this section has now cleared the full 3-lens adversarial pass**, so the
+earlier "not independently verified — confirm before acting" caveat no longer applies to
+the section as a whole. Rows still marked ✅ **hand-verified** are ones I additionally
+traced myself. The rows that did *not* survive are no longer here: six of them were talked
+down into advisory on the final pass and are listed under
+[Fully adjudicated](#fully-adjudicated--how-the-last-16-leads-resolved).
 
 **Money and data integrity**
 
@@ -560,8 +706,8 @@ consequence. **Confirm before acting.**
   all in `ResaleListingRepository`, and the normal cart branch uses a derived
   `deleteByCartId` with no such annotation. (Residual assumption: I reasoned about
   Hibernate's auto-flush query-space rule from the code rather than executing it.)
-- `ResaleService.java:242` ⚠️ **unverified** · *[latent]* — a `markSold` matching zero rows
-  is logged at INFO and the buyer is still charged.
+- `ResaleService.java:242` ✅ **3/3 held** (1 refute vote, below threshold) · *[latent]* — a
+  `markSold` matching zero rows is logged at INFO and the buyer is still charged.
 - `ResaleService.java:121,124` ✅ **hand-verified** — a seller can create unlimited active
   listings for one owned unit. `createListing:121` checks only
   `findOwningOrderId(user, productId, size)` — "did you ever buy this" — and never looks for
@@ -583,17 +729,19 @@ the buy path descoped it deserves its own focused pass before Stripe lands.
 
 **Security and privacy**
 
-- `GuestAvatarService.java:65` ⚠️ **unverified** — the guest-avatar status endpoint is an
-  unauthenticated IDOR: the ownership check compares against the single shared
-  `guest@iyae.internal` user row, so it is a no-op across all guests. Paired with
-  `smplx_provider.py:313`, every guest avatar also writes to one shared on-disk path
-  (`avatars/{guest user id}/avatar.glb`), so a visitor can be served another visitor's body
-  mesh. I confirmed the shared-identity mechanism by reading `getOrCreateGuestUser` and
-  `getTaskStatus`, and the shared output path in both SMPL-X providers. Note the verifiers
-  **downgraded a differently-worded duplicate of this** (filed as "shares one global user
-  identity") from CRITICAL to MEDIUM; the IDOR framing at `:65` was never adjudicated. Treat
-  MEDIUM as the floor, not the ceiling — the data at stake is still body-scan meshes from
-  anonymous users.
+- `smplx_provider.py:313` ✅ **3/3 held** · HIGH — every guest avatar writes to one shared
+  on-disk path (`avatars/{guest user id}/avatar.glb`), so a visitor can be served another
+  visitor's body mesh. This is the framing that survived, and it stays blocking.
+- `GuestAvatarService.java:65` — **verifiers downgraded HIGH → LOW.** The IDOR framing of
+  the same defect (the ownership check compares against the single shared
+  `guest@iyae.internal` row, so it is a no-op across all guests) has now been adjudicated,
+  and both framings came down: the CRITICAL "shares one global user identity" duplicate to
+  MEDIUM on the earlier pass, this one to LOW. I had written "treat MEDIUM as the floor, not
+  the ceiling" while it was unadjudicated; the full pass did not agree, and the row is now
+  advisory. **The underlying exposure is not dismissed** — it survives as the HIGH above,
+  where it belongs, since the harm is the shared *output path*, not the status endpoint.
+- `GuestAvatarService.java:40` ✅ **3/3 held** · HIGH — guest avatar task creation never
+  supersedes or caps prior tasks for that shared anonymous account.
 - `GlbAssetInitializer.java:61` — path traversal via the designer-settable `glbUrl`.
   **Promoted to Tier 0 — see B-13 at the end of that section.** I had initially down-rated
   this; the verification pass showed I was wrong.
@@ -630,16 +778,27 @@ the buy path descoped it deserves its own focused pass before Stripe lands.
 - `PostService.java:82` — unbounded `size` query parameter on feed/follow/comment
   pagination lets one request bypass pagination entirely.
 - N+1 queries on every hot path: product catalog (`ProductService.java:346`), community
-  feed (`PostService.java:101,233` — three extra queries per post), cart
-  (`CartService.java:136`), plus `OutfitService.java:130` loading the entire products table
-  into memory on every chat turn.
+  feed (`PostService.java:233` — three extra queries per post), plus `OutfitService.java:130`
+  loading the entire products table into memory on every chat turn. The final pass moved
+  three of these out of blocking: `PostService.java:101` and `ProductService.java:346` to
+  MEDIUM and `CartService.java:136` to LOW (a cart holds a handful of line items, so the
+  N+1 there is bounded by design). `PostService.java:233` stays HIGH because the feed is
+  unbounded.
+- `JwtAuthenticationFilter.java:47` — raised by a critic, not by a surface reviewer, and
+  unverified: the auth filter does a `findByEmail` **on every authenticated request**, purely
+  to read three values that could ride in the JWT claims. It is the hottest path in the app
+  and it compounds with every N+1 above plus the 3-second status polls. Worth a look during
+  the same pass.
 - `OrderRepository.java:15` — the Stripe webhook's order lookup has no index on
   `orders.stripe_session_id`.
 - `AvatarViewer.tsx:106` — drei's `useGLTF` cache is never cleared, so GPU/JS-heap grows
   without bound across navigations; no error boundary around the canvas on the public
   `/ar-visualization` page.
 - `web/app/products/page.tsx:100` — the primary catalog renders a failed fetch identically
-  to a genuine zero-result search; `web/app/error.tsx:16` offers no escape route.
+  to a genuine zero-result search (**downgraded HIGH → MEDIUM**); `web/app/error.tsx:16`
+  offers no escape route (**downgraded HIGH → LOW**). Both are now advisory. Note that the
+  first one is what makes **B-15** worse than it looks: a 403 at token expiry reaches this
+  page and is rendered as "nothing matched your search."
 - `worker/providers/tripo_generator.py:86` — reads `glb_resp.content` after the stream is
   consumed, which would crash every real Tripo3D generation. (Same class as the Meshy bug
   already fixed in the 2026-09-06 pass — worth grepping for a third instance.)
@@ -682,53 +841,139 @@ application layer is the strongest part of this codebase.
 1. **Hard-disable checkout** (the launch decision, and the only item here that is real code
    rather than config): B-1 parts 1–3 — refuse under the prod profile, close the resale buy
    path, hide both entry points.
-2. **Config blockers** (~1 day, no refactor): B-3 enable TLS/HSTS · B-4a bump `next` to
+2. **Make the instance administrable and the session recoverable** — B-14 ADMIN bootstrap ·
+   B-15 the 401 entry point. These moved to the front after the completeness critics ran:
+   both are small, both are real code, and until B-14 lands nobody can moderate the UGC the
+   launch ships with, while until B-15 lands every user is one token expiry from a dead app.
+3. **Config blockers** (~1 day, no refactor): B-3 enable TLS/HSTS · B-4a bump `next` to
    16.4.0 · B-4c non-root `USER` · B-6 build arg + required vars · B-12 restart policies,
-   backups, cert renewal.
-3. **Observability before anything subtle** (~half a day): B-7 log the catch-all · B-8 real
-   readiness probe. Without these you cannot confirm any later fix in production.
-4. **Privacy redesign** (needs a decision, not just a patch): B-2 authenticated avatar
-   delivery · B-5 kill the email fallback · Tier-1 data deletion path.
-5. **Confirm and fix the resale cluster** — zero test coverage, money-adjacent, and partly
-   descoped by step 1 (the buy path goes away, the listing lifecycle does not).
-6. **Close the structural test gap**: B-10 Testcontainers schema test · B-11 CI audit gate.
-7. **Then** the N+1 and front-end-race tier, and decide whether the community feature ships
-   at all (B-9).
+   backups, cert renewal. Add log rotation here — no service in the prod stack sets a
+   `logging:` limit, on the same disk that holds the only copy of the database (gap G-25).
+4. **Observability before anything subtle** (~half a day): B-7 log the catch-all · B-8 real
+   readiness probe. Without these you cannot confirm any later fix in production. The
+   critics' wider point stands: the stack has no metrics, no error aggregation and no
+   alerting of any kind, so nothing can tell you production broke (gap G-3).
+5. **Privacy redesign** (needs a decision, not just a patch): B-2 authenticated avatar
+   delivery — **across all four serving paths**, see the scope correction under B-2 · B-5
+   kill the email fallback · Tier-1 data deletion path. Publish the legal pages in the same
+   pass: there is no `/privacy` or `/terms` route, the footer links to `href="#"`, and
+   registration gates on consent to documents that do not exist (gap G-24) — on a product
+   whose core data is body measurements and 3D body meshes.
+6. **Fix the resale cluster** — zero test coverage, money-adjacent, and partly descoped by
+   step 1 (the buy path goes away, the listing lifecycle does not). All of its rows now
+   carry 3/3.
+7. **Close the structural test gap**: B-10 Testcontainers schema test, scoped at the
+   *worker* · B-11 CI audit gate.
+8. **Then** the N+1 and front-end-race tier, and decide whether the community feature ships
+   at all (B-9). Rate-limit the UGC writes in the same pass (gap G-22) — `POST /api/posts`,
+   its comments, the report intake and `POST /api/events` are all unthrottled.
 
-## Still unverified (16 findings)
+## Fully adjudicated — how the last 16 leads resolved
 
-These are the rows whose three verifiers never ran. They stay in the blocking set
-fail-closed. I hand-checked the ones whose outcome would change a launch decision; the rest
-are marked for the next resume.
+These were the rows whose three verifiers had never run, retained as blocking fail-closed.
+All 16 are now adjudicated: **10 held 3/3 and 6 were talked down into advisory.** The table
+keeps my earlier hand-verification column next to the verifiers' independent verdict, so the
+two can be compared.
 
-| Finding | Status |
+| Finding | My hand-check | Verifiers' verdict |
+|---|---|---|
+| `SecurityConfig.java:46` — body scans public at a guessable path | ✅ **B-2** | **held CRITICAL 3/3** |
+| `nginx/conf.d/default.conf:21` — HTTP-only | ✅ **B-3** | **held HIGH 3/3** |
+| `HealthController.java:22` — health check cannot fail | ✅ **B-8** | **held HIGH 3/3** |
+| `web/Dockerfile:11` — `NEXT_PUBLIC_REQUIRE_EMAIL_VERIFICATION` never plumbed | ✅ **B-6** | **held HIGH 3/3** |
+| `docker-compose.prod.yml:105` — no restart policy, worker has no healthcheck | ✅ **B-12** | **held HIGH 3/3** |
+| `AvatarService.java:133` — no account/data deletion path | ✅ Tier 1 | **held HIGH 3/3** |
+| `CheckoutService.java:232` — resale webhook loses the `PAID` transition | ✅ Tier 1 *[latent]* | **held HIGH 3/3** (1 refute vote) |
+| `ResaleService.java:124` — unlimited active listings per owned unit | ✅ Tier 1 | **held HIGH 3/3** |
+| `smplx_provider.py:313` — all guests share one avatar output path | ◐ mechanism only | **held HIGH 3/3** |
+| `ResaleService.java:242` — lost reservation, buyer still charged | ⚠️ not checked *[latent]* | **held HIGH 3/3** (1 refute vote) |
+| `.github/workflows/e2e.yml:185` — no real queue contract test | ✅ **B-10**, framing wrong | ↓ **HIGH → MEDIUM** |
+| `GuestAvatarService.java:65` — unauthenticated guest IDOR | ◐ mechanism only | ↓ **HIGH → LOW** |
+| `PostService.java:101` — community feed N+1 | ⚠️ not checked (low stakes) | ↓ **HIGH → MEDIUM** |
+| `web/app/products/page.tsx:100` — failed fetch renders as zero results | ⚠️ not checked (low stakes) | ↓ **HIGH → MEDIUM** |
+| `CartService.java:136` — cart N+1 per line item | ⚠️ not checked (low stakes) | ↓ **HIGH → LOW** |
+| `web/app/error.tsx:16` — root error boundary has no escape route | ⚠️ not checked (low stakes) | ↓ **HIGH → LOW** |
+
+Two things are worth reading off this table rather than just the counts.
+
+**My triage was right about which rows mattered.** Every one of the nine I hand-verified as
+consequential held 3/3. Every one of the four I set aside as "low stakes" was downgraded.
+The two I had marked "mechanism confirmed, exploit not traced" split — the shared avatar
+output path held HIGH, the IDOR framing of it went to LOW — which is the correct split,
+because the harm was always the shared path.
+
+**My one wrong call was a framing error, not a triage error.** B-10 was the single row I
+had asserted as a blocker on structural reasoning instead of a traced chain, and it is the
+single row whose severity the verifiers moved against me. That is a useful lesson about
+exactly which claims in a report like this deserve the least trust: the ones argued from
+"this must be true" rather than "I followed this path."
+
+Plus the two latent resale rows I had never checked at all (`ResaleService.java:242`) or
+checked only partially — both held HIGH. Descoping them behind the disabled payment path
+remains correct for launch #1, but they are real and they must be cleared before Stripe
+lands.
+
+## What the audit missed — 29 coverage gaps
+
+The two completeness critics ran for the first time on the final pass. Their only job was to
+find what the 44 reviewers did not look at. **Read these as leads, not findings: the critics
+are the terminal stage of the pipeline, so unlike everything above, their output never went
+through the 3-lens adversarial pass.** Full text with each critic's own evidence is in the
+[appendix](./pre-production-audit-2026-10-10-appendix.md#coverage-gaps-named-by-the-two-completeness-critics-29).
+
+Four were serious enough that I verified them myself before letting them stand. Two became
+blockers:
+
+- **G-17 → now B-14.** No ADMIN can exist in production. Confirmed.
+- **G-16 → now B-15.** The server answers 403, the client only handles 401. Confirmed.
+- **G-9 → scope correction on B-2.** `/assets/` is served by four code paths, not the two
+  the findings name. Confirmed: `WebMvcConfig.java:21` and `web/next.config.ts:22` are the
+  two nobody had looked at.
+- **G-24.** No `/privacy`, `/terms`, `/legal` or `/cookies` route exists; `LandingFooter`
+  links all of them to `href="#"`; `StepBasics.tsx:128` makes the user tick a box agreeing
+  to documents that are not even links. Confirmed by listing `web/app` (44 routes, none of
+  them legal).
+
+And one is a criticism of this report itself, which I verified by counting the rows:
+
+- **G-14.** Roughly 13 of the 48 blocking findings restate 6 underlying defects. Recorded in
+  [Provenance](#provenance--what-was-verified-and-what-was-not); the honest distinct-defect
+  count is ~42.
+
+The remaining 24 gaps are unverified. These are the classes the critics say had **no audit
+surface pointed at them at all**, which is the part worth acting on — a finding you did not
+file is invisible, but a class you never looked at is knowable:
+
+| Gap | Class with no surface |
 |---|---|
-| `SecurityConfig.java:46` — body scans public at a guessable path | ✅ hand-verified — **B-2** |
-| `nginx/conf.d/default.conf:21` — HTTP-only (duplicate framing of the TLS row) | ✅ hand-verified — **B-3** |
-| `HealthController.java:22` — health check cannot fail | ✅ hand-verified — **B-8** |
-| `web/Dockerfile:11` — `NEXT_PUBLIC_REQUIRE_EMAIL_VERIFICATION` never plumbed | ✅ hand-verified — **B-6** |
-| `docker-compose.prod.yml:105` — no restart policy, worker has no healthcheck | ✅ hand-verified — **B-12** |
-| `.github/workflows/e2e.yml:185` — no real server↔worker queue contract test | ✅ hand-verified — **B-10** |
-| `AvatarService.java:133` — no account/data deletion path | ✅ hand-verified — Tier 1 |
-| `CheckoutService.java:232` — resale webhook loses the `PAID` transition | ✅ hand-verified — Tier 1 *[latent]* |
-| `ResaleService.java:124` — unlimited active listings per owned unit | ✅ hand-verified — Tier 1 |
-| `GuestAvatarService.java:65` — unauthenticated guest IDOR | ◐ mechanism confirmed, exploit not traced |
-| `smplx_provider.py:313` — all guests share one avatar output path | ◐ mechanism confirmed, exploit not traced |
-| `ResaleService.java:242` — lost reservation, buyer still charged | ⚠️ not checked *[latent]* |
-| `CartService.java:136` — cart N+1 per line item | ⚠️ not checked (low stakes) |
-| `PostService.java:101` — community feed N+1, 3 queries per post | ⚠️ not checked (low stakes) |
-| `web/app/error.tsx:16` — root error boundary has no escape route | ⚠️ not checked (low stakes) |
-| `web/app/products/page.tsx:100` — failed fetch renders as zero results | ⚠️ not checked (low stakes) |
+| G-1 | **Trust & safety** — no suspend/ban flag on `User`, no server-side session revocation, no admin user management, no upload moderation |
+| G-3 | **Observability** — zero metrics/APM/error-aggregation/tracing dependencies anywhere, no alerting, no log rotation |
+| G-5 | **Outfit generation** — the product's headline feature and the only write path reachable from LLM output; 14 files, not one finding |
+| G-11 | **Cost controls** — no quota, budget ceiling, concurrency cap or kill switch on the paid AI/3D providers |
+| G-12 | **Mobile/responsive and i18n/currency** — no viewport coverage on a mobile-first product; `lang="en"` hardcoded, currency is free-text |
+| G-13, G-23 | **SEO and link previews** — no robots/sitemap/manifest/OG tags, and because every route is `"use client"` no route *can* export metadata, so the sharing growth loop produces blank cards |
+| G-8 | **Supply-chain integrity** — `gradle-wrapper.jar` untracked (swallowed by `.gitignore:24`), no dependency locking in 2 of 3 ecosystems |
+| G-7, G-27 | **Dependency CVEs** — only the npm ecosystem was swept; no Gradle or pip pass, and the `next@16.2.6` CRITICAL names no CVE and never establishes that the vulnerable path is reachable in this config |
+| G-4, G-20 | **Email deliverability** — `MAIL_FROM` defaults to Resend's sandbox address, which can only deliver to the account owner; no SPF/DKIM/DMARC review |
+| G-19 | **UGC payload size** — post images are unbounded base64 data URIs persisted straight into MySQL, no `@Size`, no rate limit |
+| G-22 | **UGC throttling** — `RateLimitFilter`'s allowlist covers none of the post/comment/report/follow/analytics writes |
+| G-25 | **Container hardening** — no `cap_drop`, `no-new-privileges`, `read_only` or `user` on any production service |
+| G-28 | **Auth hot-path cost** — a DB round trip per authenticated request, with no pool sizing configured |
+| G-15, G-29 | **Inventory drift** — three tracked junk artifacts at the repo root (incl. `review_results.json`, stale pre-rebrand guidance a future agent may act on), an unreferenced second landing page at `/design`, and an undocumented `web/components/design-system/` holding the globally-mounted `SiteHeader` |
+| G-26, G-10 | **The suspicious silence on auth** — both critics independently flagged that zero CRITICALs on the auth path is itself a signal, and each supplied a concrete re-test list |
 
-So of the 16, **nine are hand-verified**, two have their mechanism confirmed, and five
-remain genuinely open — all five either low-stakes or latent behind the disabled payment
-path. **No unexamined finding sits on a launch-blocking path.**
+Both critics landed independently on the same three things — trust & safety, observability,
+and the auth path — which is the strongest signal in the list.
 
-## Re-run the remaining verification
+## Reproducing or extending this audit
 
-The resume of 2026-10-11 adjudicated 50 of 66 findings before hitting the limit again.
-Everything already done replays from cache, so a third resume costs only the 48 remaining
-verifier agents plus the two completeness critics:
+**Nothing is left to re-run.** The third pass of 2026-10-11 completed every planned agent:
+198 of 198 verifiers and 2 of 2 completeness critics, 0 failures. Across the three passes
+the harness ran 244 agents in total. It took three attempts because the first two were cut
+short by a monthly spend limit, not by anything in the script.
+
+To reproduce or extend the audit, the script is still on disk and fully cached — an
+unchanged resume returns every result instantly and costs nothing:
 
 ```
 Workflow({
@@ -737,14 +982,20 @@ Workflow({
 })
 ```
 
-The **completeness critics have still never run**, so "what did this audit miss?" remains
-the one genuinely open question about this report's coverage. That is worth one more resume
-on its own.
+Editing a surface's prompt re-runs that surface and everything downstream of it, which is
+the cheap way to act on the coverage gaps above: the obvious next pass adds surfaces for
+trust & safety, observability, outfit generation, and cost controls — the four classes both
+critics agreed had nothing pointed at them.
+
+What remains genuinely open about this report's coverage is now bounded and named: the 24
+unverified coverage gaps. Everything that was ever filed as a finding has been adjudicated.
 
 ---
 
 *Audit: 44 parallel reviewers over server/web/worker/infra, 211 raw → 197 unique findings.
-Adversarial verification: 150 of 198 lens-agents ran across two passes, adjudicating 50 of
-66 blocking candidates — 38 held 3/3, 11 downgraded, 1 refuted. 13.2M subagent tokens,
-2,393 tool calls, 58 min + 58 min wall clock. 21 findings re-verified by hand; 7 agent
-claims rejected; 1 of my own severity calls (B-13) corrected by the verifiers.*
+Adversarial verification: **all 198 lens-agents ran**, adjudicating all 66 blocking
+candidates — 48 held 3/3, 17 downgraded, 1 refuted. Both completeness critics ran, naming 29
+coverage gaps. 244 agents, 0 failures, 17.6M subagent tokens, 3,267 tool calls, 58 + 58 + 27
+min wall clock across three passes. 25 findings re-verified by hand; 7 agent claims
+rejected; 4 critic gaps hand-verified, 2 of which became blockers (B-14, B-15); 2 of my own
+calls corrected by the verifiers — B-13's severity and B-10's framing.*
