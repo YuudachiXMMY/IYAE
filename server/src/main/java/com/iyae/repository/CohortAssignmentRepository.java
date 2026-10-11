@@ -10,4 +10,8 @@ public interface CohortAssignmentRepository extends JpaRepository<CohortAssignme
     Optional<CohortAssignment> findByUserId(Long userId);
 
     boolean existsByUserId(Long userId);
+
+    // Account deletion (AccountDeletionService): removes this user's cohort assignment.
+    void deleteByUserId(Long userId);
+
 }

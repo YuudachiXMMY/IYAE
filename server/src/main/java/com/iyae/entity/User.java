@@ -10,6 +10,12 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "users")
+// A deleted account is a tombstone row (see deletedAt) and must be invisible to every query
+// for this entity — login, registration's duplicate check, the JWT filter, profile lookups,
+// follower lists. Applying it here rather than at each call site is the point: there are too
+// many lookups for "remember to filter" to hold, and a missed one leaves a deleted account
+// partly alive. By-id association loads are unaffected, so an Order still resolves its user.
+@org.hibernate.annotations.SQLRestriction("deleted_at is null")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -109,6 +115,22 @@ public class User {
     // Phase 6: backs the city-scoped community feed (e.g. Toronto)
     @Column(name = "city", length = 120)
     private String city;
+
+    /**
+     * Set when the account is deleted. The row survives because {@code orders} holds a non-null
+     * FK to it and an order is a financial record, so deletion scrubs the identifying fields
+     * instead.
+     *
+     * <p>A tombstone is invisible to every JPA query for this entity — see the
+     * {@code @SQLRestriction} on the class. That is deliberate rather than filtering at each
+     * call site: {@code findByEmail} alone has nine callers (login, registration, the JWT
+     * filter, profile reads, password reset, …) and one missed site would leave a deleted
+     * account partly alive. Loading the association from an {@code Order} still resolves,
+     * because Hibernate fetches a to-one association by id and the restriction does not apply
+     * to a by-id load — so order history survives the deletion, as intended.
+     */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

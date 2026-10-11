@@ -11,4 +11,8 @@ public interface SavedLookRepository extends JpaRepository<SavedLook, Long> {
     List<SavedLook> findByUserId(Long userId);
 
     Optional<SavedLook> findByIdAndUserId(Long id, Long userId);
+
+    // Account deletion (AccountDeletionService): removes this user's saved looks.
+    void deleteByUserId(Long userId);
+
 }

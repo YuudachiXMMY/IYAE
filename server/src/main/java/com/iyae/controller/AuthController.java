@@ -1,6 +1,7 @@
 package com.iyae.controller;
 
 import com.iyae.dto.*;
+import com.iyae.service.AccountDeletionService;
 import com.iyae.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final AccountDeletionService accountDeletionService;
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -55,6 +57,21 @@ public class AuthController {
             Authentication authentication,
             @Valid @RequestBody UpdateUserProfileRequest request) {
         return ResponseEntity.ok(authService.updateUserProfile(authentication.getName(), request));
+    }
+
+    /**
+     * Deletes the caller's account and the personal data attached to it.
+     *
+     * <p>There was previously no deletion path at all — {@code DELETE /api/avatar} removed the
+     * avatar and the measurements and left the chat transcripts, posts, orders and analytics
+     * rows permanently, on a product whose core data is body measurements and 3D body meshes.
+     *
+     * <p>Idempotent, so a retry after a dropped response is not an error.
+     */
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(Authentication authentication) {
+        accountDeletionService.deleteAccount(authentication.getName());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/users/profile/{username}")

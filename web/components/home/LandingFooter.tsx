@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { XLogo, InstagramLogo } from "@phosphor-icons/react";
 import { BRAND } from "@/lib/brand";
 
@@ -16,13 +17,16 @@ export function LandingFooter() {
           </div>
 
           <div className="flex gap-8 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">
               Privacy
-            </a>
-            <a href="#" className="hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">
               Terms
-            </a>
-            <a href="#" className="hover:text-foreground transition-colors">
+            </Link>
+            <a
+              href={`mailto:support@${new URL(BRAND.url).hostname}`}
+              className="hover:text-foreground transition-colors"
+            >
               Contact
             </a>
           </div>

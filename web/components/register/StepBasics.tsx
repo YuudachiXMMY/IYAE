@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EditorialHeading } from "@/components/design-system/EditorialHeading";
 import { UnderlineField } from "@/components/design-system/UnderlineField";
@@ -125,7 +126,25 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
               className="mt-0.5"
             />
             <span className="font-body text-[13px] leading-relaxed text-muted-foreground">
-              I agree to {BRAND.name}&apos;s Terms and Privacy Policy.
+              I agree to {BRAND.name}&apos;s{" "}
+              {/* These were plain text until the documents existed, so the box consented to
+                  nothing readable — on a product whose core data is body measurements. */}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="text-brand underline hover:no-underline"
+              >
+                Terms
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                className="text-brand underline hover:no-underline"
+              >
+                Privacy Policy
+              </Link>
+              .
             </span>
           </label>
         </div>

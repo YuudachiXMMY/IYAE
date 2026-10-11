@@ -1,5 +1,6 @@
 package com.iyae.repository;
 
+import com.iyae.entity.User;
 import com.iyae.entity.Post;
 import com.iyae.entity.PostComment;
 import com.iyae.entity.enums.CommentStatus;
@@ -13,4 +14,8 @@ public interface PostCommentRepository extends JpaRepository<PostComment, Long> 
     Page<PostComment> findByPostAndParentCommentIsNullAndStatusOrderByCreatedAtAsc(
             Post post, CommentStatus status, Pageable pageable);
     long countByPost(Post post);
+
+    // Account deletion (AccountDeletionService): removes this user's comments.
+    void deleteByUser(User user);
+
 }

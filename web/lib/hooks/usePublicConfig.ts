@@ -19,13 +19,11 @@ export function usePublicConfig() {
   const [error, setError] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(() => {
-    controllerRef.current?.abort();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    setLoading(true);
-    setError(false);
-
+  // State is only written from the promise callbacks, never synchronously in the effect body —
+  // `loading` already starts true whenever the cache is empty, so the effect has nothing to set
+  // on the way in. (A synchronous setState in an effect is both a cascading render and a lint
+  // error this repo keeps at zero.)
+  const fetchInto = useCallback((controller: AbortController) => {
     getPublicConfig(controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return;
@@ -39,11 +37,23 @@ export function usePublicConfig() {
       });
   }, []);
 
+  /** User-triggered retry. Safe to set state synchronously here — it is an event handler. */
+  const reload = useCallback(() => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setLoading(true);
+    setError(false);
+    fetchInto(controller);
+  }, [fetchInto]);
+
   useEffect(() => {
     if (getCachedPublicConfig() !== null) return;
-    load();
-    return () => controllerRef.current?.abort();
-  }, [load]);
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    fetchInto(controller);
+    return () => controller.abort();
+  }, [fetchInto]);
 
-  return { config, loading, error, reload: load };
+  return { config, loading, error, reload };
 }

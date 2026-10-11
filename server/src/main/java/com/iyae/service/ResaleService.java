@@ -52,7 +52,20 @@ import java.util.stream.Collectors;
 public class ResaleService {
 
     private static final int MAX_PAGE_SIZE = 100;
-    private static final Duration RESERVATION_TTL = Duration.ofMinutes(30);
+
+    /**
+     * How long a Stripe Checkout session for a resale listing stays payable. Stripe's minimum is
+     * 30 minutes, and {@link #RESERVATION_TTL} must stay strictly greater — see
+     * {@link #releaseStaleReservations()}. {@code CheckoutService} applies this to the session.
+     */
+    public static final Duration CHECKOUT_SESSION_TTL = Duration.ofMinutes(30);
+
+    /**
+     * How long a reservation is held. Must exceed {@link #CHECKOUT_SESSION_TTL} so a session can
+     * never outlive the reservation that protects the unit it is buying; the margin absorbs
+     * clock skew between us and Stripe and the sweep's own scheduling interval.
+     */
+    private static final Duration RESERVATION_TTL = Duration.ofMinutes(45);
     private static final List<ResaleStatus> ACTIVE_STATUSES =
             List.of(ResaleStatus.DRAFT, ResaleStatus.LISTED, ResaleStatus.RESERVED, ResaleStatus.SOLD);
 
@@ -125,6 +138,34 @@ public class ResaleService {
                 .orElseThrow(() -> new IllegalArgumentException("You can only resell items you've purchased"));
         Product product = productRepository.findById(req.productId())
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + req.productId()));
+
+        // One physical unit, one listing. The eligibility *read* (listEligibleItems) filtered
+        // out units with an active listing, but nothing enforced it on the write — so a seller
+        // posting straight to the API could create any number of listings for the single item
+        // they own, and each one could be reserved and sold. The guard lives here and is backed
+        // by a unique index on (original_order_id, product_id, size_label), so two concurrent
+        // requests cannot both pass it.
+        ResaleListing existing = resaleRepo
+                .findByOriginalOrderIdAndProductIdAndSizeLabel(orderId, req.productId(), size)
+                .orElse(null);
+        if (existing != null) {
+            switch (existing.getStatus()) {
+                case SOLD -> throw new IllegalArgumentException("You've already sold this item");
+                case DRAFT, LISTED, RESERVED ->
+                        throw new IllegalArgumentException("This item is already listed");
+                case REMOVED -> {
+                    // Re-listing a previously withdrawn item reuses the row rather than
+                    // inserting a second one for the same unit.
+                    existing.setStatus(ResaleStatus.LISTED);
+                    existing.setCondition(req.condition());
+                    existing.setAskingPrice(req.askingPrice());
+                    existing.setSellerNote(req.sellerNote());
+                    existing.setMedia(toJsonString(req.media()));
+                    existing.setReservedAt(null);
+                    return ResaleListingResponse.from(resaleRepo.save(existing));
+                }
+            }
+        }
 
         ResaleListing listing = ResaleListing.builder()
                 .seller(user)
@@ -234,13 +275,26 @@ public class ResaleService {
         return snapshot;
     }
 
-    /** RESERVED -> SOLD on payment. Idempotent (a re-delivered webhook is a no-op). */
+    /**
+     * RESERVED -> SOLD on payment.
+     *
+     * @return true when this call made the sale; false when the listing was not RESERVED, which
+     *         after a successful payment means the buyer has been charged for a unit they cannot
+     *         receive. The caller is responsible for surfacing that — it is not a no-op, and it
+     *         used to be logged at INFO and otherwise ignored.
+     */
     @Transactional
-    public void markSold(Long listingId) {
+    public boolean markSold(Long listingId) {
         int updated = resaleRepo.markSold(listingId, ResaleStatus.SOLD, ResaleStatus.RESERVED);
         if (updated == 0) {
-            log.info("markSold: resale listing {} was not RESERVED (already sold or released)", listingId);
+            // Idempotency (a re-delivered webhook for an already-SOLD listing) looks identical
+            // here, so the caller — which knows whether this is a first-time fulfilment —
+            // decides how loud to be.
+            log.warn("markSold: resale listing {} was not RESERVED (already sold, or the "
+                    + "reservation was lost)", listingId);
+            return false;
         }
+        return true;
     }
 
     /** RESERVED -> LISTED when a checkout is abandoned/fails. Idempotent. */
@@ -249,13 +303,35 @@ public class ResaleService {
         resaleRepo.release(listingId, ResaleStatus.LISTED, ResaleStatus.RESERVED);
     }
 
-    /** Scheduled sweep: return listings stuck in RESERVED past the TTL back to LISTED. */
+    /**
+     * Scheduled sweep: return listings stuck in RESERVED past the TTL back to LISTED.
+     *
+     * <p>Two guards, because this sweep is what made a double-sale possible. A Stripe Checkout
+     * session stayed payable after the sweep had already put the listing back on sale, so a
+     * second buyer could reserve and pay for the same unique item while the first buyer's
+     * payment was still settling — two charges, one garment, and nothing in the system noticing.
+     *
+     * <ol>
+     *   <li>{@link #CHECKOUT_SESSION_TTL} is shorter than {@link #RESERVATION_TTL}, so a session
+     *       that can still be paid always sits inside a live reservation. The expiry is set on
+     *       the Stripe session itself in {@code CheckoutService}.
+     *   <li>Belt and braces: a listing with a PENDING order against it is skipped regardless of
+     *       age, and logged — it means an order has outlived its session expiry and needs a
+     *       human, not an automatic re-listing.
+     * </ol>
+     */
     @Transactional
     public void releaseStaleReservations() {
         Instant cutoff = Instant.now().minus(RESERVATION_TTL);
         List<ResaleListing> stale = resaleRepo.findByStatusAndReservedAtBefore(ResaleStatus.RESERVED, cutoff);
         int released = 0;
         for (ResaleListing listing : stale) {
+            if (resaleRepo.hasPendingOrder(listing.getId())) {
+                log.warn("Not releasing resale listing {}: an order is still PENDING against it. "
+                        + "Its checkout session should already have expired — investigate before "
+                        + "this unit is re-listed.", listing.getId());
+                continue;
+            }
             released += resaleRepo.release(listing.getId(), ResaleStatus.LISTED, ResaleStatus.RESERVED);
         }
         if (released > 0) {

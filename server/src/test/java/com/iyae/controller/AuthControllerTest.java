@@ -2,6 +2,7 @@ package com.iyae.controller;
 
 import com.iyae.dto.*;
 import com.iyae.entity.enums.Role;
+import com.iyae.service.AccountDeletionService;
 import com.iyae.service.AuthService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +16,8 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -32,6 +35,9 @@ class AuthControllerTest {
 
     @MockBean
     AuthService authService;
+
+    @MockBean
+    AccountDeletionService accountDeletionService;
 
     private UserResponse sampleUser() {
         return new UserResponse(1L, "test@example.com", "Test User", Role.BUYER,
@@ -179,5 +185,24 @@ class AuthControllerTest {
 
         mockMvc.perform(get("/api/auth/users/profile/nobody"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ---- #47: account deletion ----
+
+    @Test
+    @WithMockUser(username = "buyer@example.com")
+    void deleteAccount_authenticated_returns204AndDelegates() throws Exception {
+        mockMvc.perform(delete("/api/auth/me").with(csrf()))
+                .andExpect(status().isNoContent());
+
+        verify(accountDeletionService).deleteAccount("buyer@example.com");
+    }
+
+    @Test
+    void deleteAccount_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(delete("/api/auth/me").with(csrf()))
+                .andExpect(status().isUnauthorized());
+
+        verify(accountDeletionService, never()).deleteAccount(anyString());
     }
 }

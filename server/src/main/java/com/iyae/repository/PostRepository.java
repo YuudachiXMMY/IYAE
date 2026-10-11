@@ -30,4 +30,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /** Topic feed (e.g. body-confidence): ACTIVE posts whose topic matches. */
     Page<Post> findByStatusAndTopicOrderByCreatedAtDesc(PostStatus status, String topic, Pageable pageable);
+
+    // Account deletion (AccountDeletionService): removes this user's posts.
+    void deleteByUser(User user);
+
 }

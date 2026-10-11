@@ -238,6 +238,14 @@ export const auth = {
   // permitAll + rate-limited; returns a generic (enumeration-safe) message — treat any 2xx as success.
   resendVerification: (email: string) =>
     api.post<{ message: string }>("/api/auth/resend-verification", { email }),
+  /**
+   * Deletes the account and the personal data attached to it. Irreversible.
+   *
+   * Distinct from `avatar.delete()`, which only clears the body measurements and the 3D model
+   * and leaves the account standing. Order records survive this call, de-identified, because
+   * they are financial records.
+   */
+  deleteAccount: () => api.delete<void>("/api/auth/me"),
 };
 
 export const avatar = {

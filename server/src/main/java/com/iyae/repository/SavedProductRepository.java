@@ -26,4 +26,8 @@ public interface SavedProductRepository extends JpaRepository<SavedProduct, Long
     List<SavedProduct> findByUserIdNewestFirst(@Param("userId") Long userId);
 
     Optional<SavedProduct> findByUserIdAndProductId(Long userId, Long productId);
+
+    // Account deletion (AccountDeletionService): removes this user's wishlist entries.
+    void deleteByUserId(Long userId);
+
 }

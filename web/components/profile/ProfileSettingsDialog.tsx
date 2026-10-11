@@ -20,7 +20,7 @@ import {
   BUDGET_RANGES,
   OUTFIT_GOALS,
 } from "@/lib/profile-options";
-import { api, auth, avatar, ApiError } from "@/lib/api";
+import { api, auth, avatar, ApiError, AUTH_TOKEN_KEY } from "@/lib/api";
 import { useAvatarStatus } from "@/lib/hooks/useAvatarStatus";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -158,6 +158,11 @@ function SettingsBody({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  // Account deletion. Gated on typing the word rather than a second click: it takes
+  // everything, not just the body data, and a mis-click here is unrecoverable.
+  const [accountConfirmText, setAccountConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   // Per-tab dirty tracking. All three tabs are seeded on mount, so a Save must
   // persist every tab the user touched — not just the visible one. Each tab's
@@ -337,6 +342,24 @@ function SettingsBody({
       setDeletingData(false);
     }
   }, [onUserRefresh]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    setDeletingAccount(true);
+    try {
+      await auth.deleteAccount();
+      // The server has already invalidated every token this account issued, so there is no
+      // session left to tidy up gracefully. Drop the dead token and do a full navigation —
+      // which also discards all client state, so this does not need the auth context (and
+      // pulling the context in here would make the dialog untestable without a provider).
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      window.location.href = "/";
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to delete your account"
+      );
+      setDeletingAccount(false);
+    }
+  }, []);
 
   const handleActiveTabSave = useCallback(async () => {
     // Compare live state against the baselines captured on open. Key order must
@@ -633,6 +656,49 @@ function SettingsBody({
                   Delete my avatar &amp; body data
                 </Button>
               )}
+            </div>
+
+            <Separator />
+
+            {/* Account deletion. Until this existed there was no way to leave: deleting the
+                body data left the chat transcripts, posts, orders and analytics rows behind
+                permanently. */}
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Delete your account</p>
+                <p className="text-xs text-muted-foreground">
+                  Removes your measurements, 3D model, chat history, posts, comments, saved
+                  looks, wishlist, reviews and listings, and erases your name and email from
+                  your account record. Past order records are kept, with your details removed,
+                  because they are financial records. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <Label htmlFor="delete-account-confirm" className="text-xs">
+                    Type DELETE to confirm
+                  </Label>
+                  <Input
+                    id="delete-account-confirm"
+                    value={accountConfirmText}
+                    onChange={(e) => setAccountConfirmText(e.target.value)}
+                    autoComplete="off"
+                    placeholder="DELETE"
+                    className="mt-1"
+                    disabled={deletingAccount}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="rounded-full text-xs"
+                  disabled={accountConfirmText !== "DELETE" || deletingAccount}
+                  onClick={handleDeleteAccount}
+                >
+                  {deletingAccount ? "Deleting..." : "Delete my account"}
+                </Button>
+              </div>
             </div>
           </div>
         </TabsContent>

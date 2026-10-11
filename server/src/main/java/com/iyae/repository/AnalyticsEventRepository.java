@@ -40,4 +40,8 @@ public interface AnalyticsEventRepository extends JpaRepository<AnalyticsEvent, 
             + "AND e.cohort IS NOT NULL AND e.sizeBracket IS NOT NULL "
             + "GROUP BY e.cohort, e.sizeBracket")
     List<Object[]> countPaidBySizeBracket();
+
+    // Account deletion (AccountDeletionService): removes this user's analytics events.
+    void deleteByUserId(Long userId);
+
 }

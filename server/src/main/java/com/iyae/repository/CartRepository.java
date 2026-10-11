@@ -7,4 +7,8 @@ import java.util.Optional;
 
 public interface CartRepository extends JpaRepository<Cart, Long> {
     Optional<Cart> findByUserId(Long userId);
+
+    // Account deletion (AccountDeletionService): removes this user's cart.
+    void deleteByUserId(Long userId);
+
 }

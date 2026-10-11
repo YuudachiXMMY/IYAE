@@ -12,4 +12,8 @@ public interface ChatSessionRepository extends JpaRepository<ChatSession, Long> 
     List<ChatSession> findByUserOrderByCreatedAtDesc(User user);
 
     Optional<ChatSession> findByIdAndUser(Long id, User user);
+
+    // Account deletion (AccountDeletionService): removes this user's chat sessions.
+    void deleteByUser(User user);
+
 }

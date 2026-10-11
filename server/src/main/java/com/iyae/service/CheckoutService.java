@@ -29,6 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -258,7 +259,24 @@ public class CheckoutService {
 
             if (order.getResaleListingId() != null) {
                 // Resale order: mark the pre-loved listing SOLD; there is no cart to clear.
-                resaleService.markSold(order.getResaleListingId());
+                //
+                // The PAID transition above must be flushed before this runs — markSold's
+                // @Modifying query clears the persistence context, and without
+                // flushAutomatically it used to discard the unflushed Order change, so a paid
+                // resale order silently stayed PENDING. The flush is configured on the query.
+                if (!resaleService.markSold(order.getResaleListingId())) {
+                    // The buyer has paid and the unit is not theirs. We have reached the
+                    // webhook, so this is not an idempotent replay of our own success — the
+                    // reservation was lost. Mark the order so it is findable and shout: it
+                    // needs a refund, which nothing here can issue.
+                    order.setPaymentStatus("PAID_UNFULFILLABLE");
+                    orderRepository.save(order);
+                    log.error("REFUND REQUIRED: order {} (user {}, session {}) paid for resale "
+                            + "listing {}, which was no longer reserved for them. The buyer has "
+                            + "been charged for an item they cannot receive.",
+                            order.getId(), order.getUser().getId(), session.getId(),
+                            order.getResaleListingId());
+                }
             } else {
                 cartRepository.findByUserId(order.getUser().getId()).ifPresent(cart -> {
                     cartItemRepository.deleteByCartId(cart.getId());
@@ -305,6 +323,11 @@ public class CheckoutService {
                     .setMode(SessionCreateParams.Mode.PAYMENT)
                     .setSuccessUrl(frontendBaseUrl + "/checkout/success?session_id={CHECKOUT_SESSION_ID}")
                     .setCancelUrl(frontendBaseUrl + "/resale/" + listingId)
+                    // The session must expire before the reservation does, or it stays payable
+                    // after the sweep has put this unique unit back on sale — which is how a
+                    // second buyer could be charged for the same garment. See
+                    // ResaleService.CHECKOUT_SESSION_TTL / RESERVATION_TTL.
+                    .setExpiresAt(Instant.now().plus(ResaleService.CHECKOUT_SESSION_TTL).getEpochSecond())
                     .addAllLineItem(List.of(lineItem))
                     .putMetadata("userId", String.valueOf(user.getId()))
                     .build();
