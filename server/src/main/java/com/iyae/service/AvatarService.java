@@ -57,6 +57,9 @@ public class AvatarService {
      */
     public static final String AVATAR_MODEL_ROUTE = "/api/avatar/model";
 
+    /** Prefix the worker puts on the public asset URLs it reports. */
+    private static final String ASSET_URL_PREFIX = "/assets/";
+
     @Transactional
     public AvatarStatusResponse generateAvatar(String email) {
         User user = userRepository.findByEmail(email)
@@ -137,10 +140,16 @@ public class AvatarService {
     /**
      * Opens the caller's own avatar GLB for streaming.
      *
-     * <p>The path is derived entirely from the authenticated principal's own id — no part of it
-     * comes from the request — so there is no identifier for a caller to tamper with and no
-     * sequence to walk. The containment check below is belt-and-braces against a future change
-     * that lets any of it become attacker-influenced.
+     * <p>The file is located from {@code user.avatarGlbUrl}, which the scheduler materialised
+     * from the worker's own output payload — rather than reconstructing the layout here. The
+     * worker gives each generation its own directory ({@code avatars/{userId}/{taskId}/}),
+     * because every unauthenticated visitor shares one internal guest account and a per-user
+     * path meant guests overwrote each other's body meshes. Two places computing that layout
+     * would be two places to get it wrong, so the server reads it instead.
+     *
+     * <p>The stored URL is server-generated, but it is still validated for containment before
+     * being opened: it reaches the database through a JSON payload written by another process,
+     * which is exactly the kind of input that should not be trusted to stay well-formed.
      *
      * @throws IllegalArgumentException when no avatar has been generated for this account
      */
@@ -149,11 +158,17 @@ public class AvatarService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
+        String url = user.getAvatarGlbUrl();
+        if (url == null || url.isBlank() || !url.startsWith(ASSET_URL_PREFIX)) {
+            throw new IllegalArgumentException("Avatar not found");
+        }
+        String relative = url.substring(ASSET_URL_PREFIX.length());
+
         Path root = Paths.get(assetRoot).toAbsolutePath().normalize();
-        Path file = root.resolve(Paths.get("avatars", String.valueOf(user.getId()), "avatar.glb"))
-                .normalize();
-        if (!file.startsWith(root)) {
-            log.error("Refusing to serve avatar outside the asset root: {}", file);
+        Path file = root.resolve(relative).normalize();
+        if (!file.startsWith(root) || !file.getFileName().toString().endsWith(".glb")) {
+            log.error("Refusing to serve avatar from {} — it resolves to {}, outside {}",
+                    url, file, root);
             throw new IllegalArgumentException("Avatar not found");
         }
         if (!Files.isRegularFile(file)) {

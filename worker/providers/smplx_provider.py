@@ -310,7 +310,12 @@ class SmplxProvider:
 
         joint_indices, joint_weights = dense_weights_to_top4(lbs_weights)
 
-        output_dir = os.path.join(self.output_base_dir, f"avatars/{user_id}")
+        # Per-TASK directory, not per-user. Every unauthenticated visitor shares the one
+        # internal guest account, so a per-user path meant all guests wrote to the same
+        # file — a visitor could be shown another visitor's body mesh, generated from
+        # their measurements. The server resolves the file from the payload path below, so
+        # this layout is the single source of truth for where an avatar lives.
+        output_dir = os.path.join(self.output_base_dir, f"avatars/{user_id}/{task_id}")
         os.makedirs(output_dir, exist_ok=True)
         glb_path = os.path.join(output_dir, "avatar.glb")
         write_skinned_glb(
@@ -350,7 +355,7 @@ class SmplxProvider:
             "schemaVersion": 1,
             "provider_used": "SMPLX",
             "provider_request_id": None,
-            "glb_path": f"avatars/{user_id}/avatar.glb",
+            "glb_path": f"avatars/{user_id}/{task_id}/avatar.glb",
             "triangle_count": len(faces),
             "bbox": {"min": bbox_min, "max": bbox_max},
             "sanity": {"glb_size_bytes": glb_size, "has_nan_vertices": has_nan},
@@ -359,6 +364,6 @@ class SmplxProvider:
                 "betas_in_range": betas_in_range,
             },
             "elapsed_ms": elapsed_ms,
-            "glb_url": f"/assets/avatars/{user_id}/avatar.glb",
+            "glb_url": f"/assets/avatars/{user_id}/{task_id}/avatar.glb",
             "skin": {"has_skin": True, "joint_count": 55},
         }

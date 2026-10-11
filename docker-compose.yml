@@ -87,6 +87,11 @@ services:
       context: ./worker
       dockerfile: Dockerfile.rigging
     environment:
+      # Claim ONLY rigging tasks. This container runs the same main.py, so without the
+      # role switch it became a second claimant for model and avatar tasks — and with
+      # MODEL_GENERATION_PROVIDER unset (mock) it would complete real generation requests
+      # with stub output whenever it won the race.
+      WORKER_ROLES: rigging
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: iyae

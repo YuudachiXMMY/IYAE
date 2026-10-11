@@ -109,6 +109,16 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    # The worker had no healthcheck at all, so a daemon wedged on a hung provider call looked
+    # identical to a working one. It touches a heartbeat file once per poll cycle; this checks
+    # the file is fresher than 10 poll intervals, which proves the loop is still turning rather
+    # than merely that the process exists.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,sys,time; p=os.environ.get('WORKER_HEARTBEAT_PATH','/tmp/worker-heartbeat'); sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p) < 10*int(os.environ.get('WORKER_POLL_INTERVAL','5')) else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     networks:
       - iyae-net
 

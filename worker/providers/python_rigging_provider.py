@@ -124,9 +124,29 @@ class PythonRiggingProvider:
                 pen_stats["penetrating_before"], pen_stats["penetrating_after"],
             )
 
-        from providers.weight_transfer import dense_weights_to_top4
+        from providers.weight_transfer import (
+            MAX_DEGENERATE_VERTEX_FRACTION,
+            count_degenerate_vertices,
+            dense_weights_to_top4,
+        )
         from providers.skinned_glb_writer import write_skinned_glb
         from providers.canonical_skeleton import SMPLX_JOINT_NAMES, SMPLX_PARENT_INDICES
+
+        # Vertices with no usable weight get bound rigidly to the pelvis, which used to happen
+        # with no error, no log and nothing in the validator to catch it. A garment where a
+        # meaningful share of vertices did that deforms as one lump at the hips, and shipping it
+        # looks like a modelling problem rather than a failed transfer. Fail the task instead.
+        degenerate = count_degenerate_vertices(skin_weights)
+        vertex_count = int(skin_weights.shape[0])
+        degenerate_fraction = degenerate / vertex_count if vertex_count else 0.0
+        if degenerate_fraction > MAX_DEGENERATE_VERTEX_FRACTION:
+            raise RuntimeError(
+                f"Weight transfer degenerate: {degenerate} of {vertex_count} vertices "
+                f"({degenerate_fraction:.1%}) had no usable skinning weight and would be bound "
+                f"rigidly to the pelvis (limit {MAX_DEGENERATE_VERTEX_FRACTION:.0%}). The "
+                f"garment mesh is probably too far from the avatar surface, or its topology is "
+                f"unsuitable."
+            )
 
         ji, jw = dense_weights_to_top4(skin_weights)
 

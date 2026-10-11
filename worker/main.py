@@ -30,6 +30,47 @@ logger = logging.getLogger("worker")
 POLL_INTERVAL = int(os.environ.get("WORKER_POLL_INTERVAL", "5"))
 OUTPUT_BASE_DIR = os.environ.get("WORKER_OUTPUT_DIR", "/var/iyae/assets")
 
+ALL_ROLES = ("model", "avatar", "rigging")
+
+
+def get_roles() -> set:
+    """Which task queues this process claims from.
+
+    The rigging container runs this same `main.py`, so without a role switch it became a
+    second claimant for model and avatar tasks — and since it is configured with
+    MODEL_GENERATION_PROVIDER=mock, it would race the real worker and win sometimes,
+    completing a genuine generation request with stub output. Set WORKER_ROLES=rigging on
+    any rigging-only container.
+
+    Defaults to all three, which is the single-worker production topology.
+    """
+    raw = os.environ.get("WORKER_ROLES", "").strip()
+    if not raw:
+        return set(ALL_ROLES)
+    roles = {r.strip().lower() for r in raw.split(",") if r.strip()}
+    unknown = roles - set(ALL_ROLES)
+    if unknown:
+        raise ValueError(
+            f"Unknown WORKER_ROLES {sorted(unknown)}; valid roles are {list(ALL_ROLES)}"
+        )
+    if not roles:
+        raise ValueError("WORKER_ROLES was set but parsed to nothing")
+    return roles
+
+
+# Touched once per poll cycle so the container healthcheck can tell a live daemon from one
+# that is wedged on a hung provider call. A process that is merely *running* says nothing
+# about whether it is still working through its queues.
+HEARTBEAT_PATH = os.environ.get("WORKER_HEARTBEAT_PATH", "/tmp/worker-heartbeat")
+
+
+def touch_heartbeat() -> None:
+    try:
+        with open(HEARTBEAT_PATH, "w") as fh:
+            fh.write(str(int(time.time())))
+    except OSError as exc:  # never let the heartbeat kill the loop
+        logger.warning(f"Could not write heartbeat to {HEARTBEAT_PATH}: {exc}")
+
 
 def get_db_config() -> dict:
     return {
@@ -98,7 +139,9 @@ def run():
     avatar_provider = get_avatar_provider()
     rigging_provider = get_rigging_provider(OUTPUT_BASE_DIR)
     rigging_enabled = not isinstance(rigging_provider, StubRiggingProvider)
+    roles = get_roles()
     logger.info(
+        f"Roles: {sorted(roles)}, "
         f"Model provider: {provider.__class__.__name__}, "
         f"Avatar provider: {avatar_provider.__class__.__name__}, "
         f"Rigging provider: {rigging_provider.__class__.__name__} "
@@ -109,21 +152,22 @@ def run():
     poll_count = 0
     while True:
         poll_count += 1
+        touch_heartbeat()
         try:
             if poll_count % 12 == 0:
                 try:
-                    reclaimed = queue.reclaim_stale_tasks()
+                    reclaimed = queue.reclaim_stale_tasks() if "model" in roles else 0
                     if reclaimed > 0:
                         logger.info(f"Reclaimed {reclaimed} stale model tasks")
                 except Exception as e:
                     logger.error(f"Failed to reclaim stale model tasks: {e}")
                 try:
-                    reclaimed = avatar_queue.reclaim_stale_tasks()
+                    reclaimed = avatar_queue.reclaim_stale_tasks() if "avatar" in roles else 0
                     if reclaimed > 0:
                         logger.info(f"Reclaimed {reclaimed} stale avatar tasks")
                 except Exception as e:
                     logger.error(f"Failed to reclaim stale avatar tasks: {e}")
-                if rigging_enabled:
+                if rigging_enabled and "rigging" in roles:
                     try:
                         reclaimed = rigging_queue.reclaim_stale_tasks()
                         if reclaimed > 0:
@@ -135,7 +179,7 @@ def run():
             processed_any = False
 
             # --- Product task ---
-            task = queue.claim_task()
+            task = queue.claim_task() if "model" in roles else None
             if task is not None:
                 processed_any = True
                 task_id = task["id"]
@@ -172,7 +216,7 @@ def run():
                     logger.warning(f"Model task {task_id} marked as FAILED. Use designer retry endpoint to re-queue.")
 
             # --- Avatar task ---
-            avatar_task = avatar_queue.claim_task()
+            avatar_task = avatar_queue.claim_task() if "avatar" in roles else None
             if avatar_task is not None:
                 processed_any = True
                 task_id = avatar_task["id"]
@@ -207,7 +251,8 @@ def run():
                     avatar_queue.fail_task(task_id, str(e))
 
             # --- Rigging task (skip when stub provider to avoid producing placeholder boxes) ---
-            rigging_task = rigging_queue.claim_task() if rigging_enabled else None
+            rigging_task = (rigging_queue.claim_task()
+                            if rigging_enabled and "rigging" in roles else None)
             if rigging_task is not None:
                 processed_any = True
                 task_id = rigging_task["id"]

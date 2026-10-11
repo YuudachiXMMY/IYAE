@@ -214,6 +214,23 @@ def prune_and_normalize_weights(
     return w
 
 
+#: Above this proportion of vertices falling back to the pelvis, the transfer has not really
+#: worked and the rigging task should fail rather than emit a garment that deforms as a lump.
+#: Deliberately low: a handful of stray vertices is tolerable, a twentieth of the mesh is not.
+MAX_DEGENERATE_VERTEX_FRACTION = 0.05
+
+
+def count_degenerate_vertices(weights: np.ndarray) -> int:
+    """How many vertices have no usable skinning weight at all.
+
+    The caller uses this to decide whether a transfer is good enough to ship; see
+    :func:`dense_weights_to_top4`, which silently bound these to the pelvis.
+    """
+    if weights.size == 0:
+        return 0
+    return int(np.count_nonzero(weights.sum(axis=1) < 1e-8))
+
+
 def dense_weights_to_top4(
     weights: np.ndarray,
     max_influences: int = 4,
@@ -243,10 +260,23 @@ def dense_weights_to_top4(
         top_k_indices = np.pad(top_k_indices, ((0, 0), (0, pad_width)), constant_values=0)
         top_k_weights = np.pad(top_k_weights, ((0, 0), (0, pad_width)), constant_values=0.0)
 
-    # Fallback: vertices with zero total weight get pelvis (index 0) at weight 1.0
+    # Fallback: vertices with zero total weight get pelvis (index 0) at weight 1.0.
+    #
+    # This is a last resort, not a neutral default: a vertex bound rigidly to the pelvis does
+    # not follow the limb it belongs to, so a garment with many of them deforms as one lump at
+    # the hips. It used to happen with no error, no log and nothing in the validator to catch
+    # it, which made a numerically-degenerate transfer indistinguishable from a good one.
+    # Reported here; the caller decides whether the proportion is acceptable (see
+    # count_degenerate_vertices and PythonRiggingProvider).
     row_sums = top_k_weights.sum(axis=1)
     zero_rows = row_sums < 1e-8
-    if np.any(zero_rows):
+    degenerate = int(np.count_nonzero(zero_rows))
+    if degenerate:
+        logger.warning(
+            "%d of %d garment vertices (%.1f%%) had no usable skinning weight and were bound "
+            "rigidly to the pelvis — they will not follow the body part they sit on",
+            degenerate, g, 100.0 * degenerate / max(g, 1),
+        )
         top_k_indices[zero_rows] = 0
         top_k_weights[zero_rows] = 0.0
         top_k_weights[zero_rows, 0] = 1.0
