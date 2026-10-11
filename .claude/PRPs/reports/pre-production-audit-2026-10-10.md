@@ -6,11 +6,13 @@
 
 **Do not deploy.** `CHANGES_REQUESTED`.
 
-Three independent things are wrong with the production deployment as committed, and each
-one alone would be disqualifying:
+Tier 0 below holds 13 findings. These three are the headline, and each one alone would be
+disqualifying:
 
-1. **No payment is ever collected.** Every checkout in the shipped production stack
-   silently takes a stub branch and writes the order as `PAID`.
+1. **Checkout silently fulfils orders for free.** Every checkout in the shipped production
+   stack takes a stub branch and writes the order as `PAID` with no payment collected.
+   *Launch scope decision of 2026-10-10 is that payment ships disabled — which does not
+   resolve this, it reframes it: see B-1.*
 2. **Every user's 3D body scan is a public, enumerable URL.** No authentication,
    sequential integer path.
 3. **There is no TLS.** The HTTPS server block and the HTTP→HTTPS redirect are both
@@ -36,16 +38,26 @@ buried.
 | Surface/dimension reviewers | 44 | **44 completed** |
 | Raw findings → unique after dedup | — | **211 → 197** |
 | CRITICAL/HIGH candidates | 66 | 66 |
-| 3-lens adversarial verification | 198 verifier agents | **only 2 of 66 findings fully verified** — the account hit its monthly spend limit mid-phase and 194 agents failed |
-| Completeness critics | 2 | **0 completed** (same cause) |
+| 3-lens adversarial verification | 198 verifier agents | **150 ran (2026-10-11 resume), adjudicating 50 of 66 findings**; 48 agents were lost to the spend limit, leaving 16 findings unverified |
+| Completeness critics | 2 | **0 completed** — still blocked by the limit |
 
-The audit harness fails closed, so all 64 unverified CRITICAL/HIGH findings were retained
-as blocking rather than quietly demoted. **Treat an unmarked row as a strong lead, not a
-proven defect.**
+What the adversarial pass actually changed, which is the point of running it:
 
-To compensate, I re-checked the highest-stakes findings by hand against the source. Rows
-below marked ✅ **VERIFIED** were confirmed by me reading the actual files and tracing the
-chain end to end; rows marked ⚠️ **UNVERIFIED** are the reviewing agent's claim only.
+- **38 findings held all three lenses** with zero refutations.
+- **11 were talked down** out of the blocking set into advisory (9 HIGH→MEDIUM, 1
+  CRITICAL→MEDIUM, 1 HIGH→LOW).
+- **1 was refuted outright, 3/3** — `web/app/orders/[id]/page.tsx` stale-state-on-id-change.
+  It has been moved out of the findings entirely.
+- Net: 66 candidates → **54 blocking, 142 advisory, 1 refuted.**
+
+The harness fails closed, so the 16 findings whose verifiers never ran are retained as
+blocking rather than quietly demoted. They are listed explicitly in
+[Still unverified](#still-unverified-16-findings) — I hand-checked the consequential ones
+there rather than leaving them bare.
+
+Rows marked ✅ **VERIFIED** below were confirmed by me reading the actual files and tracing
+the chain end to end, independently of the agents. Where my read and the verifiers' differ,
+the report says so.
 
 I also **rejected** several agent claims after checking them — see
 [Rejected claims](#rejected-claims-checked-and-found-not-to-hold). Do not skip that
@@ -73,9 +85,16 @@ B-11 below.
 
 ## Tier 0 — release blockers, verified by hand
 
-### B-1 ✅ VERIFIED · CRITICAL · Production never collects payment; every order is written `PAID`
+### B-1 ✅ VERIFIED · CRITICAL · Checkout silently fulfils orders for free; every order is written `PAID`
 
 `server/src/main/java/com/iyae/service/CheckoutService.java:77`
+
+> **Launch scope, decided 2026-10-10:** the first production launch ships with
+> checkout/payment **disabled**; Stripe integration is deferred to a later release.
+> This does **not** clear the blocker — it changes what "fixed" means. Leaving
+> `STRIPE_SECRET_KEY` blank is *not* disabling checkout: it is exactly the state described
+> below, in which the endpoint still answers and still persists `PAID` orders. Jump to
+> [the revised fix](#b-1-revised-fix-under-the-launch-decision).
 
 ```java
 if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
@@ -115,14 +134,38 @@ Two aggravating details the original finding missed:
   `STRIPE_WEBHOOK_SECRET`, so wiring only the secret key breaks fulfillment instead of
   fixing the bypass. **Both variables must land together.**
 
-**Fix.** Add both variables to `server.environment` in `docker-compose.prod.yml`, document
-them as required in `.env.example`, add them to `prod_deploy.sh`'s `require_env_vars`, and
-make `CheckoutService` **refuse** (fail startup, or 503 on checkout) rather than
-stub-fulfill when `SPRING_PROFILES_ACTIVE=prod` and the key is blank. The stub path is a
-legitimate dev convenience; it must be impossible to reach under the prod profile.
+#### B-1 revised fix under the launch decision
 
-*This is the one finding that did receive all three adversarial lenses: 3 run, 0 refutes,
-confidence 0.95.*
+Because launch #1 deliberately ships without payment, the fix is **not** to wire Stripe —
+it is to make "no payment" an explicit, visible refusal instead of a silent free
+fulfilment. All four parts are needed:
+
+1. **Make the stub branch unreachable under the prod profile.** `CheckoutService` should
+   refuse (503, or fail fast at startup) when `SPRING_PROFILES_ACTIVE=prod` and the key is
+   blank, rather than falling through to `stubCheckout`. The stub is a legitimate dev
+   convenience; it must be impossible to reach in production. Re-enabling payment later
+   then has to be a deliberate act.
+2. **Disable the resale buy path too.** `stubResaleCheckout` is the same bypass and
+   additionally calls `resaleService.markSold(...)`, irreversibly consuming a unique
+   pre-loved unit for free. Disabling only `/api/checkout` leaves this one open.
+3. **Hide the entry points in the web UI** — the checkout button and resale buy-now — so
+   nobody reaches a dead endpoint. A 503 behind a live-looking button is a support ticket,
+   not a disabled feature.
+4. **When Stripe is wired later, land both variables together.** `handleWebhook` throws
+   `IllegalArgumentException("Webhook secret not configured")` on a blank
+   `STRIPE_WEBHOOK_SECRET`, so configuring only `STRIPE_SECRET_KEY` breaks fulfilment
+   instead of fixing the bypass. Both need adding to `server.environment` in
+   `docker-compose.prod.yml`, to `.env.example`, and to `prod_deploy.sh`'s
+   `require_env_vars` — remember that no compose file uses `env_file:`, so they cannot be
+   supplied via `.env` alone.
+
+Also worth deciding alongside this: with payment off, `OrderStatus.PAID` should not be
+reachable at all, and the `ORDER_PAID` / `CHECKOUT_INITIATED` analytics events that
+`stubCheckout` fires would otherwise seed the KPI tables with fabricated revenue before any
+real revenue exists.
+
+*This is the one finding that received all three adversarial lenses in the first run: 3
+run, 0 refutes, confidence 0.95.*
 
 ---
 
@@ -438,6 +481,52 @@ Grouped because they share one fix session and all were confirmed by reading
 
 ---
 
+### B-13 ✅ 3/3 · CRITICAL · Designer-settable `glbUrl` is a path traversal into the nginx-served volume
+
+`server/src/main/java/com/iyae/config/GlbAssetInitializer.java:61` ·
+`server/src/main/java/com/iyae/dto/CreateProductRequest.java:33` ·
+`UpdateProductRequest.java:30` · `ProductService.java:149,190`
+
+```java
+String relative = url.substring("/assets/".length());
+Path glbPath = Path.of(assetsOutputDir, relative);
+```
+
+The only guard is `url.startsWith("/assets/models/")` — a prefix test that
+`/assets/models/../../../x` passes. `Path.of` does not normalize, there is no
+`normalize()` anywhere in `server/src/main/java`, and the OS resolves `..` at open time.
+The source is unvalidated: both request DTOs declare `glbUrl` as a bare `String` with no
+annotation (while carrying `@NotBlank`/`@DecimalMin` on neighbouring fields, so validation
+is plainly active and this field was simply left open), and `ProductService` persists it
+verbatim. `GlbAssetInitializer` is an unconditional `CommandLineRunner` with no `@Profile`
+guard, so it fires on every production start, as root (`server/Dockerfile` declares no
+`USER`), into the `assets_data` volume shared with the worker and nginx. A `DRAFT` product
+suffices — `findAll()` has no status filter.
+
+**I initially down-rated this to MEDIUM/HIGH** on the grounds that line 62's
+`if (!Files.exists(glbPath))` makes the primitive create-only and the content a fixed
+placeholder GLB. The verification pass held it at CRITICAL on all three lenses, and it was
+right — for a reason I had missed:
+
+> `glbUrl = "/assets/models/../x.html"` lands **inside** the nginx-served volume, where
+> nginx assigns `text/html` by extension and the Next.js `middleware.ts` CSP never applies.
+> That is a **same-origin stored-XSS primitive that needs no escape from the volume at
+> all** — and the JWT lives in `localStorage`. The ~100 attacker-controlled bytes from
+> `category` (double-quotes stripped) are more than enough for an `onerror` payload.
+
+One verifier also reproduced the traversal empirically in a scratch program: `Files.exists`
+returned false (so the guard does not block it), `createDirectories` succeeded, and the
+write landed outside the base directory. The create-only constraint and the restart trigger
+are mitigants, not unreachability.
+
+**Fix.** Normalize and containment-check the resolved path
+(`p.normalize().startsWith(base.normalize())`), and add a server-side pattern to both DTOs
+(`^/assets/models/[A-Za-z0-9_-]+\.glb$`). Separately, the same unvalidated field lets a
+designer point a product's 3D model at an arbitrary external URL that every PDP visitor
+then fetches.
+
+---
+
 ## Tier 1 — remaining CRITICAL/HIGH leads, not independently verified
 
 These are the reviewing agents' claims. Each carries `evidence`, a `proof` scenario and a
@@ -446,58 +535,88 @@ consequence. **Confirm before acting.**
 
 **Money and data integrity**
 
-- `ResaleService.java:55` — the stale-reservation sweep can release a listing while an
-  earlier buyer's Stripe payment is still settling → double-sale with a silent
-  double-charge. Stripe sessions outlive the 30-minute sweep window and `setExpiresAt` is
-  never called.
-- `CheckoutService.java:232` — the resale webhook never persists the `PAID` order status:
-  `markSold`'s `clearAutomatically = true` discards the unflushed `Order` change.
-- `ResaleService.java:242` — a `markSold` matching zero rows is logged at INFO and the
-  buyer is still charged.
-- `ResaleService.java:121,124` — a seller can create unlimited active listings for one
-  owned unit; the duplicate guard exists only in the read path.
-- `worker/task_queue.py:80` — `fail_task()` has no `RUNNING` guard, so it can flip an
-  already-`READY` task back to `FAILED`.
-- `worker/main.py:138` — the `rigging-worker` container also polls the model and avatar
-  queues unconditionally, so it becomes a second claimant and can complete real tasks with
-  stub output.
-- `V16__resale_listings.sql:20` — FKs with no `ON DELETE` action mean product deletion
-  permanently fails once an item has ever been resold.
+> **Descoping note.** The 2026-10-10 decision to launch with payment disabled takes the
+> resale *buy* path out of scope for launch #1 — nothing reaches a Stripe session or a
+> webhook. The three rows marked **[latent]** below are therefore not launch blockers, but
+> they must be cleared *before* Stripe is wired, because they are exactly the bugs that only
+> appear once money flows. The listing-lifecycle rows are **not** descoped: listings can
+> still be created.
+
+- `ResaleService.java:55` ✅ **3/3 held** · *[latent]* — the stale-reservation sweep can
+  release a listing while an earlier buyer's Stripe payment is still settling → double-sale
+  with a silent double-charge. Stripe sessions outlive the 30-minute sweep window and
+  `setExpiresAt` is never called.
+- `CheckoutService.java:232` ✅ **hand-verified** · *[latent]* — the resale webhook never
+  persists the `PAID` order status. I traced the whole chain: `markSold` is
+  `@Modifying(clearAutomatically = true)` with **no `flushAutomatically`**
+  (`ResaleListingRepository.java:35`); `handleWebhook` is `@Transactional:167` and
+  `ResaleService.markSold:238` joins it under default `REQUIRED` propagation, so they share
+  one persistence context; `orderRepository.save(order)` on a managed entity is a no-op
+  merge that does not flush; and Hibernate's pre-query auto-flush does not fire because the
+  bulk update's query space (`resale_listings`) does not intersect the dirty entity's table
+  (`orders`). The clear then detaches the dirty `Order` and the `PAID` transition is lost —
+  the order stays `PENDING` while the listing is `SOLD` and the buyer has been charged.
+  **Scope confirmed as resale-only:** `clearAutomatically` appears in exactly three places,
+  all in `ResaleListingRepository`, and the normal cart branch uses a derived
+  `deleteByCartId` with no such annotation. (Residual assumption: I reasoned about
+  Hibernate's auto-flush query-space rule from the code rather than executing it.)
+- `ResaleService.java:242` ⚠️ **unverified** · *[latent]* — a `markSold` matching zero rows
+  is logged at INFO and the buyer is still charged.
+- `ResaleService.java:121,124` ✅ **hand-verified** — a seller can create unlimited active
+  listings for one owned unit. `createListing:121` checks only
+  `findOwningOrderId(user, productId, size)` — "did you ever buy this" — and never looks for
+  an existing active `ResaleListing` on the same seller+product+size. The `activeKeys`
+  exclusion lives only in `listEligibleItems`, the read-path picker hint. **Not descoped:**
+  this fills the marketplace with phantom inventory from day one even with payment off.
+- `worker/task_queue.py:80` ✅ **3/3 held** — `fail_task()` has no `RUNNING` guard, so it can
+  flip an already-`READY` task back to `FAILED`.
+- `worker/main.py:138` ✅ **3/3 held** — the `rigging-worker` container also polls the model
+  and avatar queues unconditionally, so it becomes a second claimant and can complete real
+  tasks with stub output.
+- `V16__resale_listings.sql:20` — **verifiers downgraded HIGH → MEDIUM.** FKs with no
+  `ON DELETE` action mean product deletion fails once an item has ever been resold. Now
+  advisory.
 
 Resale is the least-reviewed money-adjacent surface in the repo: it appears nowhere in
-`CLAUDE.md`'s module docs or test inventory, and six of the leads above are in it. It
-deserves its own focused pass.
+`CLAUDE.md`'s module docs or test inventory, and six of the leads above are in it. Even with
+the buy path descoped it deserves its own focused pass before Stripe lands.
 
 **Security and privacy**
 
-- `GuestAvatarService.java:65` — the guest-avatar status endpoint is an unauthenticated
-  IDOR: the ownership check compares against the single shared `guest@iyae.internal` user
-  row, so it is a no-op across all guests. Paired with
-  `smplx_provider.py:313`, every guest avatar also overwrites one shared on-disk path, so a
-  visitor can be served another visitor's body mesh. (I confirmed the shared-identity
-  mechanism while reading `getOrCreateGuestUser`; I did not trace the full exploit.)
-- `GlbAssetInitializer.java:61` — path traversal via the designer-settable, unvalidated
-  `glbUrl`. I checked the premises: `glbUrl` has no validation annotation and
-  `ProductService:190` writes it straight through, and `Path.of(assetsOutputDir, relative)`
-  does escape on `models/../../..`. **But** the write is guarded by `if (!Files.exists(…))`
-  and the content is a fixed placeholder GLB — so this is arbitrary-path file *creation*,
-  not overwrite and not RCE. **I would re-rate it MEDIUM/HIGH, not CRITICAL.** The more
-  interesting consequence of the same unvalidated field: a designer can point a product's
-  3D model at any external URL that every PDP visitor then fetches.
-- `AvatarService.java:133` — no account- or data-deletion path exists. Only the
-  avatar/measurements can be deleted; chat transcripts, posts, orders and analytics rows
-  persist. For a product collecting body scans from EU/Canadian consumers this needs a
-  decision before launch, not after.
-- `DataSeeder.java:22` — the profile guard is a deny-list (`!prod`), so any deployment not
-  setting `SPRING_PROFILES_ACTIVE` to exactly `prod` seeds a known-password ADMIN account.
-  **Mitigated in the committed topology** — `docker-compose.prod.yml:36` does set
-  `SPRING_PROFILES_ACTIVE: prod` — so I would re-rate this MEDIUM. It is still a
-  fail-open guard that should be an allow-list.
-- `AnalyticsController.java:34` — any authenticated BUYER can `POST /api/events` with
+- `GuestAvatarService.java:65` ⚠️ **unverified** — the guest-avatar status endpoint is an
+  unauthenticated IDOR: the ownership check compares against the single shared
+  `guest@iyae.internal` user row, so it is a no-op across all guests. Paired with
+  `smplx_provider.py:313`, every guest avatar also writes to one shared on-disk path
+  (`avatars/{guest user id}/avatar.glb`), so a visitor can be served another visitor's body
+  mesh. I confirmed the shared-identity mechanism by reading `getOrCreateGuestUser` and
+  `getTaskStatus`, and the shared output path in both SMPL-X providers. Note the verifiers
+  **downgraded a differently-worded duplicate of this** (filed as "shares one global user
+  identity") from CRITICAL to MEDIUM; the IDOR framing at `:65` was never adjudicated. Treat
+  MEDIUM as the floor, not the ceiling — the data at stake is still body-scan meshes from
+  anonymous users.
+- `GlbAssetInitializer.java:61` — path traversal via the designer-settable `glbUrl`.
+  **Promoted to Tier 0 — see B-13 at the end of that section.** I had initially down-rated
+  this; the verification pass showed I was wrong.
+- `AvatarService.java:133` ✅ **hand-verified** — there is no account- or data-deletion path.
+  `deleteAvatarData` is scoped exactly as its own javadoc says (avatar URL, body profile,
+  avatar task rows; the `User` is explicitly *not* deleted), and a sweep of every
+  `@DeleteMapping` in all 27 controllers turns up **no** account/user deletion endpoint. So
+  chat transcripts, posts, comments, orders, analytics events, saved looks, follows and
+  uploads persist with no way to remove them. For a product collecting body scans from
+  EU/Canadian consumers this needs a decision before launch, not after. (The deletion method
+  itself is thoughtfully written — its in-flight-task reasoning is sound. The gap is scope,
+  not quality.)
+- `DataSeeder.java:22` ✅ **3/3 held at HIGH** — the profile guard is a deny-list (`!prod`),
+  so any deployment not setting `SPRING_PROFILES_ACTIVE` to exactly `prod` seeds a
+  known-password ADMIN account. I noted that `docker-compose.prod.yml:36` *does* set it and
+  expected a downgrade; the verifiers held HIGH anyway, on the grounds that a fail-open
+  guard whose only protection is one correctly-typed env var is still a blocker. I agree
+  with them over my earlier read: make it an allow-list (`@Profile({"dev","test"})`).
+- `AnalyticsController.java:34` — **verifiers downgraded CRITICAL → MEDIUM**, which goes
+  further than my own re-rate to HIGH. Any authenticated BUYER can `POST /api/events` with
   `ORDER_PAID` / `ORDER_RETURNED`, polluting the KPI and cohort data the PRD says drives
-  INVEST/STOP decisions. The agent filed this CRITICAL; **I would re-rate it HIGH** —
-  `userId` is taken from the authenticated principal, so there is no cross-user forgery,
-  only self-attributed noise.
+  INVEST/STOP decisions — but `userId` comes from the authenticated principal, so there is
+  no cross-user forgery, only self-attributed noise. Now in the advisory list.
 - `docker-compose.yml:123` — hardcoded `dev-internal-secret` fallback. Dev-file only; the
   route itself fails closed (see B-6). Low real risk, but the comparison in
   `route.ts:21` is a non-constant-time `!==` on a shared secret.
@@ -539,6 +658,7 @@ Recorded so nobody spends time on them.
 
 | Claim | Why it does not hold |
 |---|---|
+| `web/app/orders/[id]/page.tsx:123` — the order detail page does not reset `order`/`error`/`loading` when navigating between two order ids, so stale or wrong-order data renders | **Refuted 3/3 by the adversarial pass** — the only finding killed outright by verification. Removed from the findings entirely. |
 | `PasswordResetTokenRepository.consumeToken` assigns `CURRENT_TIMESTAMP` to an `Instant`, breaking JPA bootstrap (carried in `CLAUDE.md` as a known latent bug) | **Already fixed.** The query now takes `@Param("now") Instant now` and `AuthService:306` passes `Instant.now()`. The `CLAUDE.md` note is stale and should be removed. |
 | Per-IP rate limiting is broken behind nginx because `trusted-proxies` is unset | **Configured.** `docker-compose.prod.yml:42` sets `RATE_LIMIT_TRUSTED_PROXIES: ${RATE_LIMIT_TRUSTED_PROXIES:-172.16.0.0/12}`. |
 | `RESEND_FROM_EMAIL` is documented but the route reads `MAIL_FROM` — a config mismatch | **Wired correctly.** `docker-compose.prod.yml:93` maps `MAIL_FROM: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}`. |
@@ -559,36 +679,72 @@ application layer is the strongest part of this codebase.
 
 ## Recommended order of work
 
-1. **Config blockers** (~1 day, no refactor): B-1 Stripe env + hard prod guard · B-3 enable
-   TLS/HSTS · B-4a bump `next` to 16.4.0 · B-4c non-root `USER` · B-6 build arg + required
-   vars · B-12 restart policies, backups, cert renewal.
-2. **Observability before anything subtle** (~half a day): B-7 log the catch-all · B-8 real
+1. **Hard-disable checkout** (the launch decision, and the only item here that is real code
+   rather than config): B-1 parts 1–3 — refuse under the prod profile, close the resale buy
+   path, hide both entry points.
+2. **Config blockers** (~1 day, no refactor): B-3 enable TLS/HSTS · B-4a bump `next` to
+   16.4.0 · B-4c non-root `USER` · B-6 build arg + required vars · B-12 restart policies,
+   backups, cert renewal.
+3. **Observability before anything subtle** (~half a day): B-7 log the catch-all · B-8 real
    readiness probe. Without these you cannot confirm any later fix in production.
-3. **Privacy redesign** (needs a decision, not just a patch): B-2 authenticated avatar
+4. **Privacy redesign** (needs a decision, not just a patch): B-2 authenticated avatar
    delivery · B-5 kill the email fallback · Tier-1 data deletion path.
-4. **Confirm and fix the resale cluster** — seven leads, zero test coverage, money-adjacent.
-5. **Close the structural test gap**: B-10 Testcontainers schema test · B-11 CI audit gate.
-6. **Then** the N+1 and front-end-race tier, and decide whether the community feature ships
+5. **Confirm and fix the resale cluster** — zero test coverage, money-adjacent, and partly
+   descoped by step 1 (the buy path goes away, the listing lifecycle does not).
+6. **Close the structural test gap**: B-10 Testcontainers schema test · B-11 CI audit gate.
+7. **Then** the N+1 and front-end-race tier, and decide whether the community feature ships
    at all (B-9).
 
-## Re-run the verification pass
+## Still unverified (16 findings)
 
-The adversarial stage is the part of this audit that did not happen. When the spend limit
-resets, it replays from cache for free except for the agents that failed:
+These are the rows whose three verifiers never ran. They stay in the blocking set
+fail-closed. I hand-checked the ones whose outcome would change a launch decision; the rest
+are marked for the next resume.
+
+| Finding | Status |
+|---|---|
+| `SecurityConfig.java:46` — body scans public at a guessable path | ✅ hand-verified — **B-2** |
+| `nginx/conf.d/default.conf:21` — HTTP-only (duplicate framing of the TLS row) | ✅ hand-verified — **B-3** |
+| `HealthController.java:22` — health check cannot fail | ✅ hand-verified — **B-8** |
+| `web/Dockerfile:11` — `NEXT_PUBLIC_REQUIRE_EMAIL_VERIFICATION` never plumbed | ✅ hand-verified — **B-6** |
+| `docker-compose.prod.yml:105` — no restart policy, worker has no healthcheck | ✅ hand-verified — **B-12** |
+| `.github/workflows/e2e.yml:185` — no real server↔worker queue contract test | ✅ hand-verified — **B-10** |
+| `AvatarService.java:133` — no account/data deletion path | ✅ hand-verified — Tier 1 |
+| `CheckoutService.java:232` — resale webhook loses the `PAID` transition | ✅ hand-verified — Tier 1 *[latent]* |
+| `ResaleService.java:124` — unlimited active listings per owned unit | ✅ hand-verified — Tier 1 |
+| `GuestAvatarService.java:65` — unauthenticated guest IDOR | ◐ mechanism confirmed, exploit not traced |
+| `smplx_provider.py:313` — all guests share one avatar output path | ◐ mechanism confirmed, exploit not traced |
+| `ResaleService.java:242` — lost reservation, buyer still charged | ⚠️ not checked *[latent]* |
+| `CartService.java:136` — cart N+1 per line item | ⚠️ not checked (low stakes) |
+| `PostService.java:101` — community feed N+1, 3 queries per post | ⚠️ not checked (low stakes) |
+| `web/app/error.tsx:16` — root error boundary has no escape route | ⚠️ not checked (low stakes) |
+| `web/app/products/page.tsx:100` — failed fetch renders as zero results | ⚠️ not checked (low stakes) |
+
+So of the 16, **nine are hand-verified**, two have their mechanism confirmed, and five
+remain genuinely open — all five either low-stakes or latent behind the disabled payment
+path. **No unexamined finding sits on a launch-blocking path.**
+
+## Re-run the remaining verification
+
+The resume of 2026-10-11 adjudicated 50 of 66 findings before hitting the limit again.
+Everything already done replays from cache, so a third resume costs only the 48 remaining
+verifier agents plus the two completeness critics:
 
 ```
 Workflow({
-  scriptPath: '/Users/jadyn/.claude/projects/-Users-jadyn-Development-IYAE/8a85d4d4-ed6f-40b0-a205-b707ba54fc62/workflows/scripts/iyae-production-readiness-audit-wf_6214f9db-3a3.js',
+  scriptPath: '/Users/jadyn/.claude/projects/-Users-jadyn-Development-IYAE--claude-worktrees-preprod-audit-report/8a85d4d4-ed6f-40b0-a205-b707ba54fc62/workflows/scripts/iyae-production-readiness-audit-wf_6214f9db-3a3.js',
   resumeFromRunId: 'wf_6214f9db-3a3'
 })
 ```
 
-All 44 audit agents are cached, so this re-runs only the ~194 failed verifiers and the two
-completeness critics — which also means the "what did this audit miss?" question is still
-open.
+The **completeness critics have still never run**, so "what did this audit miss?" remains
+the one genuinely open question about this report's coverage. That is worth one more resume
+on its own.
 
 ---
 
-*Audit: 44 parallel reviewers over server/web/worker/infra, 211 raw → 197 unique findings,
-7.4M subagent tokens, 1,823 tool calls, 56 min wall clock. 12 findings re-verified by hand;
-7 agent claims rejected.*
+*Audit: 44 parallel reviewers over server/web/worker/infra, 211 raw → 197 unique findings.
+Adversarial verification: 150 of 198 lens-agents ran across two passes, adjudicating 50 of
+66 blocking candidates — 38 held 3/3, 11 downgraded, 1 refuted. 13.2M subagent tokens,
+2,393 tool calls, 58 min + 58 min wall clock. 21 findings re-verified by hand; 7 agent
+claims rejected; 1 of my own severity calls (B-13) corrected by the verifiers.*
