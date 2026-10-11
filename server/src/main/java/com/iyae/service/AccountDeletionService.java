@@ -3,6 +3,7 @@ package com.iyae.service;
 import com.iyae.config.BrandProperties;
 import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.Product;
+import com.iyae.entity.ResaleListing;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
 import com.iyae.repository.AnalyticsEventRepository;
@@ -122,7 +123,7 @@ public class AccountDeletionService {
 
         savedProductRepository.deleteByUserId(userId);
         reviewRepository.deleteByUserId(userId);
-        resaleListingRepository.deleteBySellerId(userId);
+        deleteResaleListingsExceptLiveSales(userId);
 
         cartRepository.findByUserId(userId).ifPresent(cart -> {
             cartItemRepository.deleteByCartId(cart.getId());
@@ -137,6 +138,35 @@ public class AccountDeletionService {
         tombstone(user);
 
         log.info("Deleted account {} (tombstoned as user {})", redact(email), userId);
+    }
+
+    /**
+     * Deletes the seller's resale listings, except any with a buyer's payment in flight.
+     *
+     * <p>An unconditional {@code deleteBySellerId} destroyed the evidence a charged buyer
+     * depends on. {@code orders.resale_listing_id} is {@code ON DELETE SET NULL}, so deleting
+     * a RESERVED listing silently nulled that column on the buyer's PENDING order — and
+     * {@code CheckoutService.fulfillPaidSession} branches on exactly that field. The webhook
+     * then treated a resale purchase as an ordinary cart order, so neither {@code markSold}
+     * nor the {@code PAID_UNFULFILLABLE} / "REFUND REQUIRED" path ran: the buyer was charged
+     * for an item whose listing no longer existed, with nothing logged at all. That is strictly
+     * worse than the lost-reservation case the alert was written for.
+     *
+     * <p>A listing with a live checkout is kept and released back to LISTED instead, which is
+     * the same treatment {@code ResaleService.releaseStaleReservations} gives it, so the normal
+     * fulfilment-or-refund machinery still has something to act on.
+     */
+    private void deleteResaleListingsExceptLiveSales(Long userId) {
+        List<ResaleListing> listings = resaleListingRepository.findBySellerIdOrderByCreatedAtDesc(userId);
+        for (ResaleListing listing : listings) {
+            if (resaleListingRepository.hasPendingOrder(listing.getId())) {
+                log.warn("Keeping resale listing {} while deleting seller {}: a buyer's order is "
+                        + "still PENDING against it. Deleting it would null the order's listing "
+                        + "reference and silence the refund path.", listing.getId(), userId);
+                continue;
+            }
+            resaleListingRepository.delete(listing);
+        }
     }
 
     /**

@@ -60,12 +60,13 @@ class AdminBootstrapTest {
 
     @Test
     void promotesAnExistingAccountWithoutTouchingItsPassword() {
-        configure("founder@iyae.ca", "ignored");
+        configure("founder@iyae.ca", "real-password");
         User existing = User.builder()
                 .id(7L).email("founder@iyae.ca").passwordHash("$2a$10$original")
                 .role(Role.BUYER).emailVerified(true).build();
         when(userRepository.countByRole(Role.ADMIN)).thenReturn(0L);
         when(userRepository.findByEmail("founder@iyae.ca")).thenReturn(Optional.of(existing));
+        when(passwordEncoder.matches("real-password", "$2a$10$original")).thenReturn(true);
 
         bootstrap.run();
 
@@ -73,6 +74,44 @@ class AdminBootstrapTest {
         // The operator already holds working credentials; resetting them would lock them out.
         assertThat(existing.getPasswordHash()).isEqualTo("$2a$10$original");
         verify(userRepository).save(existing);
+    }
+
+    // ---- Promotion is a privilege grant, so it needs proof the operator owns the account ----
+
+    @Test
+    void refusesToPromoteAnUnverifiedAccount() {
+        // Registration is open and needs no proof of email ownership, and the intended admin
+        // address is usually guessable. An attacker who self-registers it before the operator's
+        // first deploy would otherwise be handed ADMIN over an account whose password they set.
+        configure("admin@iyae.ca", "deploy-password");
+        User squatter = User.builder()
+                .id(9L).email("admin@iyae.ca").passwordHash("$2a$10$attacker")
+                .role(Role.BUYER).emailVerified(false).build();
+        when(userRepository.countByRole(Role.ADMIN)).thenReturn(0L);
+        when(userRepository.findByEmail("admin@iyae.ca")).thenReturn(Optional.of(squatter));
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+
+        bootstrap.run();
+
+        assertThat(squatter.getRole()).isEqualTo(Role.BUYER);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void refusesToPromoteWhenTheConfiguredPasswordIsNotTheAccountsPassword() {
+        // Verified, but not by the person holding the deploy config.
+        configure("admin@iyae.ca", "deploy-password");
+        User other = User.builder()
+                .id(9L).email("admin@iyae.ca").passwordHash("$2a$10$someoneelse")
+                .role(Role.BUYER).emailVerified(true).build();
+        when(userRepository.countByRole(Role.ADMIN)).thenReturn(0L);
+        when(userRepository.findByEmail("admin@iyae.ca")).thenReturn(Optional.of(other));
+        when(passwordEncoder.matches("deploy-password", "$2a$10$someoneelse")).thenReturn(false);
+
+        bootstrap.run();
+
+        assertThat(other.getRole()).isEqualTo(Role.BUYER);
+        verify(userRepository, never()).save(any(User.class));
     }
 
     @Test

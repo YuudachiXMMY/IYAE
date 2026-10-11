@@ -59,7 +59,11 @@ class JwtAuthenticationFilterTest {
     }
 
     private MockHttpServletRequest requestFor(String uri) {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+        return requestFor("GET", uri);
+    }
+
+    private MockHttpServletRequest requestFor(String method, String uri) {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, uri);
         request.setRequestURI(uri);
         request.addHeader("Authorization", "Bearer token123");
         return request;
@@ -81,6 +85,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
         when(jwtTokenProvider.extractEmail("token123")).thenReturn("buyer@test.com");
         when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(user("buyer@test.com", true)));
 
         filter.doFilter(requestFor("/api/cart"), response, chain);
@@ -97,6 +102,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
         when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
         when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
         filter.doFilter(requestFor("/api/cart"), response, chain);
@@ -113,6 +119,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
         when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
         when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
         filter.doFilter(requestFor("/api/auth/me"), response, chain);
@@ -129,6 +136,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
         when(jwtTokenProvider.extractEmail("token123")).thenReturn("buyer@test.com");
         when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         User bumped = user("buyer@test.com", true);
         bumped.setTokenVersion(1);
         when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(bumped));
@@ -158,6 +166,7 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
         when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
         when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
         filter.doFilter(requestFor("/api/cart"), response, chain);
@@ -165,5 +174,90 @@ class JwtAuthenticationFilterTest {
         assertThat(response.getStatus()).isEqualTo(200);
         verify(chain).doFilter(any(), any());
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+    }
+
+    // ---- The unverified allow-list must be scoped to the method, not just the path ----
+
+    @Test
+    void unverifiedEmail_cannotUpdateItsProfile() throws Exception {
+        // /api/auth/me serves GET (read), PUT (update) and DELETE (delete the account). A
+        // path-only allow-list let an account that had proved nothing about owning its
+        // registered address set a public username — and the public profile endpoint has no
+        // verification gate — so it could squat or impersonate a handle pre-verification.
+        when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
+        when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
+        when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
+
+        filter.doFilter(requestFor("PUT", "/api/auth/me"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(chain, never()).doFilter(any(), any());
+    }
+
+    @Test
+    void unverifiedEmail_cannotDeleteItsAccount() throws Exception {
+        when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
+        when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
+        when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
+
+        filter.doFilter(requestFor("DELETE", "/api/auth/me"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(chain, never()).doFilter(any(), any());
+    }
+
+    @Test
+    void unverifiedEmail_cannotUseTheWrongMethodOnTheResendEndpoint() throws Exception {
+        when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
+        when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
+        when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
+
+        filter.doFilter(requestFor("GET", "/api/auth/resend-verification"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    // ---- The token is bound to the account id, not just the email ----
+
+    @Test
+    void aTokenForADifferentAccountIsRejectedEvenWhenTheEmailMatches() throws Exception {
+        // Deleting an account frees its address for re-registration, so the email is not a
+        // stable identity. Without the uid claim, a token minted for the deleted account
+        // resolved by email to the NEW account and its `ver` was compared against that row's
+        // own version — 0 against 0 — so it passed and authenticated the wrong person.
+        when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("token123")).thenReturn("recycled@test.com");
+        when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(41L); // the deleted account
+        User replacement = user("recycled@test.com", true);
+        replacement.setId(77L);                                           // the new one
+        when(userRepository.findByEmail("recycled@test.com")).thenReturn(Optional.of(replacement));
+
+        filter.doFilter(requestFor("/api/cart"), response, chain);
+
+        verify(chain).doFilter(any(), any());
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void aTokenWithoutAUserIdClaimIsRejected() throws Exception {
+        // Tokens minted before the claim existed. Rejecting them invalidates sessions
+        // predating the deploy, which is the safe direction.
+        when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("token123")).thenReturn("buyer@test.com");
+        when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(null);
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(user("buyer@test.com", true)));
+
+        filter.doFilter(requestFor("/api/cart"), response, chain);
+
+        verify(chain).doFilter(any(), any());
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 }

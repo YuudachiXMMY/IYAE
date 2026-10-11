@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { LocalImagePicker } from "@/components/profile/LocalImagePicker";
 import { getBodyMeasurementCoverage } from "@/lib/profile-dashboard";
 import {
@@ -539,10 +539,12 @@ function SettingsBody({
                 onSelect={(url) => setAvatarDataUrl(url)}
                 maxDimension={400}
                 label="Choose a profile photo"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "rounded-full text-xs"
+                )}
               >
-                <Button variant="outline" size="sm" className="rounded-full text-xs" type="button">
-                  Change photo
-                </Button>
+                Change photo
               </LocalImagePicker>
             </div>
 
@@ -564,10 +566,12 @@ function SettingsBody({
                 onSelect={(url) => setBannerDataUrl(url)}
                 maxDimension={1200}
                 label="Choose a banner image"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "rounded-full text-xs"
+                )}
               >
-                <Button variant="outline" size="sm" className="rounded-full text-xs" type="button">
-                  Change banner
-                </Button>
+                Change banner
               </LocalImagePicker>
             </div>
           </div>

@@ -155,7 +155,7 @@ public class AuthService {
             log.warn("Failed to send verification email for user {}", user.getId(), e);
         }
 
-        String jwt = jwtTokenProvider.generateToken(user.getEmail(), user.getTokenVersion());
+        String jwt = jwtTokenProvider.generateToken(user.getEmail(), user.getTokenVersion(), user.getId());
         return new AuthResponse(jwt, UserResponse.from(user));
     }
 
@@ -175,7 +175,7 @@ public class AuthService {
             throw new EmailNotVerifiedException("Please verify your email before signing in");
         }
 
-        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getTokenVersion());
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getTokenVersion(), user.getId());
         return new AuthResponse(token, UserResponse.from(user));
     }
 

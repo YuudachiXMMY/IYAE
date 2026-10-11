@@ -347,12 +347,21 @@ export default function CheckoutPage() {
                   <span data-testid="checkout-total">{formatPrice(grandTotal)}</span>
                 </div>
 
+                {/* `checkoutConfig.loading` matters here as much as on the cart and resale
+                    surfaces: the page-level gate above only fires once the flag has resolved,
+                    so without this a direct visit to /checkout (bookmark, back button, or
+                    simply the first page in the session to touch the config) shows a live
+                    Place Order button before the client knows whether orders are open. */}
                 <Button
                   onClick={handlePlaceOrder}
-                  disabled={placing || !selectionValid}
+                  disabled={placing || !selectionValid || checkoutConfig.loading}
                   className="mt-6 w-full rounded-full bg-brand py-3 text-primary-foreground hover:bg-brand-hover"
                 >
-                  {placing ? "Processing..." : "Place Order"}
+                  {checkoutConfig.loading
+                    ? "Checking…"
+                    : placing
+                      ? "Processing..."
+                      : "Place Order"}
                 </Button>
 
                 <p className="mt-3 text-center text-xs text-muted-foreground">

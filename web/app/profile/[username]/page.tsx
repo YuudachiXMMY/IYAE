@@ -159,6 +159,7 @@ export default function ProfilePage() {
   // Bumped by "Try again". The fetch effect keys on it as well as on the id, because clearing
   // the result alone would not re-run an effect whose only other dependency is unchanged.
   const [postsRetry, setPostsRetry] = useState(0);
+  const [followPending, setFollowPending] = useState(false);
   const currentPosts = postsResult?.userId === targetUserId ? postsResult : null;
 
   useEffect(() => {
@@ -182,6 +183,21 @@ export default function ProfilePage() {
   const postsFailed = currentPosts != null && currentPosts.posts === null;
   const postsLoading = targetUserId != null && currentPosts == null;
 
+  /**
+   * Applies a dialog interaction to the server-sourced list, by id.
+   *
+   * A plain function, not a useCallback: it is only ever passed straight into a JSX handler,
+   * never into a dependency array, and the React Compiler rejected the hand-written
+   * memoization here anyway ("existing memoization could not be preserved").
+   */
+  function patchServerPost(updated: SocialPost) {
+    setPostsResult((prev) =>
+      prev?.posts == null
+        ? prev
+        : { ...prev, posts: prev.posts.map((p) => (p.id === updated.id ? updated : p)) }
+    );
+  }
+
   // Local-only fallback for an unauthenticated viewer or a demo profile with no numeric id.
   const localUserPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
   const userPosts =
@@ -196,9 +212,18 @@ export default function ProfilePage() {
   // user and to every other device — and it fed the real follower counts shown right above it,
   // which therefore never moved.
   function handleToggleFollow() {
+    // One write at a time. Two fast clicks used to send `toggle` and `remove` concurrently;
+    // they can resolve in either order, and `isFollowing` is derived from local state with no
+    // read-back, so the button could settle showing the opposite of the server's real state
+    // with nothing to reconcile it.
+    if (followPending) return;
     const wasFollowing = isFollowing;
+    setFollowPending(true);
     toggleFollowFor(username); // optimistic
-    if (targetUserId == null) return;
+    if (targetUserId == null) {
+      setFollowPending(false);
+      return;
+    }
     const req = wasFollowing ? follows.remove(targetUserId) : follows.toggle(targetUserId);
     req
       .then(() => follows.counts(targetUserId))
@@ -206,7 +231,8 @@ export default function ProfilePage() {
       .catch(() => {
         toggleFollowFor(username); // revert
         toast.error("Couldn't update follow. Please try again.");
-      });
+      })
+      .finally(() => setFollowPending(false));
   }
 
   if (profileNotFound) {
@@ -333,10 +359,11 @@ export default function ProfilePage() {
                 {!isOwnProfile && user && (
                   <button
                     onClick={handleToggleFollow}
+                    disabled={followPending}
                     aria-pressed={isFollowing}
                     aria-label={isFollowing ? `Unfollow ${username}` : `Follow ${username}`}
                     className={cn(
-                      "mt-4 rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors",
+                      "mt-4 rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors disabled:opacity-60",
                       isFollowing
                         ? "border border-border text-muted-foreground"
                         : "bg-foreground text-background"
@@ -459,7 +486,11 @@ export default function ProfilePage() {
             }}
             onUpdate={(updated) => {
               setSelectedPost(updated);
-              handlePostUpdate(updated); // persists — the hook mirrors to storage
+              // Both stores, because the grid reads from whichever one supplied it. For a
+              // server-sourced profile the post is not in the viewer's local cache at all, so
+              // writing only there left the interaction invisible the moment the dialog closed.
+              patchServerPost(updated);
+              handlePostUpdate(updated); // local cache + its storage mirror
             }}
             currentUserName={user?.name ?? undefined}
             currentUserHandle={user?.username ?? undefined}

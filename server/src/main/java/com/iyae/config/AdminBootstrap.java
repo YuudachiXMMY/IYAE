@@ -27,7 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Component
-@Order(1)
+// Distinct from GlbAssetInitializer's @Order(1): equal-order CommandLineRunners have no
+// guaranteed relative order. They share no state today, but a deterministic sequence
+// costs nothing. Runs before DataSeeder (@Order(2)) so a dev seed cannot race it.
+@Order(0)
 @RequiredArgsConstructor
 public class AdminBootstrap implements CommandLineRunner {
 
@@ -60,8 +63,31 @@ public class AdminBootstrap implements CommandLineRunner {
         String email = bootstrapEmail.trim().toLowerCase();
         User existing = userRepository.findByEmail(email).orElse(null);
         if (existing != null) {
-            // Promote in place. Deliberately does not touch the password: the operator already
-            // holds working credentials for this account.
+            // Promoting an existing row is only safe if the operator actually controls it.
+            //
+            // Registration is open and requires no proof of email ownership, and the intended
+            // admin address is usually guessable (admin@, ops@, a founder's public address).
+            // So an attacker can self-register that address before the operator's first deploy
+            // — or before any later boot where the admin count has dropped to zero — and an
+            // unconditional promotion would hand them ADMIN over an account whose password
+            // they chose. Both checks below have to pass:
+            //
+            //   1. the address is verified, so someone proved they can read that mailbox;
+            //   2. the configured ADMIN_BOOTSTRAP_PASSWORD is that account's actual password,
+            //      so the person holding the deploy config is the person holding the account.
+            boolean verified = Boolean.TRUE.equals(existing.getEmailVerified());
+            boolean credentialsMatch = bootstrapPassword != null && !bootstrapPassword.isBlank()
+                    && passwordEncoder.matches(bootstrapPassword, existing.getPasswordHash());
+            if (!verified || !credentialsMatch) {
+                log.error("Refusing to promote {} to ADMIN: an account with that address already "
+                        + "exists but {}. Not promoting it — this deployment has no "
+                        + "administrator. Use an address you control, or verify that account and "
+                        + "set ADMIN_BOOTSTRAP_PASSWORD to its real password.",
+                        email,
+                        !verified ? "its email address has never been verified"
+                                  : "ADMIN_BOOTSTRAP_PASSWORD is not its password");
+                return;
+            }
             existing.setRole(Role.ADMIN);
             userRepository.save(existing);
             log.info("Promoted existing account {} to ADMIN", email);

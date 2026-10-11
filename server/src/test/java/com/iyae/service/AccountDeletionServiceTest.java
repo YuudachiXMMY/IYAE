@@ -97,7 +97,9 @@ class AccountDeletionServiceTest {
         verify(outfitRecommendationRepository).deleteByUser(buyer);
         verify(savedProductRepository).deleteByUserId(42L);
         verify(reviewRepository).deleteByUserId(42L);
-        verify(resaleListingRepository).deleteBySellerId(42L);
+        // Listings go one at a time now, so a sale with a buyer's payment in flight can be
+        // kept — see keepsAResaleListingThatHasAPaymentInFlight.
+        verify(resaleListingRepository).findBySellerIdOrderByCreatedAtDesc(42L);
         verify(analyticsEventRepository).deleteByUserId(42L);
         verify(cohortAssignmentRepository).deleteByUserId(42L);
         verify(passwordResetTokenRepository).deleteByUser(buyer);
@@ -209,5 +211,40 @@ class AccountDeletionServiceTest {
         // Unique and non-null column, so it has to be replaced rather than nulled — and it is
         // placed in a subdomain that cannot be a deliverable address.
         assertThat(buyer.getEmail()).endsWith("@deleted.iyae.ca");
+    }
+
+    // ---- A seller leaving must not erase a buyer's in-flight purchase ----
+
+    @Test
+    void keepsAResaleListingThatHasAPaymentInFlight() {
+        // orders.resale_listing_id is ON DELETE SET NULL, so hard-deleting a RESERVED listing
+        // nulled it on the buyer's PENDING order — and fulfillPaidSession branches on exactly
+        // that field. The webhook then treated a resale purchase as a cart order, so neither
+        // markSold nor the PAID_UNFULFILLABLE / "REFUND REQUIRED" path ran: the buyer was
+        // charged for an item whose listing no longer existed, with nothing logged at all.
+        com.iyae.entity.ResaleListing selling = com.iyae.entity.ResaleListing.builder()
+                .id(500L).seller(buyer)
+                .status(com.iyae.entity.enums.ResaleStatus.RESERVED).build();
+        when(resaleListingRepository.findBySellerIdOrderByCreatedAtDesc(42L))
+                .thenReturn(List.of(selling));
+        when(resaleListingRepository.hasPendingOrder(500L)).thenReturn(true);
+
+        service.deleteAccount("buyer@test.com");
+
+        verify(resaleListingRepository, never()).delete(selling);
+    }
+
+    @Test
+    void deletesResaleListingsWithNoPaymentInFlight() {
+        com.iyae.entity.ResaleListing idle = com.iyae.entity.ResaleListing.builder()
+                .id(501L).seller(buyer)
+                .status(com.iyae.entity.enums.ResaleStatus.LISTED).build();
+        when(resaleListingRepository.findBySellerIdOrderByCreatedAtDesc(42L))
+                .thenReturn(List.of(idle));
+        when(resaleListingRepository.hasPendingOrder(501L)).thenReturn(false);
+
+        service.deleteAccount("buyer@test.com");
+
+        verify(resaleListingRepository).delete(idle);
     }
 }

@@ -24,7 +24,10 @@ export function usePublicConfig() {
   // on the way in. (A synchronous setState in an effect is both a cascading render and a lint
   // error this repo keeps at zero.)
   const fetchInto = useCallback((controller: AbortController) => {
-    getPublicConfig(controller.signal)
+    // The shared request is deliberately not cancellable (see getPublicConfig). The controller
+    // is this consumer's own: it decides whether to *commit* the answer, not whether the
+    // request happens. Aborting a promise other consumers are awaiting was the bug.
+    getPublicConfig()
       .then((value) => {
         if (controller.signal.aborted) return;
         setConfig(value);

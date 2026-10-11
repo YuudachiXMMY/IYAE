@@ -10,12 +10,17 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "users")
-// A deleted account is a tombstone row (see deletedAt) and must be invisible to every query
-// for this entity — login, registration's duplicate check, the JWT filter, profile lookups,
-// follower lists. Applying it here rather than at each call site is the point: there are too
-// many lookups for "remember to filter" to hold, and a missed one leaves a deleted account
-// partly alive. By-id association loads are unaffected, so an Order still resolves its user.
-@org.hibernate.annotations.SQLRestriction("deleted_at is null")
+// NOT @SQLRestriction("deleted_at is null"). That was the first attempt, on the belief that
+// Hibernate exempts by-id and to-one association loads from the restriction. It does not — on
+// 6.6 the restriction is baked into every loader including the single-id one, so
+// `order.getUser()` on a tombstoned customer threw EntityNotFoundException, which the
+// catch-all handler then served as a 500. That broke exactly what the tombstone exists to
+// protect: CheckoutService.fulfillPaidSession dereferences order.getUser() four times, so a
+// buyer deleting their account between checkout and Stripe's webhook broke fulfilment.
+//
+// The filtering lives on the identity lookups in UserRepository instead — one place per
+// lookup rather than one per call site, which keeps the property that mattered (no caller has
+// to remember) while leaving by-id loads alone so order history still resolves its user.
 @Getter
 @Setter
 @NoArgsConstructor
@@ -121,13 +126,12 @@ public class User {
      * FK to it and an order is a financial record, so deletion scrubs the identifying fields
      * instead.
      *
-     * <p>A tombstone is invisible to every JPA query for this entity — see the
-     * {@code @SQLRestriction} on the class. That is deliberate rather than filtering at each
-     * call site: {@code findByEmail} alone has nine callers (login, registration, the JWT
-     * filter, profile reads, password reset, …) and one missed site would leave a deleted
-     * account partly alive. Loading the association from an {@code Order} still resolves,
-     * because Hibernate fetches a to-one association by id and the restriction does not apply
-     * to a by-id load — so order history survives the deletion, as intended.
+     * <p>A tombstone is invisible to the identity lookups in {@code UserRepository} — the
+     * filtering is on those queries, not on each of their callers, so no caller has to
+     * remember ({@code findByEmail} alone has nine). By-id loads are deliberately NOT
+     * filtered, which is what lets an {@code Order} still resolve its customer: order history
+     * survives the deletion, de-identified. See the note on the class for why the
+     * entity-level {@code @SQLRestriction} that looked simpler does not work.
      */
     @Column(name = "deleted_at")
     private Instant deletedAt;

@@ -56,7 +56,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new RateRule("POST", "/api/avatar/generate", null, 5, 60_000),
             new RateRule("POST", "/api/designer/products/upload/image", null, 20, 60_000),
             new RateRule("POST", "/api/designer/products/", "/regenerate", 5, 60_000),
-            new RateRule("POST", "/api/designer/products/", "/rigging", 5, 60_000)
+            new RateRule("POST", "/api/designer/products/", "/rigging", 5, 60_000),
+            // The retry endpoints queue the same paid work as regenerate/rigging and end in
+            // "/retry", so neither suffix rule above matched them — the generation bill was
+            // still runnable up by spamming a retry.
+            new RateRule("POST", "/api/designer/products/", "/generation-status/retry", 5, 60_000),
+            new RateRule("POST", "/api/designer/products/", "/rigging-status/retry", 5, 60_000)
     );
 
     private record BucketKey(String ip, String methodKey, String pathPrefix) {}

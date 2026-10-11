@@ -69,17 +69,57 @@ class AvatarTaskQueue:
             cursor.close()
             conn.close()
 
-    def fail_task(self, task_id: int, error_message: str):
-        """Mark avatar task as FAILED."""
+    def fail_task(self, task_id: int, error_message: str) -> bool:
+        """Mark a RUNNING avatar task as FAILED.
+
+        The `status = 'RUNNING'` guard mirrors `TaskQueue.fail_task`. Without it this was an
+        unconditional write, so a late failure path could flip a task that had already reached
+        READY — or that a reclaim had handed to another worker, which then finished it — back
+        to FAILED, destroying a generated avatar and showing the user an error for a body model
+        that exists.
+
+        Returns True when this call is what failed the task.
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 UPDATE avatar_generation_tasks
                 SET status = 'FAILED', error_message = %s, completed_at = NOW()
-                WHERE id = %s
+                WHERE id = %s AND status = 'RUNNING'
             """, (error_message, task_id))
             conn.commit()
+            if cursor.rowcount == 0:
+                logger.warning(
+                    f"fail_task: avatar task {task_id} was not RUNNING — leaving its status "
+                    f"alone rather than overwriting it. Error was: {error_message}"
+                )
+                return False
+            return True
+        finally:
+            cursor.close()
+            conn.close()
+
+    def heartbeat(self, task_id: int) -> None:
+        """Push out a RUNNING task's staleness clock.
+
+        `reclaim_stale_tasks` decides staleness from `updated_at`, which nothing refreshed
+        during a run — so a job that legitimately outlives the 15-minute threshold was
+        reclaimed and handed to a second claimant while the first was still working on it.
+        `main.py` holds a heartbeat thread open for the duration of `provider.generate()`.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE avatar_generation_tasks
+                SET updated_at = NOW()
+                WHERE id = %s AND status = 'RUNNING'
+            """, (task_id,))
+            conn.commit()
+        except Error as e:
+            logger.warning(f"Heartbeat for task {task_id} failed: {e}")
+            conn.rollback()
         finally:
             cursor.close()
             conn.close()

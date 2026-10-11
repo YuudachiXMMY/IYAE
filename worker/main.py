@@ -3,6 +3,8 @@ import os
 import time
 import json
 import logging
+import threading
+from contextlib import contextmanager
 
 from task_queue import TaskQueue
 from avatar_task_queue import AvatarTaskQueue
@@ -70,6 +72,48 @@ def touch_heartbeat() -> None:
             fh.write(str(int(time.time())))
     except OSError as exc:  # never let the heartbeat kill the loop
         logger.warning(f"Could not write heartbeat to {HEARTBEAT_PATH}: {exc}")
+
+
+#: How often a claimed task's staleness clock is pushed out while it is being worked on.
+#: Comfortably under the 15-minute reclaim threshold so one missed tick is harmless.
+TASK_HEARTBEAT_INTERVAL = int(os.environ.get("WORKER_TASK_HEARTBEAT_INTERVAL", "60"))
+
+
+@contextmanager
+def task_heartbeat(queue, task_id: int):
+    """Keeps a claimed task's ``updated_at`` fresh for as long as we are working on it.
+
+    ``reclaim_stale_tasks`` treats a RUNNING task whose ``updated_at`` is older than 15
+    minutes as abandoned. Nothing refreshed that column during a run, so a job that
+    legitimately takes longer — a real Tripo3D or Meshy generation polls for up to 10 minutes
+    before the download even starts — was reclaimed while its worker was still inside
+    ``provider.generate()``, handed to a second claimant, and written twice.
+
+    A daemon thread rather than a callback threaded through every provider: the providers are
+    synchronous and blocking, so there is no point in their call stack where they could
+    cooperatively yield, and making each one accept and periodically invoke a callback is a
+    change to four provider APIs to achieve the same thing less reliably.
+    """
+    stop = threading.Event()
+
+    def beat():
+        while not stop.wait(TASK_HEARTBEAT_INTERVAL):
+            try:
+                queue.heartbeat(task_id)
+            except Exception as exc:  # diagnostics must never take down the run
+                logger.warning(f"Heartbeat for task {task_id} failed: {exc}")
+
+    thread = threading.Thread(
+        target=beat, name=f"heartbeat-{task_id}", daemon=True
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        # Short join: the thread is parked in `stop.wait`, so it returns immediately. The
+        # timeout is only here so a wedged thread cannot stall the poll loop.
+        thread.join(timeout=5)
 
 
 def get_db_config() -> dict:
@@ -187,7 +231,8 @@ def run():
                 logger.info(f"Claimed model task {task_id} for product {product_id}")
                 try:
                     input_payload = json.loads(task["input_payload"]) if task["input_payload"] else None
-                    output = provider.generate(task_id, product_id, input_payload)
+                    with task_heartbeat(queue, task_id):
+                        output = provider.generate(task_id, product_id, input_payload)
 
                     glb_path = os.path.join(OUTPUT_BASE_DIR, output["glb_path"])
                     validation = validate_glb(glb_path)
@@ -224,7 +269,8 @@ def run():
                 logger.info(f"Claimed avatar task {task_id} for user {user_id}")
                 try:
                     input_payload = json.loads(avatar_task["input_payload"]) if avatar_task["input_payload"] else None
-                    output = avatar_provider.generate(task_id, user_id, input_payload)
+                    with task_heartbeat(avatar_queue, task_id):
+                        output = avatar_provider.generate(task_id, user_id, input_payload)
 
                     glb_path = os.path.join(OUTPUT_BASE_DIR, output["glb_path"])
                     validation = validate_glb(glb_path)
@@ -260,7 +306,8 @@ def run():
                 logger.info(f"Claimed rigging task {task_id} for garment asset {garment_asset_id}")
                 try:
                     input_payload = json.loads(rigging_task["input_payload"]) if rigging_task.get("input_payload") else {}
-                    output = rigging_provider.generate(task_id, garment_asset_id, input_payload)
+                    with task_heartbeat(rigging_queue, task_id):
+                        output = rigging_provider.generate(task_id, garment_asset_id, input_payload)
 
                     rigged_path = output.get("rigged_glb_path", "")
                     absolute_path = os.path.join(OUTPUT_BASE_DIR, rigged_path) if rigged_path else ""

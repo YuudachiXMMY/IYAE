@@ -114,13 +114,16 @@ export function LocalImagePicker({
   // keyboard-only user could not post at all. A button is focusable, activates on Enter and
   // Space without extra handlers, and is announced.
   //
-  // Every call site wraps non-interactive content (icons and text), so there is no nested
-  // interactive element to worry about. `text-left` + `w-full` keep the button from imposing
-  // the browser's centred, shrink-to-fit defaults on those layouts.
+  // THIS IS THE BUTTON. Call sites must pass non-interactive children (text, icons, a styled
+  // span) and put the visual button styling on `className` — several sites originally nested
+  // a shadcn <Button> inside here, which put a real <button> node inside another one: two
+  // separate tab stops and two announcements for one action, which is worse than the
+  // unreachable div it replaced. `buttonVariants` from components/ui/button is the way to get
+  // the pill look onto `className` without a nested control.
   return (
     <button
       type="button"
-      className={cn("w-full cursor-pointer text-left", className)}
+      className={cn("cursor-pointer", className)}
       onClick={handleClick}
       aria-label={label}
     >
