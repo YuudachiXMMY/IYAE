@@ -37,7 +37,26 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new RateRule(null,   "/api/checkout", null, 5, 60_000),
             new RateRule("POST", "/api/public/avatar/generate", null, 3, 60_000),
             new RateRule("DELETE", "/api/avatar", null, 10, 60_000),
-            new RateRule("GET", "/api/products/", "/recommended-size", 30, 60_000)
+            new RateRule("GET", "/api/products/", "/recommended-size", 30, 60_000),
+
+            // ---- User-generated content ----
+            // The product ships UGC plus a report queue with nothing throttling either. The
+            // allow-list covered neither posts nor comments nor reports, so a script could fill
+            // the feed, bury the moderation queue it is reported through, and grow the database
+            // unboundedly — on an instance where, until the ADMIN bootstrap landed, nobody could
+            // action any of it. POST-scoped so reading the feed is never throttled.
+            new RateRule("POST", "/api/posts", null, 10, 60_000),
+            new RateRule("POST", "/api/events", null, 60, 60_000),
+            new RateRule("POST", "/api/follows/", null, 30, 60_000),
+
+            // ---- Paid / compute-heavy job creation ----
+            // Each of these starts work that costs money (a third-party 3D generation credit) or
+            // minutes of CPU. Unthrottled, one account could run the generation bill up or
+            // saturate the worker queue so no other designer's product is ever processed.
+            new RateRule("POST", "/api/avatar/generate", null, 5, 60_000),
+            new RateRule("POST", "/api/designer/products/upload/image", null, 20, 60_000),
+            new RateRule("POST", "/api/designer/products/", "/regenerate", 5, 60_000),
+            new RateRule("POST", "/api/designer/products/", "/rigging", 5, 60_000)
     );
 
     private record BucketKey(String ip, String methodKey, String pathPrefix) {}

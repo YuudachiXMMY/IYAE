@@ -4,9 +4,21 @@ import type { SocialPost, PersistedCommunityState } from "@/lib/community-feed";
 
 // Hoisted mocks — vi.mock factories are hoisted above the module body, so the
 // fns they close over must be created with vi.hoisted (not plain top-level consts).
-const { mockApiGet, mockCounts, onUpdateRef, viewer } = vi.hoisted(() => ({
+const {
+  mockApiGet,
+  mockCounts,
+  mockPostsByUser,
+  mockFollowToggle,
+  mockFollowRemove,
+  onUpdateRef,
+  viewer,
+} = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
   mockCounts: vi.fn(),
+  // The profile grid is server-sourced now; see the #22 case below.
+  mockPostsByUser: vi.fn(),
+  mockFollowToggle: vi.fn(),
+  mockFollowRemove: vi.fn(),
   // The page hands `onUpdate` to PostDetailDialog; the mock below parks it here
   // so a test can fire the exact callback the dialog would.
   onUpdateRef: { current: null as ((post: SocialPost) => void) | null },
@@ -34,7 +46,13 @@ vi.mock("@/lib/auth-context", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: { get: (path: string) => mockApiGet(path) },
-  follows: { counts: (id: number) => mockCounts(id), toggle: vi.fn(), remove: vi.fn() },
+  follows: {
+    counts: (id: number) => mockCounts(id),
+    toggle: (id: number) => mockFollowToggle(id),
+    remove: (id: number) => mockFollowRemove(id),
+  },
+  posts: { byUser: (...args: unknown[]) => mockPostsByUser(...args) },
+  ApiError: class ApiError extends Error {},
 }));
 
 vi.mock("@/components/PostDetailDialog", () => ({
@@ -83,6 +101,13 @@ function stored(): PersistedCommunityState {
 }
 
 async function settle() {
+  // Three flushes, not one. The page's requests are chained: the public-profile fetch has to
+  // resolve before `targetUserId` exists, which is what the follower-counts and posts effects
+  // key on. A single flush leaves the second round of promises pending — which made an
+  // assertion like `queryByText(...)).not.toBeInTheDocument()` pass for the wrong reason,
+  // because nothing had rendered yet at all.
+  await act(async () => {});
+  await act(async () => {});
   await act(async () => {});
 }
 
@@ -104,17 +129,83 @@ describe("public profile page", () => {
       createdAt: null,
     });
     mockCounts.mockResolvedValue({ followers: 5, following: 2 });
+    mockPostsByUser.mockReset();
+    mockFollowToggle.mockReset();
+    mockFollowRemove.mockReset();
+    mockPostsByUser.mockResolvedValue({ content: [] });
+    mockFollowToggle.mockResolvedValue(undefined);
+    mockFollowRemove.mockResolvedValue(undefined);
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ version: 4, followedUsernames: [], posts: [milaPost()] })
     );
   });
 
-  it("renders the viewer's stored posts for this profile", async () => {
+  // #22: the grid used to be `state.posts.filter(creatorUsername === username)` — the
+  // *viewer's* own local community cache, which holds only their seeded demo posts and what
+  // they created themselves. In production every other account's profile therefore rendered
+  // an empty grid however much they had posted. This case pinned that behaviour; it now pins
+  // the fix.
+  it("renders the profiled user's posts from the server, not the viewer's local cache", async () => {
+    mockPostsByUser.mockResolvedValue({
+      content: [
+        {
+          id: 99,
+          userId: 31,
+          username: "mila",
+          content: "server-sourced caption",
+          mediaUrls: [],
+          // toSocialPost maps productIds — an absent one throws inside the mapper, which the
+          // page's catch would then report as a failed load. Keep the fixture faithful to the
+          // PostResponse DTO.
+          productIds: [],
+          topic: null,
+          city: null,
+          status: "ACTIVE",
+          likeCount: 7,
+          commentCount: 0,
+          likedByCurrentUser: false,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
     render(<ProfilePage />);
     await settle();
 
-    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(mockPostsByUser).toHaveBeenCalledWith(31, 0, 30, expect.anything());
+    // The server post rendered (its like count is on the thumbnail)...
+    expect(screen.getByText("7")).toBeInTheDocument();
+    // ...and the viewer's locally-cached post for this username did not.
+    expect(screen.queryByText("42")).not.toBeInTheDocument();
+  });
+
+  it("says so when the posts request fails, instead of showing an empty grid", async () => {
+    mockPostsByUser.mockRejectedValue(new Error("network"));
+
+    render(<ProfilePage />);
+    await settle();
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("No outfits yet")).not.toBeInTheDocument();
+  });
+
+  // #21: the follow button only toggled the local-storage mirror, so a follow made here was
+  // invisible to the followed user and to every other device — and it feeds the real follower
+  // counts shown directly above it, which therefore never moved.
+  it("writes a follow through to the server", async () => {
+    render(<ProfilePage />);
+    await settle();
+
+    const followButton = screen
+      .getAllByRole("button")
+      .find((b) => /follow/i.test(b.textContent ?? ""));
+    expect(followButton).toBeDefined();
+    await act(async () => {
+      followButton!.click();
+    });
+
+    expect(mockFollowToggle).toHaveBeenCalledWith(31);
   });
 
   // ── Regression ───────────────────────────────────────────────────────────────
@@ -126,11 +217,38 @@ describe("public profile page", () => {
   // it, because that surface mirrors its state through
   // `useCommunityStatePersistence`.
   it("persists a post update made from the detail dialog", async () => {
+    // The grid is server-sourced (#22), so the thumbnail that opens the dialog comes from the
+    // server page. The subject here is still persistence: the update itself is applied to the
+    // post held in local state, which is what the viewer's cache has to end up agreeing with.
+    mockPostsByUser.mockResolvedValue({
+      content: [
+        {
+          id: 99,
+          userId: 31,
+          username: "mila",
+          content: "Linen, three ways",
+          mediaUrls: [],
+          // toSocialPost maps productIds — an absent one throws inside the mapper, which the
+          // page's catch would then report as a failed load. Keep the fixture faithful to the
+          // PostResponse DTO.
+          productIds: [],
+          topic: null,
+          city: null,
+          status: "ACTIVE",
+          likeCount: 42,
+          commentCount: 0,
+          likedByCurrentUser: false,
+          createdAt: "2026-10-01T00:00:00.000Z",
+        },
+      ],
+    });
+
     render(<ProfilePage />);
     await settle();
 
     const thumbnail = screen
       .getAllByRole("button")
+      // The thumbnail renders the like count, not the caption.
       .find((b) => b.textContent?.includes("42"))!;
     await act(async () => {
       thumbnail.click();

@@ -270,6 +270,7 @@ export function CreateFashionPostDialog({
                     <LocalImagePicker
                       onSelect={setSelectedImage}
                       maxDimension={1200}
+                      label="Choose a photo for your post"
                     >
                       <div className="border-2 border-dashed border-border rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-muted/50 transition-colors aspect-[4/5]">
                         <Upload

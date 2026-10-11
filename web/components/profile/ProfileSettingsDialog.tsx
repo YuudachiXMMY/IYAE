@@ -535,7 +535,11 @@ function SettingsBody({
                   <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP</p>
                 </div>
               </div>
-              <LocalImagePicker onSelect={(url) => setAvatarDataUrl(url)} maxDimension={400}>
+              <LocalImagePicker
+                onSelect={(url) => setAvatarDataUrl(url)}
+                maxDimension={400}
+                label="Choose a profile photo"
+              >
                 <Button variant="outline" size="sm" className="rounded-full text-xs" type="button">
                   Change photo
                 </Button>
@@ -556,7 +560,11 @@ function SettingsBody({
                   <p className="text-xs text-muted-foreground">Recommended 1200px wide</p>
                 </div>
               </div>
-              <LocalImagePicker onSelect={(url) => setBannerDataUrl(url)} maxDimension={1200}>
+              <LocalImagePicker
+                onSelect={(url) => setBannerDataUrl(url)}
+                maxDimension={1200}
+                label="Choose a banner image"
+              >
                 <Button variant="outline" size="sm" className="rounded-full text-xs" type="button">
                   Change banner
                 </Button>

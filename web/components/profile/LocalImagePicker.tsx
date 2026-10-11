@@ -2,6 +2,7 @@
 
 import { useRef, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface LocalImagePickerProps {
   onSelect: (dataUrl: string) => void;
@@ -11,6 +12,12 @@ interface LocalImagePickerProps {
   quality?: number;
   className?: string;
   children?: ReactNode;
+  /**
+   * Accessible name for the control. Required in spirit: the visual content is an icon and
+   * some prose inside a button, which on its own tells a screen-reader user nothing about
+   * what activating it does.
+   */
+  label?: string;
 }
 
 function compressImage(
@@ -51,6 +58,7 @@ export function LocalImagePicker({
   quality = 0.7,
   className,
   children,
+  label = "Choose an image",
 }: LocalImagePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -100,17 +108,34 @@ export function LocalImagePicker({
     [maxSizeMB, maxDimension, quality, onSelect]
   );
 
+  // A real <button>, not a <div onClick>. The picker used to be a plain div wrapping a
+  // `hidden` + `aria-hidden` file input, so it was reachable by neither keyboard nor screen
+  // reader — and since choosing an image is mandatory to create a community post, a
+  // keyboard-only user could not post at all. A button is focusable, activates on Enter and
+  // Space without extra handlers, and is announced.
+  //
+  // Every call site wraps non-interactive content (icons and text), so there is no nested
+  // interactive element to worry about. `text-left` + `w-full` keep the button from imposing
+  // the browser's centred, shrink-to-fit defaults on those layouts.
   return (
-    <div className={className} onClick={handleClick}>
+    <button
+      type="button"
+      className={cn("w-full cursor-pointer text-left", className)}
+      onClick={handleClick}
+      aria-label={label}
+    >
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         className="hidden"
         onChange={handleChange}
+        // Kept out of the accessibility tree deliberately: the button above is the labelled
+        // control, and exposing both would announce the same thing twice.
         aria-hidden="true"
+        tabIndex={-1}
       />
       {children}
-    </div>
+    </button>
   );
 }

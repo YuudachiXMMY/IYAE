@@ -228,15 +228,39 @@ export function PostDetailDialog({
   }
 
   function handleAddComment() {
-    if (!commentDraft.trim()) return;
+    const content = commentDraft.trim();
+    if (!content) return;
     const updated = addComment(
       post,
       currentUserName ?? "You",
       currentUserHandle ?? "you",
-      commentDraft.trim()
+      content
     );
-    onUpdate(updated);
+    onUpdate(updated); // optimistic
     setCommentDraft("");
+    persistComment(content);
+  }
+
+  /**
+   * Sends the comment to the server.
+   *
+   * Comments were purely local: the UI appended them, said nothing, and the write was
+   * discarded — so a user saw their comment, reloaded, and it was gone, and nobody else ever
+   * saw it. The endpoint existed the whole time (`POST /api/posts/{id}/comments`).
+   *
+   * A post with no `serverId` is a seeded demo post that exists only in this browser; there is
+   * nothing to persist it to, and that is not an error.
+   */
+  function persistComment(content: string, parentCommentId?: number) {
+    if (post.serverId == null) return;
+    postsApi
+      .comment(post.serverId, content, parentCommentId)
+      .catch((err) => {
+        onUpdate(post); // revert to the pre-comment state
+        toast.error(
+          err instanceof ApiError ? err.message : "Your comment couldn't be saved"
+        );
+      });
   }
 
   function handleAddReply(commentId: string) {
@@ -249,9 +273,15 @@ export function PostDetailDialog({
       currentUserHandle ?? "you",
       draft
     );
-    onUpdate(updated);
+    onUpdate(updated); // optimistic
     setReplyDrafts((prev) => ({ ...prev, [commentId]: "" }));
     setActiveReplyCommentId(null);
+    // Server comment ids reach the local model prefixed (see toPostComment), so a reply can
+    // only be threaded server-side when its parent came from the server.
+    const parentId = commentId.startsWith("srv-c-")
+      ? Number(commentId.slice("srv-c-".length))
+      : undefined;
+    persistComment(draft, Number.isFinite(parentId) ? parentId : undefined);
   }
 
   function handleToggleReply(commentId: string) {

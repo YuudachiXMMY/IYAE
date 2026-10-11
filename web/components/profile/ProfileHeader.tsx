@@ -59,6 +59,7 @@ export function ProfileHeader({ user, surface, onUpdateSurface }: ProfileHeaderP
         <div className="absolute right-3 top-3">
           <LocalImagePicker
             onSelect={(url) => onUpdateSurface({ bannerDataUrl: url })}
+            label="Choose a banner image"
             maxDimension={1200}
           >
             <button
@@ -96,6 +97,7 @@ export function ProfileHeader({ user, surface, onUpdateSurface }: ProfileHeaderP
             {/* Avatar upload overlay */}
             <LocalImagePicker
               onSelect={(url) => onUpdateSurface({ avatarDataUrl: url })}
+              label="Choose a profile photo"
               maxDimension={400}
             >
               <button

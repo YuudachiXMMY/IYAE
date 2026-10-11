@@ -129,8 +129,11 @@ class PostServiceTest {
     void getFeed_returnsPaginatedActivePosts() {
         when(postRepository.findByStatusOrderByCreatedAtDesc(eq(PostStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(activePost)));
-        when(postLikeRepository.countByPost(activePost)).thenReturn(3L);
-        when(postCommentRepository.countByPost(activePost)).thenReturn(1L);
+        // Batched: the whole page's counts come back in one query each (#11/#16).
+        when(postLikeRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 3L}));
+        when(postCommentRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 1L}));
 
         PagedResponse<PostResponse> feed = postService.getFeed(null, 0, 10);
 
@@ -157,8 +160,11 @@ class PostServiceTest {
         when(postRepository.findByUserAndStatusOrderByCreatedAtDesc(
                 eq(author), eq(PostStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(activePost)));
-        when(postLikeRepository.countByPost(activePost)).thenReturn(0L);
-        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+        // Batched: the whole page's counts come back in one query each (#11/#16).
+        when(postLikeRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
+        when(postCommentRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
 
         PagedResponse<PostResponse> result = postService.getByUser(1L, null, 0, 10);
 
@@ -290,14 +296,23 @@ class PostServiceTest {
         when(userRepository.findByEmail("other@test.com")).thenReturn(Optional.of(other));
         when(postRepository.findFollowingFeed(eq(other), eq(PostStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(activePost)));
-        when(postLikeRepository.findByPostAndUser(activePost, other)).thenReturn(Optional.empty());
-        when(postLikeRepository.countByPost(activePost)).thenReturn(2L);
-        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+        // Batched: the whole page's counts and the viewer's likes come back in one query each
+        // (#11/#16). The per-post findByPostAndUser / countByPost calls are gone — a 20-post
+        // page used to issue 60 of them.
+        when(postLikeRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 2L}));
+        when(postCommentRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
+        when(postLikeRepository.findLikedPostIds(eq(other), any()))
+                .thenReturn(List.of(activePost.getId()));
 
         PagedResponse<PostResponse> feed = postService.getFeed("following", "other@test.com", 0, 10);
 
         assertThat(feed.content()).hasSize(1);
         assertThat(feed.content().get(0).likeCount()).isEqualTo(2L);
+        // The viewer's like status comes from the batched lookup, not a per-post query.
+        assertThat(feed.content().get(0).likedByCurrentUser()).isTrue();
+        verify(postLikeRepository, never()).findByPostAndUser(any(), any());
     }
 
     @Test
@@ -313,8 +328,11 @@ class PostServiceTest {
         when(postRepository.findByStatusAndCityOrderByCreatedAtDesc(
                 eq(PostStatus.ACTIVE), eq("Toronto"), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(activePost)));
-        when(postLikeRepository.countByPost(activePost)).thenReturn(0L);
-        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+        // Batched: the whole page's counts come back in one query each (#11/#16).
+        when(postLikeRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
+        when(postCommentRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
 
         PagedResponse<PostResponse> feed = postService.getFeed("toronto", null, 0, 10);
 
@@ -326,8 +344,11 @@ class PostServiceTest {
         when(postRepository.findByStatusAndTopicOrderByCreatedAtDesc(
                 eq(PostStatus.ACTIVE), eq("body-confidence"), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(activePost)));
-        when(postLikeRepository.countByPost(activePost)).thenReturn(0L);
-        when(postCommentRepository.countByPost(activePost)).thenReturn(0L);
+        // Batched: the whole page's counts come back in one query each (#11/#16).
+        when(postLikeRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
+        when(postCommentRepository.countByPostIds(any()))
+                .thenReturn(List.<Object[]>of(new Object[] {activePost.getId(), 0L}));
 
         PagedResponse<PostResponse> feed = postService.getFeed("body-confidence", null, 0, 10);
 

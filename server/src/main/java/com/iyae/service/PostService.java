@@ -15,6 +15,11 @@ import com.iyae.entity.User;
 import com.iyae.entity.enums.CommentStatus;
 import com.iyae.entity.enums.PostStatus;
 import com.iyae.entity.enums.ReportStatus;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import com.iyae.util.Pagination;
 import com.iyae.repository.PostCommentRepository;
 import com.iyae.repository.PostLikeRepository;
 import com.iyae.repository.PostReportRepository;
@@ -79,7 +84,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public PagedResponse<PostResponse> getFeed(String feed, String email, int page, int size) {
         User currentUser = email != null ? userRepository.findByEmail(email).orElse(null) : null;
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Pagination.clampPage(page), Pagination.clampSize(size));
         String feedType = (feed == null || feed.isBlank()) ? "discover" : feed.trim().toLowerCase();
         Page<Post> posts;
         switch (feedType) {
@@ -98,7 +103,7 @@ public class PostService {
                     PostStatus.ACTIVE, "body-confidence", pageable);
             default -> throw new IllegalArgumentException("Unknown feed: " + feed);
         }
-        return PagedResponse.from(posts.map(p -> toResponse(p, currentUser, isLikedBy(p, currentUser))));
+        return toResponsePage(posts, currentUser);
     }
 
     /** Back-compat overload: the feed-less call is the Discover stream. */
@@ -117,7 +122,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public PagedResponse<CommentResponse> getComments(Long postId, int page, int size) {
         Post post = findActivePost(postId);
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Pagination.clampPage(page), Pagination.clampSize(size));
         return PagedResponse.from(
             postCommentRepository
                 .findByPostAndParentCommentIsNullAndStatusOrderByCreatedAtAsc(post, CommentStatus.ACTIVE, pageable)
@@ -148,9 +153,9 @@ public class PostService {
         User targetUser = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
         User currentUser = email != null ? userRepository.findByEmail(email).orElse(null) : null;
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Pagination.clampPage(page), Pagination.clampSize(size));
         Page<Post> posts = postRepository.findByUserAndStatusOrderByCreatedAtDesc(targetUser, PostStatus.ACTIVE, pageable);
-        return PagedResponse.from(posts.map(p -> toResponse(p, currentUser, isLikedBy(p, currentUser))));
+        return toResponsePage(posts, currentUser);
     }
 
     @Transactional
@@ -234,6 +239,41 @@ public class PostService {
         long likeCount = postLikeRepository.countByPost(post);
         long commentCount = postCommentRepository.countByPost(post);
         return PostResponse.from(post, likeCount, commentCount, liked);
+    }
+
+    /**
+     * Maps a whole page in three queries instead of three per post.
+     *
+     * <p>Rendering a 20-post feed page used to issue 60 extra round-trips: a like count, a
+     * comment count and a like-status check for every post, each one its own query. The counts
+     * and the viewer's likes are now batched by post id.
+     */
+    private PagedResponse<PostResponse> toResponsePage(Page<Post> posts, User currentUser) {
+        List<Long> ids = posts.getContent().stream().map(Post::getId).toList();
+        if (ids.isEmpty()) {
+            return PagedResponse.from(posts.map(p -> PostResponse.from(p, 0, 0, false)));
+        }
+
+        Map<Long, Long> likeCounts = toCountMap(postLikeRepository.countByPostIds(ids));
+        Map<Long, Long> commentCounts = toCountMap(postCommentRepository.countByPostIds(ids));
+        Set<Long> likedByViewer = currentUser == null
+                ? Set.of()
+                : new HashSet<>(postLikeRepository.findLikedPostIds(currentUser, ids));
+
+        return PagedResponse.from(posts.map(post -> PostResponse.from(
+                post,
+                likeCounts.getOrDefault(post.getId(), 0L),
+                commentCounts.getOrDefault(post.getId(), 0L),
+                likedByViewer.contains(post.getId()))));
+    }
+
+    /** A post with no likes or comments is simply absent from the GROUP BY result. */
+    private static Map<Long, Long> toCountMap(List<Object[]> rows) {
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : rows) {
+            counts.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return counts;
     }
 
     private SavedLook resolveSavedLook(Long savedLookId, User user) {

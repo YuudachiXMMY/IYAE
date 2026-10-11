@@ -1,0 +1,16 @@
+-- Index behind the Stripe webhook's order lookup.
+--
+-- `findByStripeSessionId` is how the webhook finds the order it is fulfilling, and the column
+-- had no index at all — a full table scan on the one code path that has to be fast and
+-- reliable, growing with every order ever placed.
+--
+-- Plain, not unique: a unique index would be a nice extra guard (two orders claiming one Stripe
+-- session is a bug), but it would also fail this migration outright on any existing database
+-- that already contains a duplicate, and the defect being fixed here is the missing index.
+--
+-- Nothing else is added. The indexes that would back the community feed's like/comment counts
+-- already exist: `post_likes` has UNIQUE KEY (post_id, user_id) whose leftmost column is
+-- post_id, and `post_comments.post_id` / `follows.follower_id` / `follows.following_id` are
+-- foreign keys, for which InnoDB creates an index automatically. A redundant index is not free
+-- — it costs on every write.
+CREATE INDEX idx_orders_stripe_session_id ON orders (stripe_session_id);

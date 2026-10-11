@@ -5,13 +5,14 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, BadgeCheck, Globe2, Heart, MessageCircleMore } from "lucide-react";
 import { findSocialProfile } from "@/lib/social-graph";
-import { type SocialPost } from "@/lib/community-feed";
+import { type SocialPost, toSocialPost } from "@/lib/community-feed";
 import { useCommunityState } from "@/lib/hooks/useCommunityState";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { useAuth } from "@/lib/auth-context";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { cn } from "@/lib/utils";
-import { api, follows } from "@/lib/api";
+import { api, follows, posts as postsApi } from "@/lib/api";
+import { toast } from "sonner";
 import { BRAND } from "@/lib/brand";
 
 interface PublicProfileResponse {
@@ -143,17 +144,69 @@ export default function ProfilePage() {
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [outfitTab, setOutfitTab] = useState<"posts" | "tagged">("posts");
 
-  const userPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
-  const taggedPosts =
-    state?.posts.filter(
-      (p) => p.productLinks.length > 0 && p.creatorUsername === username
-    ) ?? [];
+  // The grid used to be `state.posts.filter(creatorUsername === username)` — the *viewer's*
+  // own local community cache. That cache only ever contains the viewer's seeded demo posts
+  // and whatever they created themselves, so in production every other account's profile
+  // rendered an empty grid regardless of how much they had posted. The profiled user's posts
+  // come from the server, keyed on their numeric id.
+  // Tagged with the id it was fetched for, like `counts` above, so switching profiles reads as
+  // "not loaded yet" without an extra effect to clear it — and so the effect body writes no
+  // state synchronously (`react-hooks/set-state-in-effect`, which this repo keeps at zero).
+  const [postsResult, setPostsResult] = useState<{
+    userId: number;
+    posts: SocialPost[] | null;
+  } | null>(null);
+  // Bumped by "Try again". The fetch effect keys on it as well as on the id, because clearing
+  // the result alone would not re-run an effect whose only other dependency is unchanged.
+  const [postsRetry, setPostsRetry] = useState(0);
+  const currentPosts = postsResult?.userId === targetUserId ? postsResult : null;
+
+  useEffect(() => {
+    if (targetUserId == null) return;
+    const ctrl = new AbortController();
+    postsApi
+      .byUser(targetUserId, 0, 30, ctrl.signal)
+      .then((page) => {
+        if (ctrl.signal.aborted) return;
+        setPostsResult({ userId: targetUserId, posts: page.content.map(toSocialPost) });
+      })
+      .catch(() => {
+        if (ctrl.signal.aborted) return;
+        // `posts: null` is a failure, which is NOT "this person has never posted" — rendering
+        // an empty grid for an outage is the failure mode the audit found all over /admin.
+        setPostsResult({ userId: targetUserId, posts: null });
+      });
+    return () => ctrl.abort();
+  }, [targetUserId, postsRetry]);
+
+  const postsFailed = currentPosts != null && currentPosts.posts === null;
+  const postsLoading = targetUserId != null && currentPosts == null;
+
+  // Local-only fallback for an unauthenticated viewer or a demo profile with no numeric id.
+  const localUserPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
+  const userPosts =
+    currentPosts?.posts ?? (targetUserId == null ? localUserPosts : []);
+  const taggedPosts = userPosts.filter((p) => p.productLinks.length > 0);
   const displayPosts = outfitTab === "posts" ? userPosts : taggedPosts;
 
   const isFollowing = state?.followedUsernames.includes(username) ?? false;
 
+  // Writes through to the server, mirroring what /community already does. This page only
+  // toggled the local-storage mirror, so a follow made here was invisible to the followed
+  // user and to every other device — and it fed the real follower counts shown right above it,
+  // which therefore never moved.
   function handleToggleFollow() {
-    toggleFollowFor(username);
+    const wasFollowing = isFollowing;
+    toggleFollowFor(username); // optimistic
+    if (targetUserId == null) return;
+    const req = wasFollowing ? follows.remove(targetUserId) : follows.toggle(targetUserId);
+    req
+      .then(() => follows.counts(targetUserId))
+      .then((c) => setCounts({ userId: targetUserId, ...c }))
+      .catch(() => {
+        toggleFollowFor(username); // revert
+        toast.error("Couldn't update follow. Please try again.");
+      });
   }
 
   if (profileNotFound) {
@@ -334,7 +387,28 @@ export default function ProfilePage() {
             </div>
 
             {/* Grid */}
-            {displayPosts.length === 0 ? (
+            {/* Three distinct states. "No outfits yet" must mean exactly that — not
+                "still loading" and not "the request failed", which is how an outage used to
+                read on this grid. */}
+            {postsFailed ? (
+              <div role="alert" className="py-12 text-center text-sm text-foreground">
+                <p>We couldn&apos;t load these outfits.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPostsResult(null);
+                    setPostsRetry((n) => n + 1);
+                  }}
+                  className="mt-2 font-medium text-brand underline hover:no-underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : postsLoading ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                Loading outfits…
+              </p>
+            ) : displayPosts.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-12">
                 No outfits yet
               </p>
