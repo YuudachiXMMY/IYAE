@@ -72,8 +72,8 @@ class GenerationStatusControllerTest {
     }
 
     @Test
-    void getStatus_unauthenticated_returns403() throws Exception {
+    void getStatus_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/designer/products/1/generation-status"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

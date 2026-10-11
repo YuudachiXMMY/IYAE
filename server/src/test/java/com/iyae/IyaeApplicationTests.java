@@ -25,6 +25,11 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 class IyaeApplicationTests {
 
+    // This context excludes DataSourceAutoConfiguration, so the readiness probe's DataSource
+    // (HealthService.isReady) has to be supplied explicitly like the repositories below.
+    @MockBean
+    javax.sql.DataSource dataSource;
+
     @MockBean
     UserRepository userRepository;
 

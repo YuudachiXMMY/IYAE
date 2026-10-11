@@ -117,4 +117,19 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /**
+     * The handle shown to other people.
+     *
+     * <p>Falls back to a derived {@code user{id}} rather than to the email address. Community
+     * posts, comments and reports previously used the email when no username had been set —
+     * and username is optional at registration, so a buyer who signed up and posted once had
+     * their address published next to their post for every visitor and every scraper.
+     *
+     * <p>Not {@code name} either: that is a display name a user may have entered as their real
+     * name without intending it as a public handle.
+     */
+    public String publicDisplayName() {
+        return username != null && !username.isBlank() ? username : "user" + id;
+    }
 }

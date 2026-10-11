@@ -35,6 +35,122 @@ ensure_env_loaded() {
   fi
 }
 
+BACKUP_DIR="${BACKUP_DIR:-./backups}"
+NGINX_SITE_CONF="nginx/conf.d/default.conf"
+
+# Refuses to serve the public internet over plain HTTP unless the operator says so out loud.
+# The previous arrangement needed two hand edits in a comment block to enable TLS, and shipped
+# with both still commented out — passwords and JWTs in cleartext, with nothing to notice it.
+require_tls_or_explicit_optout() {
+  if grep -qE '^\s*listen\s+443' "$NGINX_SITE_CONF"; then
+    return 0
+  fi
+  if [ "${ALLOW_INSECURE_HTTP:-false}" = "true" ]; then
+    warn "ALLOW_INSECURE_HTTP=true — serving over plain HTTP. Passwords and JWTs will cross the network in cleartext."
+    return 0
+  fi
+  error "TLS is not configured: $NGINX_SITE_CONF has no 'listen 443'."
+  error "Run './prod_deploy.sh ssl-init <your-domain>' first."
+  error "To deploy without TLS anyway (local/private network only), set ALLOW_INSECURE_HTTP=true."
+  exit 1
+}
+
+# Gates on the readiness probe, which touches the database, rather than on /api/health, which
+# is a hardcoded 200 that cannot fail.
+gate_readiness() {
+  local attempts="${1:-30}" i=0
+  while [ "$i" -lt "$attempts" ]; do
+    if docker compose -f "$COMPOSE_FILE" exec -T server \
+         curl -sf http://localhost:8080/api/health/ready &>/dev/null; then
+      success "Readiness probe passed"
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 2
+  done
+  error "Readiness probe did not pass within $((attempts * 2))s"
+  return 1
+}
+
+# Backs up the only copy of the orders, the PII and the uploads. Both live on unreplicated
+# Docker volumes; before this there was no backup and no documented restore at all.
+do_backup() {
+  local stamp target
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  target="$BACKUP_DIR/$stamp"
+  mkdir -p "$target"
+
+  info "Dumping database to $target/database.sql.gz ..."
+  docker compose -f "$COMPOSE_FILE" exec -T mysql \
+    mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" --single-transaction --routines --triggers iyae \
+    | gzip > "$target/database.sql.gz"
+
+  info "Archiving the assets volume to $target/assets.tar.gz ..."
+  docker compose -f "$COMPOSE_FILE" exec -T server \
+    tar czf - -C /var/iyae/assets . > "$target/assets.tar.gz"
+
+  # Fail loudly rather than leaving a zero-byte file that looks like a backup.
+  for f in "$target/database.sql.gz" "$target/assets.tar.gz"; do
+    if [ ! -s "$f" ]; then
+      error "$f is empty — the backup FAILED. Do not rely on it."
+      exit 1
+    fi
+  done
+
+  info "Sizes: $(du -h "$target"/*.gz | awk '{printf "%s %s  ", $1, $2}')"
+  success "Backup complete: $target"
+  warn "This is on the same host as the data it protects. Copy it off-host — a disk failure or"
+  warn "a lost VM takes the backup with it. Example: rsync -a $target <offsite>:/backups/iyae/"
+  info "Schedule it: 15 3 * * *  cd $(pwd) && ./prod_deploy.sh backup >> /var/log/iyae-backup.log 2>&1"
+}
+
+do_restore() {
+  local src="$1"
+  [ -d "$src" ] || { error "No such backup directory: $src"; exit 1; }
+  [ -s "$src/database.sql.gz" ] || { error "$src/database.sql.gz missing or empty"; exit 1; }
+
+  warn "This OVERWRITES the live database and assets volume with $src."
+  printf "Type 'restore' to continue: "
+  read -r confirm
+  [ "$confirm" = "restore" ] || { info "Aborted."; exit 1; }
+
+  info "Restoring database..."
+  gunzip -c "$src/database.sql.gz" \
+    | docker compose -f "$COMPOSE_FILE" exec -T mysql \
+        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" iyae
+
+  if [ -s "$src/assets.tar.gz" ]; then
+    info "Restoring assets..."
+    docker compose -f "$COMPOSE_FILE" exec -T server \
+      tar xzf - -C /var/iyae/assets < "$src/assets.tar.gz"
+  fi
+
+  info "Restarting services to pick up the restored state..."
+  docker compose -f "$COMPOSE_FILE" restart server worker
+  success "Restore complete from $src"
+}
+
+# Both-or-neither validation. Used for the Stripe pair: STRIPE_SECRET_KEY alone makes
+# handleWebhook throw "Webhook secret not configured", so a half-configured payment setup
+# breaks fulfilment rather than enabling payment. Neither set = payment stays off (503).
+require_paired_env_vars() {
+  local a="$1" b="$2"
+  local a_set=0 b_set=0
+  [ -n "${!a:-}" ] && a_set=1
+  [ -n "${!b:-}" ] && b_set=1
+  if [ "$a_set" -ne "$b_set" ]; then
+    if [ "$a_set" -eq 1 ]; then
+      error "$a is set but $b is not — supply both or neither. A key without a webhook secret breaks order fulfilment."
+    else
+      error "$b is set but $a is not — supply both or neither."
+    fi
+    exit 1
+  fi
+  if [ "$a_set" -eq 0 ]; then
+    warn "$a / $b are unset — payment collection is DISABLED; POST /api/checkout will answer 503."
+  fi
+}
+
 is_placeholder_jwt() {
   local val="$1"
   [[ -z "$val" ]] && return 0
@@ -104,21 +220,43 @@ case "${1:-help}" in
       ensure_env_loaded
     fi
 
-    require_env_vars DB_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET
+    # ADMIN_BOOTSTRAP_* is required, not optional: no other code path can create an
+    # administrator in production, so omitting it yields an unmoderatable instance.
+    # CORS_ORIGINS and FRONTEND_BASE_URL were never validated. Their effective production
+    # values (empty, and http://localhost:3000) silently break every state-changing browser
+    # request and every verification / password-reset / checkout link in an email.
+    require_env_vars DB_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET \
+      INTERNAL_MAIL_SECRET ADMIN_BOOTSTRAP_EMAIL ADMIN_BOOTSTRAP_PASSWORD \
+      CORS_ORIGINS FRONTEND_BASE_URL
+    require_paired_env_vars STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
+
+    case "${FRONTEND_BASE_URL:-}" in
+      *localhost*|*127.0.0.1*)
+        error "FRONTEND_BASE_URL is $FRONTEND_BASE_URL — email links and checkout redirects would point at the operator's own machine."
+        exit 1
+        ;;
+    esac
 
     success "Setup complete. Run './deploy.sh up' to start services."
     ;;
 
   up)
+    ensure_env_loaded
+    require_tls_or_explicit_optout
     info "Starting production services..."
     docker compose -f "$COMPOSE_FILE" up -d --build
     wait_for_healthy mysql
+    wait_for_healthy server
     info "All services starting..."
-    sleep 5
     "$0" health
     ;;
 
   update)
+    ensure_env_loaded
+    require_tls_or_explicit_optout
+    previous_rev="$(git rev-parse HEAD)"
+    info "Current revision: $previous_rev"
+
     info "Pulling latest code..."
     git pull
     info "Rebuilding services..."
@@ -126,9 +264,42 @@ case "${1:-help}" in
     info "Restarting services..."
     docker compose -f "$COMPOSE_FILE" up -d
     wait_for_healthy mysql
-    sleep 5
-    "$0" health
-    success "Update complete"
+
+    # Real gate, not `sleep 5`. The old `update` cut traffic over and then merely *printed*
+    # diagnostics, so a release that could not serve a single request was reported as complete
+    # and left running. Nothing rolled back.
+    if wait_for_healthy server && gate_readiness; then
+      "$0" health
+      success "Update complete"
+    else
+      error "New revision failed its readiness gate — rolling back to $previous_rev"
+      git reset --hard "$previous_rev"
+      docker compose -f "$COMPOSE_FILE" build
+      docker compose -f "$COMPOSE_FILE" up -d
+      if wait_for_healthy server && gate_readiness; then
+        warn "Rolled back to $previous_rev, which is serving again."
+      else
+        error "Rollback to $previous_rev is ALSO unhealthy. Manual intervention required."
+      fi
+      exit 1
+    fi
+    ;;
+
+  backup)
+    ensure_env_loaded
+    do_backup
+    ;;
+
+  restore)
+    ensure_env_loaded
+    archive="${2:-}"
+    if [ -z "$archive" ]; then
+      error "Usage: ./prod_deploy.sh restore <backup-directory>"
+      info "Available backups:"
+      ls -1 "$BACKUP_DIR" 2>/dev/null || info "  (none in $BACKUP_DIR)"
+      exit 1
+    fi
+    do_restore "$archive"
     ;;
 
   ssl-init)
@@ -148,15 +319,35 @@ case "${1:-help}" in
     fi
 
     docker compose -f "$COMPOSE_FILE" --profile tools run --rm -p 80:80 \
-      certbot certonly --standalone \
+      certbot-cli certonly --standalone \
       --cert-name iyae \
       -d "$domain" \
       --agree-tos --no-eff-email \
       $email_flag
 
+    # Install the TLS site config instead of telling the operator to uncomment two blocks by
+    # hand. That instruction is why production ran without TLS: it was never carried out, and
+    # nothing failed to indicate it.
+    if [ ! -f nginx/templates/tls.conf ]; then
+      error "nginx/templates/tls.conf is missing — cannot enable TLS."
+      exit 1
+    fi
+    cp "$NGINX_SITE_CONF" "${NGINX_SITE_CONF}.http-only.bak"
+    sed -e "s|__SERVER_NAME__|$domain|g" -e "s|__CERT_NAME__|iyae|g" \
+      nginx/templates/tls.conf > "$NGINX_SITE_CONF"
+    info "Installed TLS config (previous HTTP-only config saved as ${NGINX_SITE_CONF}.http-only.bak)"
+
     docker compose -f "$COMPOSE_FILE" up -d nginx
-    success "SSL certificate obtained for $domain"
-    info "Enable HTTPS block in nginx/conf.d/default.conf and restart nginx"
+    sleep 3
+    if docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t &>/dev/null; then
+      success "SSL certificate obtained and HTTPS enabled for $domain"
+      info "Renewal is automatic: the certbot service renews every 12h and nginx reloads every 6h."
+    else
+      error "nginx rejected the TLS config. Restoring the HTTP-only config."
+      mv "${NGINX_SITE_CONF}.http-only.bak" "$NGINX_SITE_CONF"
+      docker compose -f "$COMPOSE_FILE" up -d --force-recreate nginx
+      exit 1
+    fi
     ;;
 
   ssl-renew)
@@ -183,10 +374,25 @@ case "${1:-help}" in
     done
 
     echo ""
-    if curl -sf http://localhost/api/health &>/dev/null; then
-      success "API endpoint: reachable via nginx"
+    # /ready, not /health: /health is a hardcoded 200 and reports fine with no database.
+    if curl -sf http://localhost/api/health/ready &>/dev/null; then
+      success "API readiness: database reachable, serving"
+    elif curl -sf http://localhost/api/health &>/dev/null; then
+      error "API is up but NOT READY — the database is unreachable. It is serving errors."
     else
       warn "API endpoint: not reachable"
+    fi
+
+    if grep -qE '^\s*listen\s+443' "$NGINX_SITE_CONF"; then
+      success "TLS: configured"
+    else
+      error "TLS: NOT configured — traffic is plaintext HTTP"
+    fi
+
+    if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+      info "Most recent backup: $(ls -1t "$BACKUP_DIR" | head -1)"
+    else
+      error "No backups found in $BACKUP_DIR — the database has no recoverable copy."
     fi
     if curl -sf http://localhost &>/dev/null; then
       success "Web frontend: reachable via nginx"
@@ -219,8 +425,10 @@ case "${1:-help}" in
     echo "  up                 Build and start all production services"
     echo "  stop               Stop all production services"
     echo "  update             Pull latest code, rebuild, and restart"
-    echo "  ssl-init <domain>  Obtain SSL certificate via Let's Encrypt"
-    echo "  ssl-renew          Renew SSL certificates"
+    echo "  ssl-init <domain>  Obtain SSL certificate and switch nginx to HTTPS"
+    echo "  ssl-renew          Renew SSL certificates now (renewal is otherwise automatic)"
+    echo "  backup             Dump the database and assets volume to ./backups/<timestamp>"
+    echo "  restore <dir>      Restore database and assets from a backup directory"
     echo "  health             Show service status and diagnostics"
     echo "  logs [service]     Tail production logs"
     ;;

@@ -15,6 +15,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,10 +44,18 @@ public class AvatarService {
     @Value("${AVATAR_GENERATION_PROVIDER:mock}")
     private String avatarProvider;
 
-    // Mirrors WebMvcConfig: the shared asset root the worker writes avatar GLBs under
-    // ({assetRoot}/avatars/{userId}/avatar.glb), served publicly at /assets/**.
+    // The shared asset root the worker writes avatar GLBs under
+    // ({assetRoot}/avatars/{userId}/avatar.glb). This subtree is NOT served as a static file by
+    // nginx or by Spring's resource handlers — see AVATAR_MODEL_ROUTE.
     @Value("${worker.output-dir:/var/iyae/assets}")
     private String assetRoot;
+
+    /**
+     * The only route a generated body scan is reachable through. Authenticated, and it serves
+     * the caller their own avatar — never one identified by a client-supplied id, so there is
+     * nothing to enumerate.
+     */
+    public static final String AVATAR_MODEL_ROUTE = "/api/avatar/model";
 
     @Transactional
     public AvatarStatusResponse generateAvatar(String email) {
@@ -106,8 +116,14 @@ public class AvatarService {
         String glbUrl = null;
         if ((latest.getStatus() == TaskStatus.READY
                 || latest.getStatus() == TaskStatus.MATERIALIZED)
-                && latest.getOutputPayload() != null) {
-            glbUrl = extractField(latest.getOutputPayload(), "glb_url");
+                && latest.getOutputPayload() != null
+                && extractField(latest.getOutputPayload(), "glb_url") != null) {
+            // Deliberately NOT the worker's own `glb_url`, which is the static path
+            // /assets/avatars/{userId}/avatar.glb. That path was served unauthenticated with a
+            // sequential integer in it, so anyone who could count could download every user's
+            // 3D body scan. The client is handed the authenticated route instead; the static
+            // path is no longer reachable from nginx or from Spring's resource handlers.
+            glbUrl = AVATAR_MODEL_ROUTE;
         }
 
         return new AvatarStatusResponse(
@@ -116,6 +132,34 @@ public class AvatarService {
                 latest.getErrorMessage(),
                 latest.getAttemptCount() != null ? latest.getAttemptCount() : 0
         );
+    }
+
+    /**
+     * Opens the caller's own avatar GLB for streaming.
+     *
+     * <p>The path is derived entirely from the authenticated principal's own id — no part of it
+     * comes from the request — so there is no identifier for a caller to tamper with and no
+     * sequence to walk. The containment check below is belt-and-braces against a future change
+     * that lets any of it become attacker-influenced.
+     *
+     * @throws IllegalArgumentException when no avatar has been generated for this account
+     */
+    @Transactional(readOnly = true)
+    public Resource openOwnAvatarModel(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        Path root = Paths.get(assetRoot).toAbsolutePath().normalize();
+        Path file = root.resolve(Paths.get("avatars", String.valueOf(user.getId()), "avatar.glb"))
+                .normalize();
+        if (!file.startsWith(root)) {
+            log.error("Refusing to serve avatar outside the asset root: {}", file);
+            throw new IllegalArgumentException("Avatar not found");
+        }
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("Avatar not found");
+        }
+        return new FileSystemResource(file);
     }
 
     @Transactional(readOnly = true)

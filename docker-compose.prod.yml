@@ -1,5 +1,22 @@
+# Shared defaults.
+#
+# restart: every service previously had NO restart policy, so a single OOM kill, crash or host
+# reboot was a permanent outage with no auto-recovery — the audit filed this four times, once
+# per service.
+#
+# logging: no service capped its logs, on the same disk that holds the only copy of the
+# database and all uploads. An unbounded log is a slow disk-full outage.
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   mysql:
+    <<: *service-defaults
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -17,6 +34,7 @@ services:
       - iyae-net
 
   server:
+    <<: *service-defaults
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -37,6 +55,16 @@ services:
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET}
+      # Without these the deployment has no administrator and cannot get one, so the
+      # /admin console and the UGC report queue are live but unreachable.
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD}
+      # Payment is OFF for launch #1: both blank means POST /api/checkout answers 503.
+      # These must be passed through here because no compose file uses env_file:, so without
+      # these two lines an operator cannot supply them at all. Supply BOTH or NEITHER —
+      # a key without a webhook secret breaks fulfilment instead of enabling payment.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       # Trust the Nginx reverse proxy's Docker network so per-IP rate limiting keys on the
       # real client via X-Forwarded-For. Default = Docker bridge range; pin to your subnet.
       RATE_LIMIT_TRUSTED_PROXIES: ${RATE_LIMIT_TRUSTED_PROXIES:-172.16.0.0/12}
@@ -46,7 +74,9 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
+      # /ready, not /health: /health is a hardcoded 200 that cannot fail, so it would
+      # keep a server with an unreachable database in rotation.
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -55,6 +85,7 @@ services:
       - iyae-net
 
   worker:
+    <<: *service-defaults
     build:
       context: ./worker
       dockerfile: Dockerfile.rigging
@@ -82,6 +113,7 @@ services:
       - iyae-net
 
   web:
+    <<: *service-defaults
     build:
       context: ./web
       dockerfile: Dockerfile
@@ -103,6 +135,7 @@ services:
       - iyae-net
 
   nginx:
+    <<: *service-defaults
     image: nginx:alpine
     ports:
       - "80:80"
@@ -116,6 +149,8 @@ services:
     depends_on:
       - web
       - server
+    # Reload every 6h so a renewed certificate is actually picked up.
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g 'daemon off;'"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
       interval: 15s
@@ -124,7 +159,24 @@ services:
     networks:
       - iyae-net
 
+  # Automatic renewal. Previously certbot was a one-shot `tools`-profile container and
+  # `ssl-renew` was a fully manual command, so the certificate expired on whatever day nobody
+  # remembered — taking the whole site down, since HSTS forbids falling back to HTTP.
+  # `certbot renew` is a no-op when nothing is near expiry, and exits 0 when no certs exist.
   certbot:
+    <<: *service-defaults
+    image: certbot/certbot
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/certbot/www
+    networks:
+      - iyae-net
+    entrypoint: /bin/sh
+    command: -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/certbot/www --quiet; sleep 12h & wait $${!}; done'
+
+  # The same certbot image, kept in the tools profile for the one-shot `certonly` that
+  # ssl-init runs. Separate from the renewal loop above so the loop is never interrupted.
+  certbot-cli:
     image: certbot/certbot
     volumes:
       - letsencrypt:/etc/letsencrypt

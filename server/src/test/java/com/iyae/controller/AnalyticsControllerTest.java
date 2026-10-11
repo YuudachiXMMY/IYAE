@@ -107,14 +107,14 @@ class AnalyticsControllerTest {
     }
 
     @Test
-    void track_unauthenticated_returns403() throws Exception {
+    void track_unauthenticated_returns401() throws Exception {
         String body = objectMapper.writeValueAsString(new TrackEventRequest("view", null, null, null));
 
         mockMvc.perform(post("/api/events")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

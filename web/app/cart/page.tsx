@@ -9,6 +9,8 @@ import { PageShell } from "@/components/PageShell";
 import { Button } from "@/components/ui/button";
 import { useCart, type CartItem, type DemoCartItem } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
+import { usePublicConfig } from "@/lib/hooks/usePublicConfig";
+import { CheckoutUnavailableNotice } from "@/components/CheckoutUnavailableNotice";
 
 function formatPrice(price: number, currency?: string): string {
   return new Intl.NumberFormat("en-CA", {
@@ -209,6 +211,7 @@ export default function CartPage() {
   const router = useRouter();
   const { serverItems, demoItems, totalCount, loading } = useCart();
   const { user } = useAuth();
+  const checkoutConfig = usePublicConfig();
 
   const serverTotal = serverItems.reduce(
     (sum, item) => sum + item.price * item.quantity,
@@ -298,13 +301,19 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <Button
-                className="mt-6 w-full rounded-full bg-brand py-3 text-primary-foreground hover:bg-brand-hover"
-                disabled={totalCount === 0}
-                onClick={() => router.push("/checkout")}
-              >
-                Checkout
-              </Button>
+              {checkoutConfig.error ? (
+                <CheckoutUnavailableNotice variant="error" onRetry={checkoutConfig.reload} />
+              ) : checkoutConfig.config && !checkoutConfig.config.checkoutEnabled ? (
+                <CheckoutUnavailableNotice />
+              ) : (
+                <Button
+                  className="mt-6 w-full rounded-full bg-brand py-3 text-primary-foreground hover:bg-brand-hover"
+                  disabled={totalCount === 0 || checkoutConfig.loading}
+                  onClick={() => router.push("/checkout")}
+                >
+                  {checkoutConfig.loading ? "Checking…" : "Checkout"}
+                </Button>
+              )}
 
               {!user && (
                 <p className="mt-3 text-center text-xs text-muted-foreground">

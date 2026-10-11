@@ -6,6 +6,7 @@ import com.iyae.config.RateLimitProperties;
 import com.iyae.repository.UserRepository;
 import com.iyae.security.JwtTokenProvider;
 import com.iyae.security.UserDetailsServiceImpl;
+import com.iyae.service.HealthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
@@ -22,6 +23,10 @@ class HealthControllerTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    // The controller now delegates to HealthService instead of duplicating its logic.
+    @MockBean
+    HealthService healthService;
 
     @MockBean
     AIProviderFactory aiProviderFactory;
@@ -47,7 +52,8 @@ class HealthControllerTest {
 
     @Test
     void getHealth_returnsUpStatus() throws Exception {
-        when(brandProperties.serviceId()).thenReturn("iyae-server");
+        when(healthService.getServerHealth())
+                .thenReturn(java.util.Map.of("status", "UP", "service", "iyae-server"));
 
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
@@ -57,8 +63,8 @@ class HealthControllerTest {
 
     @Test
     void getAiHealth_returnsMockProviderStatus() throws Exception {
-        when(aiProviderFactory.getProviderName()).thenReturn("mock");
-        when(aiProviderFactory.healthCheck()).thenReturn("UP");
+        when(healthService.getAiHealth())
+                .thenReturn(java.util.Map.of("provider", "mock", "status", "UP"));
 
         mockMvc.perform(get("/api/health/ai"))
                 .andExpect(status().isOk())
@@ -68,12 +74,36 @@ class HealthControllerTest {
 
     @Test
     void getAiHealth_whenProviderDown_returnsDownStatus() throws Exception {
-        when(aiProviderFactory.getProviderName()).thenReturn("claude");
-        when(aiProviderFactory.healthCheck()).thenReturn("DOWN");
+        when(healthService.getAiHealth())
+                .thenReturn(java.util.Map.of("provider", "claude", "status", "DOWN"));
 
         mockMvc.perform(get("/api/health/ai"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.provider").value("claude"))
                 .andExpect(jsonPath("$.status").value("DOWN"));
+    }
+
+    // ---- #42: the readiness probe must be able to fail ----
+
+    @Test
+    void getReady_whenDatabaseReachable_returns200() throws Exception {
+        when(healthService.isReady()).thenReturn(true);
+
+        mockMvc.perform(get("/api/health/ready"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.database").value("UP"));
+    }
+
+    @Test
+    void getReady_whenDatabaseUnreachable_returns503() throws Exception {
+        // The whole point of the finding: the old probe reported healthy with no database, so
+        // the container stayed in rotation and `prod_deploy.sh` declared a broken deploy a success.
+        when(healthService.isReady()).thenReturn(false);
+
+        mockMvc.perform(get("/api/health/ready"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("NOT_READY"))
+                .andExpect(jsonPath("$.database").value("DOWN"));
     }
 }

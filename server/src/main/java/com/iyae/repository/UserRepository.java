@@ -10,4 +10,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByVerificationToken(String verificationToken);
     boolean existsByUsernameIgnoreCase(String username);
     Optional<User> findByUsernameIgnoreCase(String username);
+
+    /** Backs the admin bootstrap's idempotence check (see AdminBootstrap). */
+    long countByRole(com.iyae.entity.enums.Role role);
 }

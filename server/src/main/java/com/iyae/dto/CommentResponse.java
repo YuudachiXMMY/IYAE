@@ -14,9 +14,8 @@ public record CommentResponse(
     Instant createdAt
 ) {
     public static CommentResponse from(PostComment comment) {
-        String username = comment.getUser().getUsername() != null
-            ? comment.getUser().getUsername()
-            : comment.getUser().getEmail();
+        // Never the email address — see User.publicDisplayName().
+        String username = comment.getUser().publicDisplayName();
         return new CommentResponse(
             comment.getId(),
             comment.getPost().getId(),

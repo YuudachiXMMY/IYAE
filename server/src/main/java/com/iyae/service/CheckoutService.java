@@ -7,6 +7,7 @@ import com.iyae.entity.Order;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.EventType;
 import com.iyae.entity.enums.OrderStatus;
+import com.iyae.exception.PaymentsDisabledException;
 import com.iyae.repository.CartItemRepository;
 import com.iyae.repository.CartRepository;
 import com.iyae.repository.OrderRepository;
@@ -59,10 +60,37 @@ public class CheckoutService {
     @Value("${app.frontend.base-url:http://localhost:3000}")
     private String frontendBaseUrl;
 
+    /**
+     * Whether the free-order dev stub may be used when no Stripe key is configured. Defaults to
+     * {@code false} — only {@code dev} and {@code test} turn it on. Production must never reach it:
+     * a blank key there means payment is off, and "off" has to be a refusal, not a free order.
+     */
+    @Value("${app.payments.stub-checkout-enabled:false}")
+    private boolean stubCheckoutEnabled;
+
     @PostConstruct
     void initStripe() {
         if (stripeSecretKey != null && !stripeSecretKey.isBlank()) {
-            log.info("Stripe secret key configured");
+            log.info("Stripe secret key configured — payment collection is LIVE");
+        } else if (stubCheckoutEnabled) {
+            log.warn("STRIPE_SECRET_KEY is blank and the checkout stub is ENABLED — "
+                    + "orders will be written PAID without payment. Never run this configuration in production.");
+        } else {
+            log.warn("STRIPE_SECRET_KEY is blank — checkout is DISABLED and will answer 503. "
+                    + "Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET together to enable payment.");
+        }
+    }
+
+    /** True when a buyer can actually pay. Drives the web client's entry-point visibility. */
+    public boolean isCheckoutEnabled() {
+        return (stripeSecretKey != null && !stripeSecretKey.isBlank()) || stubCheckoutEnabled;
+    }
+
+    private void requireStubAllowed(String context) {
+        if (!stubCheckoutEnabled) {
+            log.warn("Refused {} — payment collection is not configured", context);
+            throw new PaymentsDisabledException(
+                    "Checkout is currently unavailable: this store is not accepting payments yet.");
         }
     }
 
@@ -75,6 +103,7 @@ public class CheckoutService {
         FulfillmentService.ResolvedFulfillment fulfillment = fulfillmentService.resolve(req);
 
         if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
+            requireStubAllowed("checkout for user " + user.getId());
             return stubCheckout(user, fulfillment);
         }
 
@@ -247,6 +276,11 @@ public class CheckoutService {
     public Map<String, String> initiateResaleCheckout(String email, Long listingId) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
+        if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
+            // Refuse before reserving: markSold is irreversible, so a checkout that can never
+            // collect money must not touch the unique unit's availability at all.
+            requireStubAllowed("resale checkout for listing " + listingId);
+        }
         ResaleService.ReservedListing snap = resaleService.reserve(listingId, email);
         try {
             String snapshot = buildResaleSnapshot(snap);

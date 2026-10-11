@@ -50,7 +50,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   if (!res.ok) {
-    if (res.status === 401) {
+    // Only a 401 against a token we actually sent means "your session died". A 401 with no
+    // token is just "this endpoint needs auth" — hard-redirecting there would yank anonymous
+    // visitors off public pages that happen to probe a protected endpoint.
+    if (res.status === 401 && token) {
       // Token expired or invalid - clear and redirect
       if (typeof window !== "undefined" && !isRedirecting) {
         isRedirecting = true;
@@ -314,6 +317,29 @@ export interface CheckoutRequestBody {
   pickupLocationId?: number | null;
   shippingCarrier?: string | null;
 }
+
+/**
+ * Runtime feature flags, read from the server rather than inlined at build time.
+ *
+ * `checkoutEnabled` is false for launch #1. Surfaces that would start a payment must consult it
+ * and hide their entry point: the server answers 503, and a live-looking button in front of a
+ * 503 is a support ticket rather than a disabled feature.
+ */
+export interface PublicConfig {
+  checkoutEnabled: boolean;
+  /**
+   * Mirrors the server's own `app.auth.require-email-verification`. Read from here rather than
+   * from a `NEXT_PUBLIC_*` build-time variable: that variable had no build-arg plumbing in
+   * `web/Dockerfile`, so the production image could never see `true` and every new signup was
+   * bounced to a dashboard where nothing worked.
+   */
+  requireEmailVerification: boolean;
+}
+
+export const publicConfig = {
+  get: (signal?: AbortSignal) =>
+    api.get<PublicConfig>("/api/public/config", { signal }),
+};
 
 /** Public reference reads for the checkout fulfillment selector. */
 export const fulfillment = {

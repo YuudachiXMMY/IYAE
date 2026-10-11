@@ -92,7 +92,7 @@ export default function RegisterPage() {
       const registeredUser = await register({ email, password, role, ...optionalFields } as RegisterRequest);
       // In prod an unverified account is not authenticated on the client (see auth-context);
       // route it to the verify-email page instead of the dashboard. Dev → "/dashboard" as before.
-      router.push(resolvePostRegisterRedirect(registeredUser));
+      router.push(await resolvePostRegisterRedirect(registeredUser));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

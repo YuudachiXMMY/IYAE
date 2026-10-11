@@ -3,7 +3,10 @@ package com.iyae.config;
 import com.iyae.ai.AIProviderException;
 import com.iyae.dto.ErrorResponse;
 import com.iyae.exception.EmailNotVerifiedException;
+import com.iyae.exception.PaymentsDisabledException;
 import com.iyae.service.AuthMailService;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,8 +19,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -77,6 +82,12 @@ public class GlobalExceptionHandler {
             .body(new ErrorResponse("Email service unavailable: " + ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value(), Instant.now()));
     }
 
+    @ExceptionHandler(PaymentsDisabledException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentsDisabled(PaymentsDisabledException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(new ErrorResponse(ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE.value(), Instant.now()));
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErrorResponse> handleMaxUpload(MaxUploadSizeExceededException ex) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
@@ -84,8 +95,16 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<ErrorResponse> handleRuntime(RuntimeException ex) {
+    public ResponseEntity<ErrorResponse> handleRuntime(RuntimeException ex, HttpServletRequest request) {
+        // This used to return the 500 and log nothing at all, so every unexpected exception —
+        // the ones you most need to see — vanished with no server-side trace. The correlation id
+        // goes to the client too, so a user's screenshot can be tied to a specific stack trace
+        // without the response ever carrying the exception's own text.
+        String errorId = UUID.randomUUID().toString().substring(0, 8);
+        log.error("Unhandled exception [{}] on {} {}", errorId, request.getMethod(),
+            request.getRequestURI(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(new ErrorResponse("Internal server error", HttpStatus.INTERNAL_SERVER_ERROR.value(), Instant.now()));
+            .body(new ErrorResponse("Internal server error (ref " + errorId + ")",
+                HttpStatus.INTERNAL_SERVER_ERROR.value(), Instant.now()));
     }
 }

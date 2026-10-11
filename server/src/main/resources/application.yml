@@ -56,6 +56,18 @@ app:
     verification-token-ttl: 24h
     password-reset-ttl: 1h
     require-email-verification: true
+  admin:
+    # Creates or promotes exactly one ADMIN on boot, then no-ops. Required in production:
+    # DataSeeder (the only other source of an ADMIN row) does not run there, public
+    # registration rejects the role, and no migration inserts one — so without this the
+    # moderation surface is live but unreachable. See AdminBootstrap.
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+  payments:
+    # The free-order dev stub. OFF everywhere except dev/test: a blank STRIPE_SECRET_KEY must
+    # make checkout answer 503, not write the order PAID without collecting payment.
+    # Deliberately NOT env-overridable — re-enabling payment is a code+config change, not a flag.
+    stub-checkout-enabled: false
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
     # Comma-separated IPs and/or CIDR ranges whose X-Forwarded-For is trusted.

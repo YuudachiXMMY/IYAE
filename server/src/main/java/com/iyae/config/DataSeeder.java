@@ -19,7 +19,11 @@ import java.util.List;
 
 @Slf4j
 @Component
-@Profile("!prod")
+// Allow-list, not "!prod". A deny-list meant any deployment that failed to set
+// SPRING_PROFILES_ACTIVE to exactly "prod" — a typo, an empty value, a new orchestrator —
+// seeded five accounts with the published password `password123`, one of them an ADMIN.
+// Unlabelled now means "seed nothing", which is the safe direction to fail.
+@Profile({"dev", "test"})
 @Order(2)
 @RequiredArgsConstructor
 public class DataSeeder implements CommandLineRunner {

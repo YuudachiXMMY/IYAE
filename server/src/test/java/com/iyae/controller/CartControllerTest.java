@@ -51,9 +51,9 @@ class CartControllerTest {
     }
 
     @Test
-    void getCart_unauthenticated_returns403() throws Exception {
+    void getCart_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/cart"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -71,14 +71,14 @@ class CartControllerTest {
     }
 
     @Test
-    void addItem_unauthenticated_returns403() throws Exception {
+    void addItem_unauthenticated_returns401() throws Exception {
         String body = objectMapper.writeValueAsString(new AddCartItemRequest(10L, 1, "M"));
 
         mockMvc.perform(post("/api/cart/items")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

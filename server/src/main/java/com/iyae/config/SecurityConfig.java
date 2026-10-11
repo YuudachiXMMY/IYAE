@@ -1,6 +1,7 @@
 package com.iyae.config;
 
 import com.iyae.security.JwtAuthenticationFilter;
+import com.iyae.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +25,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitFilter rateLimitFilter;
     private final CorsConfigurationSource corsConfigurationSource;
+    private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -43,7 +45,17 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/resale/listings", "/api/resale/listings/*").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/fulfillment/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/users/profile/**").permitAll()
-                .requestMatchers("/assets/**", "/uploads/**").permitAll()
+                // Only the non-personal asset subtrees are public. `/assets/**` used to be a
+                // blanket permitAll, which combined with the resource handler in WebMvcConfig
+                // made every user's 3D body scan downloadable at
+                // /assets/avatars/{userId}/avatar.glb — no auth, sequential integer path.
+                // Body scans are now served only by GET /api/avatar/model, authenticated and
+                // resolved from the principal. The matchers below are paired with the resource
+                // handlers in WebMvcConfig and the location blocks in nginx; all three have to
+                // agree, which is why each one carries this note.
+                .requestMatchers(HttpMethod.GET, "/assets/models/**", "/assets/poses/**",
+                    "/assets/garments/**", "/uploads/**").permitAll()
+                .requestMatchers("/assets/**").denyAll()
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/stripe").permitAll()
                 .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/api/designer/**").hasRole("DESIGNER")
@@ -51,6 +63,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
+            // Without an explicit entry point Spring Security falls back to
+            // Http403ForbiddenEntryPoint, so an anonymous request answers 403 — which the web
+            // client does not recognise as a session failure, wedging every user at token expiry.
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(restAuthenticationEntryPoint))
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

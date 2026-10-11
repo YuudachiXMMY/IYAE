@@ -10,6 +10,7 @@ import com.iyae.entity.enums.FulfillmentMethod;
 import com.iyae.entity.enums.OrderStatus;
 import com.iyae.entity.enums.Role;
 import com.iyae.entity.enums.ShippingCarrier;
+import com.iyae.exception.PaymentsDisabledException;
 import com.iyae.repository.CartItemRepository;
 import com.iyae.repository.CartRepository;
 import com.iyae.repository.OrderRepository;
@@ -110,6 +111,21 @@ class CheckoutServiceTest {
         lenient().when(fulfillmentService.resolve(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new FulfillmentService.ResolvedFulfillment(
                         FulfillmentMethod.SHIP, null, null, java.math.BigDecimal.ZERO));
+
+        // The free-order stub is a dev-only convenience and is OFF by default, so every test that
+        // exercises it has to opt in explicitly. See initiateCheckout_stubDisabled_* for the
+        // production behaviour.
+        setStubCheckoutEnabled(true);
+    }
+
+    private void setStubCheckoutEnabled(boolean enabled) {
+        try {
+            java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stubCheckoutEnabled");
+            f.setAccessible(true);
+            f.set(checkoutService, enabled);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     // ---- stub path (no Stripe key configured) ----
@@ -562,5 +578,60 @@ class CheckoutServiceTest {
         assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com",
                 new CheckoutRequest(FulfillmentMethod.SHIP, null, null)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ---- B-1: payment is off, so the stub must be unreachable rather than silently free ----
+
+    @Test
+    void initiateCheckout_stubDisabled_refusesInsteadOfCreatingFreeOrder() {
+        setStubCheckoutEnabled(false);
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com", null))
+                .isInstanceOf(PaymentsDisabledException.class);
+
+        verify(orderRepository, never()).save(any(Order.class));
+        verify(analyticsService, never()).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void initiateResaleCheckout_stubDisabled_refusesAndReleasesTheReservation() {
+        setStubCheckoutEnabled(false);
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+
+        assertThatThrownBy(() -> checkoutService.initiateResaleCheckout("buyer@test.com", 500L))
+                .isInstanceOf(PaymentsDisabledException.class);
+
+        // markSold is irreversible — it consumes a unique pre-loved unit. A checkout that can
+        // never collect money must not touch availability at all, so the refusal lands before
+        // the reservation rather than reserving and releasing.
+        verify(resaleService, never()).reserve(anyLong(), any());
+        verify(resaleService, never()).markSold(anyLong());
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void initiateCheckout_stubDisabledButStripeConfigured_proceedsToStripe() throws Exception {
+        setStubCheckoutEnabled(false);
+        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeSecretKey");
+        f.setAccessible(true);
+        f.set(checkoutService, "sk_test_123");
+
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
+        when(cartItemRepository.findByCartId(10L)).thenReturn(List.of(testCartItem));
+        Session mockSession = mock(Session.class);
+        when(mockSession.getId()).thenReturn("cs_live_1");
+        when(mockSession.getUrl()).thenReturn("https://checkout.stripe.com/c/pay/cs_live_1");
+        when(stripeGateway.createSession(any(), eq("sk_test_123"))).thenReturn(mockSession);
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>)
+                    inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
+        Map<String, String> result = checkoutService.initiateCheckout("buyer@test.com", null);
+
+        assertThat(result.get("sessionId")).isEqualTo("cs_live_1");
     }
 }

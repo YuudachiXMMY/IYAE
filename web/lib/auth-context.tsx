@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // triggers a 401 bounce on the first protected call. Skip client auth entirely
     // and let the register page route to the verify-email page. Dev (gate off) is
     // unchanged — store the token and set the user as before.
-    if (!isVerificationPending(res.user)) {
+    if (!(await isVerificationPending(res.user))) {
       localStorage.setItem(AUTH_TOKEN_KEY, res.token);
       setUser(res.user);
     }
