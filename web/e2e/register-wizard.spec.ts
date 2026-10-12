@@ -21,6 +21,20 @@ function uniqueEmail(): string {
 }
 
 /**
+ * Fills everything step 0 requires, consent included.
+ *
+ * The Terms/Privacy checkbox is part of the gate: it used to be local state in StepBasics with
+ * no reader, so an account could be created without it ever being ticked. Every spec that wants
+ * to leave step 0 has to satisfy it, which is why this is one helper rather than three lines
+ * repeated at each call site.
+ */
+async function fillBasics(page: Page, email = uniqueEmail()): Promise<void> {
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('testpassword123');
+  await page.getByRole('checkbox').check();
+}
+
+/**
  * Navigate through registration wizard steps by filling basics and advancing.
  * `targetStep` is 0-indexed (0 = Basics, 1 = Style, 2 = Colors, 3 = Measurements, 4 = Avatar, 5 = Complete).
  */
@@ -29,9 +43,8 @@ async function navigateToStep(page: Page, targetStep: number): Promise<void> {
 
   if (targetStep === 0) return;
 
-  // Fill required fields on Step 0 (Basics)
-  await page.getByLabel('Email').fill(uniqueEmail());
-  await page.getByLabel('Password').fill('testpassword123');
+  // Fill required fields on Step 0 (Basics), consent included.
+  await fillBasics(page);
 
   for (let i = 0; i < targetStep; i++) {
     await expect(cta(page)).toBeEnabled();
@@ -64,20 +77,43 @@ test.describe('Registration Wizard', () => {
     await expect(cta(page)).toBeDisabled();
   });
 
-  test('step CTA enabled after filling email and password', async ({ page }) => {
+  test('step CTA stays disabled until Terms/Privacy consent is given', async ({ page }) => {
     await page.goto('/register');
 
+    // Email and password alone used to be enough — the consent checkbox was decorative, so an
+    // account could be created, measurements and all, without it ever being ticked.
     await page.getByLabel('Email').fill('testuser@example.com');
     await page.getByLabel('Password').fill(SEED_PASSWORD);
+    await expect(page.getByRole('checkbox')).not.toBeChecked();
+    await expect(cta(page)).toBeDisabled();
 
+    await page.getByRole('checkbox').check();
     await expect(cta(page)).toBeEnabled();
+  });
+
+  test('the legal links sit outside the consent label and open safely', async ({ page }) => {
+    await page.goto('/register');
+
+    // A <label> forwards every click within it to its control, so a link nested inside one
+    // consented on the user's behalf to the document they were going to read. Asserted
+    // structurally here rather than by clicking, which would spawn a tab per run; that the
+    // click itself does not tick the box is covered deterministically in
+    // __tests__/app/register-consent.test.tsx.
+    for (const name of ['Terms', 'Privacy Policy']) {
+      const link = page.getByRole('link', { name });
+      await expect(link).toHaveAttribute('target', '_blank');
+      await expect(link).toHaveAttribute('rel', /noopener/);
+      await expect(
+        link.locator('xpath=ancestor::label'),
+        `the ${name} link must not be inside a label`,
+      ).toHaveCount(0);
+    }
   });
 
   test('advances to step 2 (Style) on CTA click', async ({ page }) => {
     await page.goto('/register');
 
-    await page.getByLabel('Email').fill(uniqueEmail());
-    await page.getByLabel('Password').fill('testpassword123');
+    await fillBasics(page);
 
     await cta(page).click();
 
@@ -113,8 +149,7 @@ test.describe('Registration Wizard', () => {
     await expect(page.getByRole('button', { name: 'Complete Later' })).not.toBeVisible();
 
     // Step 1 (Style)
-    await page.getByLabel('Email').fill(uniqueEmail());
-    await page.getByLabel('Password').fill('testpassword123');
+    await fillBasics(page);
     await cta(page).click();
     await expect(
       page.getByRole('heading', { name: 'What feels most like you?' }),
@@ -133,8 +168,7 @@ test.describe('Registration Wizard', () => {
     await expect(
       page.getByRole('heading', { name: 'Create your account.' }),
     ).toBeVisible();
-    await page.getByLabel('Email').fill(uniqueEmail());
-    await page.getByLabel('Password').fill('testpassword123');
+    await fillBasics(page);
     await cta(page).click();
 
     // Step 1: Style
@@ -164,8 +198,7 @@ test.describe('Registration Wizard', () => {
     await page.goto('/register');
 
     // Fill Step 0
-    await page.getByLabel('Email').fill(uniqueEmail());
-    await page.getByLabel('Password').fill('testpassword123');
+    await fillBasics(page);
     await cta(page).click();
 
     // Navigate through Steps 1-4
@@ -188,8 +221,7 @@ test.describe('Registration Wizard', () => {
     // The shopper is a seed user — registration must fail as a duplicate email
     await page.goto('/register');
 
-    await page.getByLabel('Email').fill(SEED_USERS.shopper.email);
-    await page.getByLabel('Password').fill('testpassword123');
+    await fillBasics(page, SEED_USERS.shopper.email);
     await cta(page).click();
 
     // Navigate to Step 5
