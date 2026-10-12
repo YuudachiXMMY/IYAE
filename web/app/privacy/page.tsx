@@ -7,9 +7,15 @@
 // and a terms document that did not exist — the footer linked both to href="#" — on a product
 // whose core data is body measurements and 3D body meshes.
 //
-// ENGINEERING-AUTHORED. It is accurate about the system, but it is not legal advice and has not
-// been reviewed by counsel. Have a lawyer review it before launch, and keep it in step with the
-// code: if a new third party starts receiving user data, it belongs in the table below.
+// ENGINEERING-AUTHORED and not reviewed by counsel. Decided 2026-10-11: this ships as-is for
+// launch #1 rather than blocking on a legal review — it is accurate about the system, which is
+// what makes the consent checkbox mean something, and that was the gap. A counsel pass is still
+// worth doing; it is not a release blocker.
+//
+// Keep it in step with the code. If a new third party starts receiving user data, or a new
+// class of data starts being collected, it belongs in the sections below — a privacy policy
+// that has drifted from the system is worse than the one that did not exist, because it is a
+// statement rather than an omission.
 
 import Link from "next/link";
 import { SiteHeader } from "@/components/design-system/SiteHeader";

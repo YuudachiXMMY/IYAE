@@ -3,9 +3,14 @@
 // Companion to /privacy. Registration requires agreeing to "Terms and Privacy Policy" and
 // neither document existed, so the checkbox consented to nothing.
 //
-// ENGINEERING-AUTHORED and accurate about how the product behaves today — including that payment
-// is currently disabled and that the AI stylist's suggestions are not professional advice. It is
-// not legal advice and has not been reviewed by counsel. Have a lawyer review it before launch.
+// ENGINEERING-AUTHORED and not reviewed by counsel. Decided 2026-10-11: ships as-is for launch
+// #1 rather than blocking on a legal review. It is accurate about how the product behaves today
+// — including that payment is disabled and that the AI stylist's suggestions are not
+// professional advice — which is the part that matters for a checkbox the user has to tick.
+// A counsel pass is still worth doing; it is not a release blocker.
+//
+// The "Buying" section below describes payment as disabled. That has to change in the same
+// commit that enables checkout.
 
 import Link from "next/link";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
