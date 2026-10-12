@@ -118,15 +118,24 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
             </div>
           </div>
 
-          <label className="flex items-start gap-3">
-            <Checkbox
-              id="terms"
-              checked={agreed}
-              onCheckedChange={(v) => setAgreed(v === true)}
-              className="mt-0.5"
-            />
+          {/* The links are siblings of the <label>, not inside it. A <label> forwards any
+              click in it to its control, so links nested there would tick the consent box as
+              a side effect of opening the document — consenting on the user's behalf to
+              something they were in the act of going to read. The label still wraps the
+              checkbox and the plain prose, so that text remains a valid click target. */}
+          <div className="flex items-start gap-3">
+            <label className="flex items-start gap-3">
+              <Checkbox
+                id="terms"
+                checked={agreed}
+                onCheckedChange={(v) => setAgreed(v === true)}
+                className="mt-0.5"
+              />
+              <span className="font-body text-[13px] leading-relaxed text-muted-foreground">
+                I agree to {BRAND.name}&apos;s
+              </span>
+            </label>
             <span className="font-body text-[13px] leading-relaxed text-muted-foreground">
-              I agree to {BRAND.name}&apos;s{" "}
               {/* These were plain text until the documents existed, so the box consented to
                   nothing readable — on a product whose core data is body measurements. */}
               <Link
@@ -146,7 +155,7 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
               </Link>
               .
             </span>
-          </label>
+          </div>
         </div>
       </div>
 
