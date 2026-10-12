@@ -30,7 +30,7 @@ jobs:
   # pay for the docker-compose bring-up the E2E job needs.
 
   web-unit:
-    name: Web (vitest + tsc + lint)
+    name: Web (vitest + tsc + lint + build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -61,6 +61,20 @@ jobs:
       - name: Unit tests
         working-directory: web
         run: npm run test
+
+      # `tsc --noEmit` is not a build. The production build resolves things the
+      # typechecker never looks at — `next/font` loaders, the Turbopack import
+      # map, CSS — and until now it only happened inside the Playwright job's
+      # `docker compose build`. So a `next` upgrade passed this job and then took
+      # the E2E job down with "TypeError: fetch failed" in global-setup, because
+      # the web image had not built and there was no server to log in to. The
+      # real error (a weight ARRAY is invalid for a variable font in 16.4.0) was
+      # buried in a Docker build log two steps removed from the failure.
+      #
+      # Last, because it is the slowest step and the fast signals should land first.
+      - name: Production build
+        working-directory: web
+        run: npm run build
 
   server-tests:
     name: Server (JUnit)
