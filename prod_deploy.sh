@@ -33,10 +33,44 @@ ensure_env_loaded() {
   if [ -f .env ]; then
     set -a; source .env; set +a
   fi
+  resolve_site_conf
 }
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
-NGINX_SITE_CONF="nginx/conf.d/default.conf"
+
+# Which site config nginx actually mounts. `ssl-init` renders the TLS config to
+# nginx/conf.d/tls-active.conf — gitignored — and records the choice in .env, which is also
+# gitignored. Neither is therefore an uncommitted modification to a tracked file.
+#
+# It used to overwrite the tracked nginx/conf.d/default.conf in place, which broke TLS twice
+# over: `update`'s rollback runs `git reset --hard "$previous_rev"`, which discarded the
+# rendered config and silently dropped the site back to plain HTTP at exactly the moment
+# something was already going wrong; and `git pull` would refuse outright the first time
+# upstream touched that file. Generated deployment state must not live in git's tracked tree.
+NGINX_SITE_DEFAULT="default.conf"
+NGINX_SITE_TLS="tls-active.conf"
+NGINX_SITE_CONF="nginx/conf.d/$NGINX_SITE_DEFAULT"
+
+resolve_site_conf() {
+  NGINX_SITE_CONF="nginx/conf.d/${NGINX_SITE_CONF_FILE:-$NGINX_SITE_DEFAULT}"
+}
+
+# Persist the nginx site selection to .env so it survives a rollback, a rebuild and a reboot.
+set_site_conf_file() {
+  local value="$1"
+  touch .env
+  if grep -qE '^NGINX_SITE_CONF_FILE=' .env; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|^NGINX_SITE_CONF_FILE=.*|NGINX_SITE_CONF_FILE=${value}|" .env
+    else
+      sed -i "s|^NGINX_SITE_CONF_FILE=.*|NGINX_SITE_CONF_FILE=${value}|" .env
+    fi
+  else
+    printf 'NGINX_SITE_CONF_FILE=%s\n' "$value" >> .env
+  fi
+  NGINX_SITE_CONF_FILE="$value"
+  resolve_site_conf
+}
 
 # Refuses to serve the public internet over plain HTTP unless the operator says so out loud.
 # The previous arrangement needed two hand edits in a comment block to enable TLS, and shipped
@@ -75,10 +109,19 @@ gate_readiness() {
 # Backs up the only copy of the orders, the PII and the uploads. Both live on unreplicated
 # Docker volumes; before this there was no backup and no documented restore at all.
 do_backup() {
-  local stamp target
+  local stamp target old_umask
   stamp="$(date +%Y%m%d-%H%M%S)"
   target="$BACKUP_DIR/$stamp"
   mkdir -p "$target"
+
+  # A dump of this database is every customer's email, address, order history and body
+  # measurements in cleartext, and the asset archive holds their body scans. Created with the
+  # default umask these were world-readable, so any account on the host could read the lot.
+  # umask must be set before the redirections below create the files — chmod afterwards would
+  # leave a window in which they are readable.
+  chmod 700 "$BACKUP_DIR" "$target"
+  old_umask="$(umask)"
+  umask 077
 
   info "Dumping database to $target/database.sql.gz ..."
   docker compose -f "$COMPOSE_FILE" exec -T mysql \
@@ -88,6 +131,8 @@ do_backup() {
   info "Archiving the assets volume to $target/assets.tar.gz ..."
   docker compose -f "$COMPOSE_FILE" exec -T server \
     tar czf - -C /var/iyae/assets . > "$target/assets.tar.gz"
+
+  umask "$old_umask"
 
   # Fail loudly rather than leaving a zero-byte file that looks like a backup.
   for f in "$target/database.sql.gz" "$target/assets.tar.gz"; do
@@ -149,6 +194,37 @@ require_paired_env_vars() {
   if [ "$a_set" -eq 0 ]; then
     warn "$a / $b are unset — payment collection is DISABLED; POST /api/checkout will answer 503."
   fi
+}
+
+# Every check that must hold before production services are (re)started.
+#
+# These used to run only in `setup`. An operator who had already run `setup` once — before
+# ADMIN_BOOTSTRAP_* / CORS_ORIGINS / FRONTEND_BASE_URL became mandatory — could then `up` or
+# `update` forever without ever being told the deployment was misconfigured, which is the
+# normal upgrade path and so the one that mattered most.
+require_production_config() {
+  # ADMIN_BOOTSTRAP_* is required, not optional: no other code path can create an
+  # administrator in production, so omitting it yields an unmoderatable instance.
+  # CORS_ORIGINS and FRONTEND_BASE_URL were never validated. Their effective production
+  # values (empty, and http://localhost:3000) silently break every state-changing browser
+  # request and every verification / password-reset / checkout link in an email.
+  require_env_vars DB_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET \
+    INTERNAL_MAIL_SECRET ADMIN_BOOTSTRAP_EMAIL ADMIN_BOOTSTRAP_PASSWORD \
+    CORS_ORIGINS FRONTEND_BASE_URL
+  require_paired_env_vars STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
+
+  if is_placeholder_jwt "${JWT_SECRET:-}"; then
+    error "JWT_SECRET is unset, a known placeholder, or shorter than 32 characters."
+    error "Run './prod_deploy.sh setup' to generate one."
+    exit 1
+  fi
+
+  case "${FRONTEND_BASE_URL:-}" in
+    *localhost*|*127.0.0.1*)
+      error "FRONTEND_BASE_URL is $FRONTEND_BASE_URL — email links and checkout redirects would point at the operator's own machine."
+      exit 1
+      ;;
+  esac
 }
 
 is_placeholder_jwt() {
@@ -220,28 +296,14 @@ case "${1:-help}" in
       ensure_env_loaded
     fi
 
-    # ADMIN_BOOTSTRAP_* is required, not optional: no other code path can create an
-    # administrator in production, so omitting it yields an unmoderatable instance.
-    # CORS_ORIGINS and FRONTEND_BASE_URL were never validated. Their effective production
-    # values (empty, and http://localhost:3000) silently break every state-changing browser
-    # request and every verification / password-reset / checkout link in an email.
-    require_env_vars DB_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET \
-      INTERNAL_MAIL_SECRET ADMIN_BOOTSTRAP_EMAIL ADMIN_BOOTSTRAP_PASSWORD \
-      CORS_ORIGINS FRONTEND_BASE_URL
-    require_paired_env_vars STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
-
-    case "${FRONTEND_BASE_URL:-}" in
-      *localhost*|*127.0.0.1*)
-        error "FRONTEND_BASE_URL is $FRONTEND_BASE_URL — email links and checkout redirects would point at the operator's own machine."
-        exit 1
-        ;;
-    esac
+    require_production_config
 
     success "Setup complete. Run './deploy.sh up' to start services."
     ;;
 
   up)
     ensure_env_loaded
+    require_production_config
     require_tls_or_explicit_optout
     info "Starting production services..."
     docker compose -f "$COMPOSE_FILE" up -d --build
@@ -253,6 +315,7 @@ case "${1:-help}" in
 
   update)
     ensure_env_loaded
+    require_production_config
     require_tls_or_explicit_optout
     previous_rev="$(git rev-parse HEAD)"
     info "Current revision: $previous_rev"
@@ -303,6 +366,7 @@ case "${1:-help}" in
     ;;
 
   ssl-init)
+    ensure_env_loaded
     domain="${2:-}"
     email="${3:-}"
     if [ -z "$domain" ]; then
@@ -332,33 +396,44 @@ case "${1:-help}" in
       error "nginx/templates/tls.conf is missing — cannot enable TLS."
       exit 1
     fi
-    cp "$NGINX_SITE_CONF" "${NGINX_SITE_CONF}.http-only.bak"
+    previous_site_file="${NGINX_SITE_CONF_FILE:-$NGINX_SITE_DEFAULT}"
     sed -e "s|__SERVER_NAME__|$domain|g" -e "s|__CERT_NAME__|iyae|g" \
-      nginx/templates/tls.conf > "$NGINX_SITE_CONF"
-    info "Installed TLS config (previous HTTP-only config saved as ${NGINX_SITE_CONF}.http-only.bak)"
+      nginx/templates/tls.conf > "nginx/conf.d/$NGINX_SITE_TLS"
+    set_site_conf_file "$NGINX_SITE_TLS"
+    info "Rendered TLS config to nginx/conf.d/$NGINX_SITE_TLS and recorded NGINX_SITE_CONF_FILE in .env"
 
-    docker compose -f "$COMPOSE_FILE" up -d nginx
+    # --force-recreate: the mount source changed, so an existing container would keep serving
+    # the old site config.
+    docker compose -f "$COMPOSE_FILE" up -d --force-recreate nginx
     sleep 3
     if docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t &>/dev/null; then
       success "SSL certificate obtained and HTTPS enabled for $domain"
       info "Renewal is automatic: the certbot service renews every 12h and nginx reloads every 6h."
     else
-      error "nginx rejected the TLS config. Restoring the HTTP-only config."
-      mv "${NGINX_SITE_CONF}.http-only.bak" "$NGINX_SITE_CONF"
+      error "nginx rejected the TLS config. Reverting to $previous_site_file."
+      set_site_conf_file "$previous_site_file"
       docker compose -f "$COMPOSE_FILE" up -d --force-recreate nginx
       exit 1
     fi
     ;;
 
   ssl-renew)
+    ensure_env_loaded
     info "Renewing SSL certificates..."
+    # certbot-cli, NOT certbot. The `certbot` service is the always-on renewal loop and
+    # overrides `entrypoint: /bin/sh`, so `run certbot renew ...` ran `/bin/sh renew ...` —
+    # sh looking for a script named "renew" — and this command could never have renewed
+    # anything. certbot-cli is the same image with the image's own entrypoint intact.
     docker compose -f "$COMPOSE_FILE" --profile tools run --rm \
-      certbot renew --webroot -w /var/certbot/www
+      certbot-cli renew --webroot -w /var/certbot/www
     docker compose -f "$COMPOSE_FILE" exec nginx nginx -s reload
     success "SSL certificates renewed"
     ;;
 
   health)
+    # Needed for NGINX_SITE_CONF_FILE: the TLS-expiry section below inspects whichever site
+    # config is actually mounted, which .env records.
+    ensure_env_loaded
     info "Service status:"
     docker compose -f "$COMPOSE_FILE" ps
     echo ""

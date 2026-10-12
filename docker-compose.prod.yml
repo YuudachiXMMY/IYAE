@@ -152,7 +152,11 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # A single site file, selected by NGINX_SITE_CONF_FILE, rather than the whole conf.d
+      # directory. ssl-init renders the TLS config to a gitignored sibling and records the
+      # choice in .env, so enabling TLS is no longer an uncommitted edit to a tracked file
+      # that `update`'s `git reset --hard` rollback would silently discard.
+      - ./nginx/conf.d/${NGINX_SITE_CONF_FILE:-default.conf}:/etc/nginx/conf.d/default.conf:ro
       - assets_data:/var/iyae/assets:ro
       - letsencrypt:/etc/letsencrypt:ro
       - certbot_www:/var/certbot/www
