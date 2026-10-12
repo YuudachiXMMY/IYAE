@@ -255,7 +255,13 @@ const SOURCE_EXTENSIONS = ['.tsx', '.ts'];
 
 // Arbitrary values (`text-[#abc]/50`) are deliberately not matched: they are
 // not token-derived, and this guard is about tokens drifting below AA.
-const OPACITY_CLASS = /\btext-((?:[a-z]+-)*foreground)\/(\d{1,3})\b/g;
+// `background` is in here as well as `*foreground`. It was not, and that was a real
+// blind spot: `text-background/<alpha>` is how de-emphasis was written on the
+// `bg-foreground` panels (the dashboard sidebar, its cards, /chat's dark panels), the
+// inverse pairing. Three of those uses measured 3.73:1 and 4.38:1 in dark mode and
+// survived the pass that fixed all 28 `muted-foreground` ones, because the regex could
+// not see them. The dark-mode axe check on /dashboard had been failing on main ever since.
+const OPACITY_CLASS = /\btext-((?:[a-z]+-)*foreground|background)\/(\d{1,3})\b/g;
 
 // Known debt, as `text-<token>/<alpha>` → number of occurrences. Every entry
 // below 4.5:1 that is still here is non-text: a decorative glyph, or a
@@ -277,15 +283,22 @@ const KNOWN_BELOW_AA: Record<string, number> = {
   // 2.51:1. ar-visualization's <PlatformIcon/>, between the feature title and
   // a text pill that already names the platform.
   'text-muted-foreground/60': 1,
+  // No `text-background/*` entry: now that the regex can see them, the five that remain
+  // (/70 x2, /85 x3) all clear AA on bg-foreground — 6.03:1 and higher in dark mode — so
+  // they are not debt and this map is only for what is below AA. They are left as-is for
+  // the same reason the passing ink/primary uses were: churning a compliant colour is not
+  // a fix. The two sub-AA alphas (/55 at 3.73:1, /60 at 4.38:1) are gone, replaced by
+  // `text-inverted-muted-foreground`.
 };
 
 type AdHocOpacity = { file: string; token: string; alpha: number };
 
 /** `muted-foreground` → `muted`, `primary-foreground` → `primary`, … */
 function pairedSurfaceToken(textToken: string): string {
-  return textToken === 'foreground'
-    ? 'background'
-    : textToken.replace(/-foreground$/, '');
+  if (textToken === 'foreground') return 'background';
+  // The inverted panel: `text-background` is what you put ON `bg-foreground`.
+  if (textToken === 'background') return 'foreground';
+  return textToken.replace(/-foreground$/, '');
 }
 
 function sourceFiles(root: string): string[] {
