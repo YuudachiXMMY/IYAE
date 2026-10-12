@@ -162,7 +162,34 @@ class TestRiggingReclaimStaleTasks:
         assert "rigging_tasks" in sql
         assert "INTERVAL 15 MINUTE" in sql
         assert "RUNNING" in sql
-        assert "claimed_at" in sql
+
+    @patch("queue_base.mysql.connector.connect")
+    def test_reclaim_measures_staleness_from_updated_at_not_claimed_at(self, mock_connect):
+        """Both reclaim branches must key staleness off the column heartbeat() refreshes.
+
+        ``claimed_at`` is written once at claim time and never touched again, so a WHERE clause
+        on it makes ``TaskQueueBase.heartbeat()`` — which bumps ``updated_at`` every
+        ``WORKER_TASK_HEARTBEAT_INTERVAL`` while ``provider.generate()`` runs — inert for this
+        queue. A rigging job past 15 minutes was then reclaimed to PENDING while its original
+        worker was still inside ``generate()`` and actively heartbeating, letting a second
+        claimant process the same task concurrently. ``TaskQueue`` and ``AvatarTaskQueue`` both
+        use ``updated_at``; this queue was the one left behind.
+        """
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 0
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        self.queue.reclaim_stale_tasks()
+
+        assert mock_cursor.execute.call_count == 2
+        for call in mock_cursor.execute.call_args_list:
+            sql = call[0][0]
+            assert "updated_at < NOW() - INTERVAL 15 MINUTE" in sql
+            # `claimed_at = NULL` in the SET clause is correct and expected; what must not
+            # appear is a staleness comparison against it.
+            assert "claimed_at <" not in sql
 
     @patch("queue_base.mysql.connector.connect")
     def test_reclaim_stale_fails_max_attempts(self, mock_connect):

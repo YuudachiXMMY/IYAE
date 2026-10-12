@@ -159,19 +159,33 @@ do_restore() {
   read -r confirm
   [ "$confirm" = "restore" ] || { info "Aborted."; exit 1; }
 
+  # Quiesce the writers first. The dump contains DROP TABLE / CREATE TABLE, so with `server` and
+  # `worker` still live their in-flight writes commit against tables that are being replaced
+  # underneath them: those rows vanish silently the moment the table is recreated, and a
+  # transaction holding a metadata lock can stall the import half-done. nginx stays up on purpose
+  # so callers get an immediate 502 rather than a hang.
+  info "Stopping server and worker so no live writes race the import..."
+  docker compose -f "$COMPOSE_FILE" stop server worker
+
   info "Restoring database..."
-  gunzip -c "$src/database.sql.gz" \
+  if ! gunzip -c "$src/database.sql.gz" \
     | docker compose -f "$COMPOSE_FILE" exec -T mysql \
-        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" iyae
+        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" iyae; then
+    error "Database import failed. server and worker are still stopped — the database is in a"
+    error "partial state. Fix the dump or restore another backup before starting them:"
+    error "  docker compose -f $COMPOSE_FILE up -d server worker"
+    exit 1
+  fi
 
   if [ -s "$src/assets.tar.gz" ]; then
     info "Restoring assets..."
-    docker compose -f "$COMPOSE_FILE" exec -T server \
-      tar xzf - -C /var/iyae/assets < "$src/assets.tar.gz"
+    # `run --rm` rather than `exec`, because the service it mounts the volume from is stopped.
+    docker compose -f "$COMPOSE_FILE" run --rm --no-deps -T \
+      --entrypoint tar server xzf - -C /var/iyae/assets < "$src/assets.tar.gz"
   fi
 
-  info "Restarting services to pick up the restored state..."
-  docker compose -f "$COMPOSE_FILE" restart server worker
+  info "Starting server and worker on the restored state..."
+  docker compose -f "$COMPOSE_FILE" up -d server worker
   success "Restore complete from $src"
 }
 

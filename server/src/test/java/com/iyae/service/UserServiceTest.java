@@ -48,7 +48,7 @@ class UserServiceTest {
     @Test
     void findById_existing_returnsUser() {
         var buyer = TestUsers.aBuyer();
-        when(userRepository.findById(buyer.getId())).thenReturn(Optional.of(buyer));
+        when(userRepository.findActiveById(buyer.getId())).thenReturn(Optional.of(buyer));
 
         User result = userService.findById(buyer.getId());
 

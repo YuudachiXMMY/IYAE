@@ -27,6 +27,19 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u WHERE u.email = :email AND u.deletedAt IS NULL")
     Optional<User> findByEmail(@Param("email") String email);
 
+    /**
+     * Tombstone-aware by-id lookup, for resolving a user the <em>request</em> named.
+     *
+     * <p>Inherited {@code findById} has to stay unfiltered so {@code order.getUser()} keeps
+     * resolving a deleted customer, but that made it the wrong tool for every id that arrives from
+     * a client: {@code POST /api/follows/{id}} against a tombstoned account wrote a live Follow row
+     * pointing at a deleted user, and the profile-feed read exposed it as a normal account. Use
+     * this for any id a caller supplies; use {@code findById} only for genuinely historical,
+     * record-keeping navigation.
+     */
+    @Query("SELECT u FROM User u WHERE u.id = :id AND u.deletedAt IS NULL")
+    Optional<User> findActiveById(@Param("id") Long id);
+
     @Query("SELECT u FROM User u WHERE u.verificationToken = :token AND u.deletedAt IS NULL")
     Optional<User> findByVerificationToken(@Param("token") String verificationToken);
 

@@ -73,6 +73,15 @@ services:
       WORKER_MESHY_API_KEY: ${WORKER_MESHY_API_KEY:-}
       WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
       WORKER_OUTPUT_DIR: /var/iyae/assets
+      # Model and avatar tasks only. `dev.sh start`/`restart` always pass `--profile rigging`, so
+      # the dedicated rigging-worker (RIGGING_PROVIDER=python) is always up in dev — and leaving
+      # this container at the ALL_ROLES default made it a second claimant for the same queue.
+      # Whichever won the race decided whether a garment was rigged for real or with this
+      # container's RIGGING_PROVIDER=mock stub output, and both wrote the same
+      # /assets/rigged/{id} path. Giving rigging-worker `WORKER_ROLES: rigging` only fixed one
+      # direction; the two are now disjoint in both. Production differs on purpose: it runs a
+      # single worker off Dockerfile.rigging with every role and real providers.
+      WORKER_ROLES: ${WORKER_ROLES:-model,avatar}
       RIGGING_PROVIDER: ${RIGGING_PROVIDER:-mock}
       SMPLX_MODELS_PATH: /var/iyae/smplx_models
     volumes:

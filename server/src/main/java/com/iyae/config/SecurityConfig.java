@@ -53,8 +53,13 @@ public class SecurityConfig {
                 // resolved from the principal. The matchers below are paired with the resource
                 // handlers in WebMvcConfig and the location blocks in nginx; all three have to
                 // agree, which is why each one carries this note.
+                // `products` and `rigged` are the two subtrees the worker actually writes
+                // client-facing URLs for; omitting them denies every generated preview and every
+                // rigged garment. `avatars` stays out, and so does the Blender provider's
+                // `rigging-work` scratch area.
                 .requestMatchers(HttpMethod.GET, "/assets/models/**", "/assets/poses/**",
-                    "/assets/garments/**", "/uploads/**").permitAll()
+                    "/assets/garments/**", "/assets/products/**", "/assets/rigged/**",
+                    "/uploads/**").permitAll()
                 .requestMatchers("/assets/**").denyAll()
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/stripe").permitAll()
                 .requestMatchers("/api/public/**").permitAll()

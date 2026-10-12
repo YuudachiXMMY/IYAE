@@ -156,7 +156,7 @@ class PostServiceTest {
 
     @Test
     void getByUser_returnsPostsForTargetUser() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(author));
+        when(userRepository.findActiveById(1L)).thenReturn(Optional.of(author));
         when(postRepository.findByUserAndStatusOrderByCreatedAtDesc(
                 eq(author), eq(PostStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(activePost)));

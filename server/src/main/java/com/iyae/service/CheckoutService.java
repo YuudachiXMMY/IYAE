@@ -69,10 +69,23 @@ public class CheckoutService {
     @Value("${app.payments.stub-checkout-enabled:false}")
     private boolean stubCheckoutEnabled;
 
+    private boolean stripeFullyConfigured() {
+        return stripeSecretKey != null && !stripeSecretKey.isBlank()
+                && stripeWebhookSecret != null && !stripeWebhookSecret.isBlank();
+    }
+
     @PostConstruct
     void initStripe() {
-        if (stripeSecretKey != null && !stripeSecretKey.isBlank()) {
+        if (stripeFullyConfigured()) {
             log.info("Stripe secret key configured — payment collection is LIVE");
+        } else if (stripeSecretKey != null && !stripeSecretKey.isBlank()) {
+            // Half-configured: a key without a webhook secret would charge buyers through Stripe
+            // Checkout and then reject every delivery of checkout.session.completed, leaving the
+            // order PENDING forever and resale units never marked SOLD. Treat it as not
+            // configured, so checkout answers 503 instead of taking money it cannot fulfil.
+            log.error("STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is blank — checkout stays "
+                    + "DISABLED (503). A key without a webhook secret collects payment that can never "
+                    + "be fulfilled, because every webhook delivery would be rejected. Set both.");
         } else if (stubCheckoutEnabled) {
             log.warn("STRIPE_SECRET_KEY is blank and the checkout stub is ENABLED — "
                     + "orders will be written PAID without payment. Never run this configuration in production.");
@@ -82,9 +95,18 @@ public class CheckoutService {
         }
     }
 
-    /** True when a buyer can actually pay. Drives the web client's entry-point visibility. */
+    /**
+     * True when a buyer can actually pay <em>and</em> the resulting payment can be fulfilled.
+     * Drives the web client's entry-point visibility.
+     *
+     * <p>Both Stripe values are required, not just the secret key. With only the key set, Stripe
+     * Checkout really charges the buyer and {@link #handleWebhook} then rejects every delivery, so
+     * the order never leaves PENDING and a resale unit is never marked SOLD. That is a charged-but-
+     * unfulfillable order — the mirror image of the free-order bug this gate exists to prevent —
+     * so a half-configured Stripe counts as not configured.
+     */
     public boolean isCheckoutEnabled() {
-        return (stripeSecretKey != null && !stripeSecretKey.isBlank()) || stubCheckoutEnabled;
+        return stripeFullyConfigured() || stubCheckoutEnabled;
     }
 
     private void requireStubAllowed(String context) {
@@ -103,7 +125,7 @@ public class CheckoutService {
 
         FulfillmentService.ResolvedFulfillment fulfillment = fulfillmentService.resolve(req);
 
-        if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
+        if (!stripeFullyConfigured()) {
             requireStubAllowed("checkout for user " + user.getId());
             return stubCheckout(user, fulfillment);
         }
@@ -197,6 +219,13 @@ public class CheckoutService {
     @Transactional
     public void handleWebhook(String payload, String signature) {
         if (stripeWebhookSecret == null || stripeWebhookSecret.isBlank()) {
+            // Log before throwing. GlobalExceptionHandler.handleIllegalArgument answers a bare 400
+            // with no server-side record, so without this the operator's only evidence that Stripe
+            // cannot reach them is in Stripe's own dashboard: orders sit PENDING, resale units are
+            // never marked SOLD, and the application log says nothing at all.
+            log.error("Rejected a Stripe webhook delivery: STRIPE_WEBHOOK_SECRET is not configured. "
+                    + "If STRIPE_SECRET_KEY is set, buyers are being charged for orders that cannot "
+                    + "be fulfilled — set both values or neither.");
             throw new IllegalArgumentException("Webhook secret not configured");
         }
 
@@ -294,7 +323,7 @@ public class CheckoutService {
     public Map<String, String> initiateResaleCheckout(String email, Long listingId) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
-        if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
+        if (!stripeFullyConfigured()) {
             // Refuse before reserving: markSold is irreversible, so a checkout that can never
             // collect money must not touch the unique unit's availability at all.
             requireStubAllowed("resale checkout for listing " + listingId);
@@ -302,7 +331,7 @@ public class CheckoutService {
         ResaleService.ReservedListing snap = resaleService.reserve(listingId, email);
         try {
             String snapshot = buildResaleSnapshot(snap);
-            if (stripeSecretKey == null || stripeSecretKey.isBlank()) {
+            if (!stripeFullyConfigured()) {
                 return stubResaleCheckout(user, snap, snapshot);
             }
             String label = snap.productName() + " (pre-loved, " + snap.condition() + ")";
@@ -367,7 +396,19 @@ public class CheckoutService {
                 .resaleListingId(snap.listingId())
                 .build();
         txTemplate.executeWithoutResult(status -> orderRepository.save(order));
-        resaleService.markSold(snap.listingId());
+        // Same failure signal the webhook path checks, and it matters here too: this stub order is
+        // written PAID, so a lost reservation means a "paid" order against a unit that is not the
+        // buyer's. Discarding the boolean made the one configuration that fabricates payments the
+        // only one that could not tell a successful sale from a lost one.
+        if (!resaleService.markSold(snap.listingId())) {
+            order.setPaymentStatus("PAID_UNFULFILLABLE");
+            txTemplate.executeWithoutResult(status -> orderRepository.save(order));
+            log.error("Stub resale order {} (user {}, listing {}) was written PAID but the listing "
+                    + "was no longer reserved for them — the reservation was lost between reserve "
+                    + "and markSold. No real money moved on the stub path, but the order is not "
+                    + "fulfillable and is marked PAID_UNFULFILLABLE.",
+                    order.getId(), user.getId(), snap.listingId());
+        }
         log.info("STRIPE_SECRET_KEY not configured — created stub resale order {} for listing {}",
                 order.getId(), snap.listingId());
         // Stub resale orders are immediately PAID — emit both funnel events for dev/analytics parity.

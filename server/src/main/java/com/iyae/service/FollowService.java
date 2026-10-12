@@ -88,8 +88,14 @@ public class FollowService {
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
+    /**
+     * Resolves a follow target. Deliberately tombstone-aware: the unfiltered {@code findById}
+     * exists so an order can still name its deleted customer, but a deleted account must not be
+     * followable — that wrote a live Follow row against a user who no longer exists, and the
+     * follower/following lists then rendered it as an ordinary profile.
+     */
     private User findUserById(Long id) {
-        return userRepository.findById(id)
+        return userRepository.findActiveById(id)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 }

@@ -247,4 +247,42 @@ class AccountDeletionServiceTest {
 
         verify(resaleListingRepository).delete(idle);
     }
+
+    @Test
+    void keepsAResaleListingThatRecordsACompletedSale() {
+        // The guard above checks only OrderStatus.PENDING, but a completed sale's order is PAID.
+        // A SOLD listing therefore passed it and was deleted, and because
+        // orders.resale_listing_id is ON DELETE SET NULL that silently detached a listing from
+        // an order the buyer had already been charged for. The order's itemsSnapshot carries
+        // product name, quantity, size and price only — not the condition or the seller — so
+        // nothing was left to reconstruct what had been sold.
+        com.iyae.entity.ResaleListing sold = com.iyae.entity.ResaleListing.builder()
+                .id(502L).seller(buyer)
+                .status(com.iyae.entity.enums.ResaleStatus.SOLD).build();
+        when(resaleListingRepository.findBySellerIdOrderByCreatedAtDesc(42L))
+                .thenReturn(List.of(sold));
+        when(resaleListingRepository.hasPendingOrder(502L)).thenReturn(false);
+
+        service.deleteAccount("buyer@test.com");
+
+        verify(resaleListingRepository, never()).delete(sold);
+    }
+
+    @Test
+    void keepsAListingAnyOrderStillReferences_evenIfItsStatusSaysOtherwise() {
+        // Status and order-existence are checked independently because either alone can be the
+        // surviving evidence: a listing can carry an order reference without being SOLD (a
+        // cancelled or refunded purchase), and the FK is what the order needs to stay resolvable.
+        com.iyae.entity.ResaleListing referenced = com.iyae.entity.ResaleListing.builder()
+                .id(503L).seller(buyer)
+                .status(com.iyae.entity.enums.ResaleStatus.LISTED).build();
+        when(resaleListingRepository.findBySellerIdOrderByCreatedAtDesc(42L))
+                .thenReturn(List.of(referenced));
+        when(resaleListingRepository.hasPendingOrder(503L)).thenReturn(false);
+        when(resaleListingRepository.hasAnyOrder(503L)).thenReturn(true);
+
+        service.deleteAccount("buyer@test.com");
+
+        verify(resaleListingRepository, never()).delete(referenced);
+    }
 }

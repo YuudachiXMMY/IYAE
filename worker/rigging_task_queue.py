@@ -92,6 +92,16 @@ class RiggingTaskQueue(TaskQueueBase):
 
         Tasks under the attempt limit are returned to PENDING.
         Tasks at or over the limit are marked FAILED.
+
+        Staleness is measured from ``updated_at``, not ``claimed_at``. ``claimed_at`` is written
+        once when the task is claimed and never refreshed, so keying off it made
+        ``TaskQueueBase.heartbeat()`` — which bumps ``updated_at`` every
+        ``WORKER_TASK_HEARTBEAT_INTERVAL`` while ``provider.generate()`` runs — completely inert
+        for this queue, while ``TaskQueue`` and ``AvatarTaskQueue`` both honour it. A rigging job
+        legitimately running past 15 minutes (``PythonRiggingProvider`` has no timeout and does
+        SMPL-X loading plus biharmonic inpainting) was reclaimed to PENDING under the original
+        worker, letting a second claimant process the same task concurrently — the exact case the
+        heartbeat exists to prevent.
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -101,7 +111,7 @@ class RiggingTaskQueue(TaskQueueBase):
                 UPDATE rigging_tasks
                 SET status = 'PENDING', claimed_at = NULL
                 WHERE status = 'RUNNING'
-                  AND claimed_at < NOW() - INTERVAL 15 MINUTE
+                  AND updated_at < NOW() - INTERVAL 15 MINUTE
                   AND attempt_count < %s
             """, (MAX_RIGGING_ATTEMPTS,))
             reclaimed = cursor.rowcount
@@ -114,7 +124,7 @@ class RiggingTaskQueue(TaskQueueBase):
                     error_message = 'Task exceeded maximum retry attempts',
                     completed_at = NOW()
                 WHERE status = 'RUNNING'
-                  AND claimed_at < NOW() - INTERVAL 15 MINUTE
+                  AND updated_at < NOW() - INTERVAL 15 MINUTE
                   AND attempt_count >= %s
             """, (MAX_RIGGING_ATTEMPTS,))
             failed = cursor.rowcount

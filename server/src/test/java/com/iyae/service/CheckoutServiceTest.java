@@ -230,14 +230,30 @@ class CheckoutServiceTest {
         ));
     }
 
+    /**
+     * Configures Stripe the way {@code isCheckoutEnabled} now requires: both values.
+     *
+     * <p>These tests used to set only {@code stripeSecretKey}, which was enough because the gate
+     * checked only that. It no longer is: a key with no webhook secret charges the buyer through
+     * Stripe Checkout and then rejects every webhook delivery, so the order never leaves PENDING
+     * and a resale unit is never marked SOLD. That half-configured state is now treated as
+     * payment-off (503) rather than as live, so a test that wants the live path has to say so.
+     */
+    private void setStripeConfigured(String secretKey) throws Exception {
+        java.lang.reflect.Field key = CheckoutService.class.getDeclaredField("stripeSecretKey");
+        key.setAccessible(true);
+        key.set(checkoutService, secretKey);
+        java.lang.reflect.Field webhook = CheckoutService.class.getDeclaredField("stripeWebhookSecret");
+        webhook.setAccessible(true);
+        webhook.set(checkoutService, "whsec_test_secret");
+    }
+
     // ---- Stripe path (gateway mock) ----
 
     @Test
     void initiateCheckout_stripeKey_callsGatewayCreateSession() throws Exception {
         // inject a non-blank Stripe key so the real Stripe path is taken
-        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeSecretKey");
-        f.setAccessible(true);
-        f.set(checkoutService, "sk_test_key");
+        setStripeConfigured("sk_test_key");
 
         Session mockSession = mock(Session.class);
         when(mockSession.getId()).thenReturn("cs_live_abc123");
@@ -267,9 +283,7 @@ class CheckoutServiceTest {
 
     @Test
     void initiateCheckout_stripeKey_itemsSnapshotPopulated() throws Exception {
-        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeSecretKey");
-        f.setAccessible(true);
-        f.set(checkoutService, "sk_test_key");
+        setStripeConfigured("sk_test_key");
 
         Session mockSession = mock(Session.class);
         when(mockSession.getId()).thenReturn("cs_live_snap");
@@ -299,9 +313,7 @@ class CheckoutServiceTest {
 
     @Test
     void initiateCheckout_stripeKey_emptyCart_throwsIllegalArgumentException() throws Exception {
-        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeSecretKey");
-        f.setAccessible(true);
-        f.set(checkoutService, "sk_test_key");
+        setStripeConfigured("sk_test_key");
 
         when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
         when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
@@ -314,9 +326,7 @@ class CheckoutServiceTest {
 
     @Test
     void initiateCheckout_stripeGatewayThrows_wrapsAsRuntimeException() throws Exception {
-        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeSecretKey");
-        f.setAccessible(true);
-        f.set(checkoutService, "sk_test_key");
+        setStripeConfigured("sk_test_key");
 
         when(stripeGateway.createSession(any(), any())).thenThrow(new RuntimeException("Stripe API error"));
 
@@ -473,6 +483,9 @@ class CheckoutServiceTest {
                     inv.getArgument(0)).accept(null);
             return null;
         }).when(txTemplate).executeWithoutResult(any());
+        // markSold's return value is now read on the stub path too — a lost reservation means a
+        // "paid" order against a unit that is not the buyer's, which used to be discarded here.
+        when(resaleService.markSold(500L)).thenReturn(true);
 
         Map<String, String> result = checkoutService.initiateResaleCheckout("buyer@test.com", 500L);
 
@@ -613,9 +626,7 @@ class CheckoutServiceTest {
     @Test
     void initiateCheckout_stubDisabledButStripeConfigured_proceedsToStripe() throws Exception {
         setStubCheckoutEnabled(false);
-        java.lang.reflect.Field f = CheckoutService.class.getDeclaredField("stripeSecretKey");
-        f.setAccessible(true);
-        f.set(checkoutService, "sk_test_123");
+        setStripeConfigured("sk_test_123");
 
         when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
         when(cartRepository.findByUserId(1L)).thenReturn(Optional.of(testCart));
@@ -633,5 +644,113 @@ class CheckoutServiceTest {
         Map<String, String> result = checkoutService.initiateCheckout("buyer@test.com", null);
 
         assertThat(result.get("sessionId")).isEqualTo("cs_live_1");
+    }
+
+    // ---- half-configured Stripe: a key with no webhook secret ----
+    //
+    // application-prod.yml states that "checkout answers 503 until STRIPE_SECRET_KEY and
+    // STRIPE_WEBHOOK_SECRET are both supplied", but the gate read only the secret key. Setting
+    // just the key — the natural result of a two-step Stripe setup — took checkout live: buyers
+    // were really charged through Stripe Checkout, and then every webhook delivery was rejected
+    // with no log on that branch, so the order stayed PENDING, resale units were never marked
+    // SOLD, and nothing in the application's own logs said why.
+
+    private void setStripeSecretKeyOnly(String secretKey) throws Exception {
+        java.lang.reflect.Field key = CheckoutService.class.getDeclaredField("stripeSecretKey");
+        key.setAccessible(true);
+        key.set(checkoutService, secretKey);
+        // stripeWebhookSecret is left at its "" default.
+    }
+
+    @Test
+    void isCheckoutEnabled_secretKeyWithoutWebhookSecret_isNotEnabled() throws Exception {
+        setStubCheckoutEnabled(false);
+        setStripeSecretKeyOnly("sk_live_key");
+
+        assertThat(checkoutService.isCheckoutEnabled()).isFalse();
+    }
+
+    @Test
+    void isCheckoutEnabled_bothStripeValues_isEnabled() throws Exception {
+        setStubCheckoutEnabled(false);
+        setStripeConfigured("sk_live_key");
+
+        assertThat(checkoutService.isCheckoutEnabled()).isTrue();
+    }
+
+    @Test
+    void initiateCheckout_secretKeyWithoutWebhookSecret_refusesInsteadOfCharging() throws Exception {
+        setStubCheckoutEnabled(false);
+        setStripeSecretKeyOnly("sk_live_key");
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+
+        assertThatThrownBy(() -> checkoutService.initiateCheckout("buyer@test.com", null))
+                .isInstanceOf(PaymentsDisabledException.class);
+
+        // Nothing was charged and no order was written: the refusal happens before Stripe.
+        verify(stripeGateway, never()).createSession(any(), any());
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void initiateResaleCheckout_secretKeyWithoutWebhookSecret_refusesBeforeReserving() throws Exception {
+        setStubCheckoutEnabled(false);
+        setStripeSecretKeyOnly("sk_live_key");
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+
+        assertThatThrownBy(() -> checkoutService.initiateResaleCheckout("buyer@test.com", 500L))
+                .isInstanceOf(PaymentsDisabledException.class);
+
+        // The unique unit's availability must not be touched by a checkout that cannot collect
+        // money — markSold is irreversible, so the refusal has to precede reserve().
+        verify(resaleService, never()).reserve(anyLong(), any());
+        verify(resaleService, never()).markSold(anyLong());
+    }
+
+    // ---- stub resale path: markSold's failure signal ----
+
+    @Test
+    void initiateResaleCheckout_stubPath_lostReservation_marksOrderUnfulfillable() {
+        // The stub path writes the order PAID, so a lost reservation is a "paid" order against a
+        // unit that is not the buyer's. The return value used to be discarded here, which made
+        // the one configuration that fabricates payments the only one unable to tell a completed
+        // sale from a lost one.
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(resaleService.reserve(500L, "buyer@test.com")).thenReturn(
+                new ResaleService.ReservedListing(500L, 100L, "Test Dress",
+                        new BigDecimal("32.00"), "CAD", "M",
+                        com.iyae.entity.enums.ResaleCondition.EXCELLENT));
+        when(resaleService.markSold(500L)).thenReturn(false);
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>)
+                    inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
+        checkoutService.initiateResaleCheckout("buyer@test.com", 500L);
+
+        verify(orderRepository, atLeastOnce()).save(argThat(order ->
+                "PAID_UNFULFILLABLE".equals(order.getPaymentStatus())));
+    }
+
+    @Test
+    void initiateResaleCheckout_stubPath_successfulSale_leavesPaymentStatusAlone() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(testUser));
+        when(resaleService.reserve(500L, "buyer@test.com")).thenReturn(
+                new ResaleService.ReservedListing(500L, 100L, "Test Dress",
+                        new BigDecimal("32.00"), "CAD", "M",
+                        com.iyae.entity.enums.ResaleCondition.EXCELLENT));
+        when(resaleService.markSold(500L)).thenReturn(true);
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>)
+                    inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
+        checkoutService.initiateResaleCheckout("buyer@test.com", 500L);
+
+        // The control for the case above: a normal stub sale must not be flagged.
+        verify(orderRepository, never()).save(argThat(order ->
+                "PAID_UNFULFILLABLE".equals(order.getPaymentStatus())));
     }
 }

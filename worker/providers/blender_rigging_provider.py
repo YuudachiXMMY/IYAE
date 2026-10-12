@@ -77,10 +77,17 @@ class BlenderRiggingProvider:
         if not input_payload or "source_glb_url" not in input_payload:
             raise ValueError("input_payload must contain 'source_glb_url'")
 
-        work_dir = os.path.join(self.output_dir, "rigged", str(garment_asset_id))
+        # The rigged GLB is public (nginx serves /assets/rigged/ and the try-on viewer fetches it
+        # directly), but job.json/result.json are not: they carry absolute container paths and the
+        # avatar GLB URL, which contains the owning user's id. They go under `rigging-work`, which
+        # is absent from every asset allow-list (nginx, WebMvcConfig, SecurityConfig) and so is
+        # unreachable over HTTP.
+        out_dir = os.path.join(self.output_dir, "rigged", str(garment_asset_id))
+        work_dir = os.path.join(self.output_dir, "rigging-work", str(garment_asset_id))
+        os.makedirs(out_dir, exist_ok=True)
         os.makedirs(work_dir, exist_ok=True)
 
-        output_path = os.path.join(work_dir, "garment-rigged.glb")
+        output_path = os.path.join(out_dir, "garment-rigged.glb")
         result_path = os.path.join(work_dir, "result.json")
         job_path = os.path.join(work_dir, "job.json")
 

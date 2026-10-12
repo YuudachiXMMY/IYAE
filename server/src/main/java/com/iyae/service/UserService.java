@@ -22,8 +22,9 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    /** Tombstone-aware: a deleted account must not resolve through a caller-supplied id. */
     public User findById(Long id) {
-        return userRepository.findById(id)
+        return userRepository.findActiveById(id)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + id));
     }
 

@@ -53,7 +53,7 @@ class FollowServiceTest {
     @Test
     void follow_success_savesFollowRecord() {
         when(userRepository.findByEmail("a@test.com")).thenReturn(Optional.of(userA));
-        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.of(userB));
         when(followRepository.existsByFollowerAndFollowing(userA, userB)).thenReturn(false);
 
         followService.follow("a@test.com", 2L);
@@ -64,7 +64,7 @@ class FollowServiceTest {
     @Test
     void follow_self_throwsIllegalArgumentException() {
         when(userRepository.findByEmail("a@test.com")).thenReturn(Optional.of(userA));
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userA));
+        when(userRepository.findActiveById(1L)).thenReturn(Optional.of(userA));
 
         assertThatThrownBy(() -> followService.follow("a@test.com", 1L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -74,7 +74,7 @@ class FollowServiceTest {
     @Test
     void follow_alreadyFollowing_isNoOp() {
         when(userRepository.findByEmail("a@test.com")).thenReturn(Optional.of(userA));
-        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.of(userB));
         when(followRepository.existsByFollowerAndFollowing(userA, userB)).thenReturn(true);
 
         followService.follow("a@test.com", 2L);
@@ -88,7 +88,7 @@ class FollowServiceTest {
     void unfollow_existing_deletesFollowRecord() {
         Follow follow = Follow.builder().id(99L).follower(userA).following(userB).build();
         when(userRepository.findByEmail("a@test.com")).thenReturn(Optional.of(userA));
-        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.of(userB));
         when(followRepository.findByFollowerAndFollowing(userA, userB)).thenReturn(Optional.of(follow));
 
         followService.unfollow("a@test.com", 2L);
@@ -99,7 +99,7 @@ class FollowServiceTest {
     @Test
     void unfollow_notFollowing_isNoOp() {
         when(userRepository.findByEmail("a@test.com")).thenReturn(Optional.of(userA));
-        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.of(userB));
         when(followRepository.findByFollowerAndFollowing(userA, userB)).thenReturn(Optional.empty());
 
         followService.unfollow("a@test.com", 2L);
@@ -112,7 +112,7 @@ class FollowServiceTest {
     @Test
     void getFollowers_returnsPagedFollowers() {
         Follow follow = Follow.builder().id(1L).follower(userA).following(userB).build();
-        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.of(userB));
         when(followRepository.findByFollowingOrderByCreatedAtDesc(eq(userB), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(follow)));
 
@@ -127,7 +127,7 @@ class FollowServiceTest {
     @Test
     void getFollowing_returnsPagedFollowing() {
         Follow follow = Follow.builder().id(1L).follower(userA).following(userB).build();
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userA));
+        when(userRepository.findActiveById(1L)).thenReturn(Optional.of(userA));
         when(followRepository.findByFollowerOrderByCreatedAtDesc(eq(userA), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(follow)));
 
@@ -141,7 +141,7 @@ class FollowServiceTest {
 
     @Test
     void getCounts_returnsRealFollowerAndFollowingCounts() {
-        when(userRepository.findById(2L)).thenReturn(Optional.of(userB));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.of(userB));
         when(followRepository.countByFollowing(userB)).thenReturn(3L);
         when(followRepository.countByFollower(userB)).thenReturn(5L);
 
@@ -149,5 +149,23 @@ class FollowServiceTest {
 
         assertThat(counts.followers()).isEqualTo(3L);
         assertThat(counts.following()).isEqualTo(5L);
+    }
+
+    @Test
+    void follow_deletedAccount_isRejectedAndWritesNothing() {
+        // Account deletion tombstones the users row rather than deleting it, because `orders`
+        // holds a non-null FK to it. The filtering therefore lives on UserRepository's lookups,
+        // and the inherited `findById` is deliberately left unfiltered so `order.getUser()` can
+        // still resolve a deleted customer. That made it the wrong lookup for a request-supplied
+        // id: POST /api/follows/{deletedUserId} wrote a live Follow row pointing at an account
+        // that no longer exists, which the follower/following lists then rendered as ordinary.
+        when(userRepository.findByEmail("a@test.com")).thenReturn(Optional.of(userA));
+        when(userRepository.findActiveById(2L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> followService.follow("a@test.com", 2L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("User not found");
+
+        verify(followRepository, never()).save(any());
     }
 }

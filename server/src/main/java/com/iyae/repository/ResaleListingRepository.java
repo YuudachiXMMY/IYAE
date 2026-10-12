@@ -40,6 +40,19 @@ public interface ResaleListingRepository
     boolean hasPendingOrder(@Param("listingId") Long listingId);
 
     /**
+     * Whether any order — at any status — references this listing.
+     *
+     * <p>{@code hasPendingOrder} is the in-flight check. It is not enough on its own for deletion:
+     * a completed sale's order is PAID, not PENDING, so a SOLD listing passed the PENDING guard
+     * and was deleted. {@code orders.resale_listing_id} is {@code ON DELETE SET NULL}, so that
+     * silently detached a listing from an order the buyer had already been charged for, and the
+     * order's {@code itemsSnapshot} carries only product name, quantity, size and price — not the
+     * condition or seller — so nothing was left to reconstruct what was sold.
+     */
+    @Query("SELECT COUNT(o) > 0 FROM Order o WHERE o.resaleListingId = :listingId")
+    boolean hasAnyOrder(@Param("listingId") Long listingId);
+
+    /**
      * Atomically claim a LISTED listing for a checkout (mirrors PasswordResetToken.consumeToken).
      * Returns 1 when the caller won the claim, 0 when the listing was already RESERVED/SOLD/REMOVED.
      */

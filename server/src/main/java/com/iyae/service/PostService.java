@@ -150,7 +150,9 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public PagedResponse<PostResponse> getByUser(Long userId, String email, int page, int size) {
-        User targetUser = userRepository.findById(userId)
+        // findActiveById, not findById: a profile grid for a deleted account would otherwise
+        // render as an ordinary, empty profile instead of reporting the account as gone.
+        User targetUser = userRepository.findActiveById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
         User currentUser = email != null ? userRepository.findByEmail(email).orElse(null) : null;
         Pageable pageable = PageRequest.of(Pagination.clampPage(page), Pagination.clampSize(size));

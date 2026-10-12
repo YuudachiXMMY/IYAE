@@ -22,8 +22,30 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    /** Asset subtrees that contain no personal data and may be served as static files. */
-    private static final String[] PUBLIC_ASSET_SUBTREES = {"models", "poses", "garments"};
+    /**
+     * Asset subtrees that contain no personal data and may be served as static files.
+     *
+     * <p>This is an allow-list, so it has to name every subtree a worker provider writes a
+     * client-facing URL for, or that asset 404s everywhere:
+     * <ul>
+     *   <li>{@code products} — {@code glb_url}/{@code usdz_url} from the three model generators,
+     *       returned verbatim by {@code GenerationService.getStatus()} and rendered by
+     *       {@code <model-viewer>}; no API route serves these.</li>
+     *   <li>{@code rigged} — {@code rigged_glb_url} from the three rigging providers, stored on
+     *       {@code GarmentAsset} and rendered directly by the try-on viewer.</li>
+     *   <li>{@code models}, {@code poses}, {@code garments} — static seed assets.</li>
+     * </ul>
+     *
+     * <p>{@code avatars} is deliberately absent and must stay absent: body scans are served only
+     * by {@code GET /api/avatar/model}. The Blender rigging provider's job/result JSON (absolute
+     * container paths plus the avatar URL, hence the owning user id) is written under
+     * {@code rigging-work}, which is likewise absent.
+     *
+     * <p>{@code SecurityConfigAssetExposureTest} asserts this array against the
+     * {@link SecurityConfig} matchers and both nginx configs, so a subtree added to one layer and
+     * forgotten in another fails the build instead of 404ing in production.
+     */
+    static final String[] PUBLIC_ASSET_SUBTREES = {"models", "poses", "garments", "products", "rigged"};
 
     @Value("${worker.output-dir:/var/iyae/assets}")
     private String assetRoot;

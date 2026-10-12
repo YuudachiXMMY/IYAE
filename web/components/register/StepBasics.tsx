@@ -13,6 +13,17 @@ import type { RegisterRequest } from "@/lib/api";
 interface StepBasicsProps {
   data: Partial<RegisterRequest>;
   onChange: (updates: Partial<RegisterRequest>) => void;
+  /**
+   * Terms/Privacy consent, owned by the wizard rather than by this step.
+   *
+   * It is a separate prop instead of a field on `data` because `RegisterRequest` is the API
+   * payload shape and the server has no consent column — putting it there would imply it gets
+   * sent. It has to leave this component either way: while `agreed` was local `useState`, the
+   * only readers were its own declaration and the `checked` prop, so the box gated nothing and
+   * an account could be created without ever ticking it.
+   */
+  agreed: boolean;
+  onAgreedChange: (agreed: boolean) => void;
 }
 
 function splitName(name: string | undefined): [string, string] {
@@ -22,12 +33,11 @@ function splitName(name: string | undefined): [string, string] {
   return [first, rest.join(" ")];
 }
 
-export function StepBasics({ data, onChange }: StepBasicsProps) {
+export function StepBasics({ data, onChange, agreed, onAgreedChange }: StepBasicsProps) {
   // First/last are presentational; they compose into the single `name` payload field.
   const [initialFirst, initialLast] = splitName(data.name);
   const [firstName, setFirstName] = useState(initialFirst);
   const [lastName, setLastName] = useState(initialLast);
-  const [agreed, setAgreed] = useState(false);
 
   function commitName(first: string, last: string) {
     const composed = `${first} ${last}`.trim();
@@ -123,37 +133,48 @@ export function StepBasics({ data, onChange }: StepBasicsProps) {
               a side effect of opening the document — consenting on the user's behalf to
               something they were in the act of going to read. The label still wraps the
               checkbox and the plain prose, so that text remains a valid click target. */}
+          {/* One wrapping text flow, not two flex items. The checkbox is a flex sibling of a
+              single <span> that holds the whole sentence, so "I agree to IYAE's" and "Terms and
+              Privacy Policy." wrap as one sentence on a narrow viewport instead of being laid
+              out as two columns that can break mid-sentence. */}
           <div className="flex items-start gap-3">
-            <label className="flex items-start gap-3">
-              <Checkbox
-                id="terms"
-                checked={agreed}
-                onCheckedChange={(v) => setAgreed(v === true)}
-                className="mt-0.5"
-              />
-              <span className="font-body text-[13px] leading-relaxed text-muted-foreground">
-                I agree to {BRAND.name}&apos;s
-              </span>
-            </label>
+            <Checkbox
+              id="terms"
+              checked={agreed}
+              onCheckedChange={(v) => onAgreedChange(v === true)}
+              aria-describedby="terms-documents"
+              className="mt-0.5"
+            />
             <span className="font-body text-[13px] leading-relaxed text-muted-foreground">
+              {/* Only the plain prose is inside the <label>; the links sit outside it. A label
+                  forwards every click within it to its control — whether it wraps the control or
+                  uses htmlFor — so a link nested there would tick the consent box as a side
+                  effect of opening the document, consenting on the user's behalf to the very
+                  thing they were going to read. The links are instead reachable to assistive
+                  tech through aria-describedby on the checkbox. */}
+              <label htmlFor="terms">I agree to {BRAND.name}&apos;s</label>{" "}
               {/* These were plain text until the documents existed, so the box consented to
                   nothing readable — on a product whose core data is body measurements. */}
-              <Link
-                href="/terms"
-                target="_blank"
-                className="text-brand underline hover:no-underline"
-              >
-                Terms
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/privacy"
-                target="_blank"
-                className="text-brand underline hover:no-underline"
-              >
-                Privacy Policy
-              </Link>
-              .
+              <span id="terms-documents">
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand underline hover:no-underline"
+                >
+                  Terms
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand underline hover:no-underline"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </span>
             </span>
           </div>
         </div>

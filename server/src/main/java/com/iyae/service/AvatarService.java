@@ -158,7 +158,18 @@ public class AvatarService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        String url = user.getAvatarGlbUrl();
+        return openAvatarModelAt(user.getAvatarGlbUrl());
+    }
+
+    /**
+     * Resolves a worker-written {@code /assets/...} avatar URL to a readable file.
+     *
+     * <p>Shared by the authenticated route and the guest route ({@code GuestAvatarService}), which
+     * both have to apply the same containment check and must not each reimplement it. The
+     * <em>authorisation</em> decision is the caller's: this method only answers "does this URL
+     * name a real GLB inside the asset root".
+     */
+    Resource openAvatarModelAt(String url) {
         if (url == null || url.isBlank() || !url.startsWith(ASSET_URL_PREFIX)) {
             throw new IllegalArgumentException("Avatar not found");
         }

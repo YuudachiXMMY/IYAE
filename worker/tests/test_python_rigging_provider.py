@@ -275,6 +275,36 @@ class TestCallChain:
             with pytest.raises(RiggingError):
                 provider.generate(1, 10, VALID_PAYLOAD)
 
+    def test_degenerate_weight_transfer_carries_a_failure_code(self, provider):
+        """The degenerate guard must raise RiggingError, not a bare RuntimeError.
+
+        main.py populates ``rigging_tasks.failure_code`` from
+        ``getattr(exc, "failure_code", None)``. A RuntimeError leaves it NULL, which made this
+        the only failure mode in the method that could not be told apart from the others
+        (PREFLIGHT_FAILED / LOAD_FAILED / AVATAR_LOAD_FAILED) when triaging a failed task.
+        """
+        from providers.blender_rigging_provider import RiggingError
+
+        v, f, n, w = self._make_mesh()
+        joint_positions = np.zeros((55, 3), dtype=np.float32)
+        # Every vertex degenerate — well past MAX_DEGENERATE_VERTEX_FRACTION.
+        vertex_count = int(v.shape[0])
+
+        with (
+            patch.object(provider, "_load_garment_glb", return_value=(v, f, n, None, None, None)),
+            patch.object(provider, "_get_avatar_data", return_value=(v, f, n, w, joint_positions)),
+            patch("providers.mesh_preflight.preflight_mesh", return_value=[]),
+            patch("providers.weight_transfer.transfer_weights", return_value=w),
+            patch(
+                "providers.weight_transfer.count_degenerate_vertices",
+                return_value=vertex_count,
+            ),
+        ):
+            with pytest.raises(RiggingError) as excinfo:
+                provider.generate(1, 10, VALID_PAYLOAD)
+
+        assert excinfo.value.failure_code == "DEGENERATE_WEIGHT_TRANSFER"
+
     def test_write_skinned_glb_receives_all_named_params(self, provider):
         """write_skinned_glb must be called with all 10 named parameters."""
         v, f, n, w = self._make_mesh()

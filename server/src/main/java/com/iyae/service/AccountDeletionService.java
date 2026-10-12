@@ -6,6 +6,7 @@ import com.iyae.entity.Product;
 import com.iyae.entity.ResaleListing;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.ProductStatus;
+import com.iyae.entity.enums.ResaleStatus;
 import com.iyae.repository.AnalyticsEventRepository;
 import com.iyae.repository.CartItemRepository;
 import com.iyae.repository.CartRepository;
@@ -152,6 +153,10 @@ public class AccountDeletionService {
      * for an item whose listing no longer existed, with nothing logged at all. That is strictly
      * worse than the lost-reservation case the alert was written for.
      *
+     * <p>A listing recording a <em>completed</em> sale is kept for the same reason: the buyer's
+     * PAID order still points at it, and the order snapshot does not carry enough to describe a
+     * pre-loved unit on its own.
+     *
      * <p>A listing with a live checkout is kept and released back to LISTED instead, which is
      * the same treatment {@code ResaleService.releaseStaleReservations} gives it, so the normal
      * fulfilment-or-refund machinery still has something to act on.
@@ -163,6 +168,17 @@ public class AccountDeletionService {
                 log.warn("Keeping resale listing {} while deleting seller {}: a buyer's order is "
                         + "still PENDING against it. Deleting it would null the order's listing "
                         + "reference and silence the refund path.", listing.getId(), userId);
+                continue;
+            }
+            // A completed sale is PAID, not PENDING, so the check above let SOLD listings through
+            // and deleted them — detaching an order the buyer had already paid for. Status and
+            // order-existence are both checked because either alone can be true: a SOLD listing
+            // is a unit that changed hands even if its order row has since been pruned.
+            if (listing.getStatus() == ResaleStatus.SOLD
+                    || resaleListingRepository.hasAnyOrder(listing.getId())) {
+                log.info("Keeping resale listing {} while deleting seller {}: it records a "
+                        + "completed sale, which the buyer's order still references.",
+                        listing.getId(), userId);
                 continue;
             }
             resaleListingRepository.delete(listing);

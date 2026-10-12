@@ -140,12 +140,19 @@ class PythonRiggingProvider:
         vertex_count = int(skin_weights.shape[0])
         degenerate_fraction = degenerate / vertex_count if vertex_count else 0.0
         if degenerate_fraction > MAX_DEGENERATE_VERTEX_FRACTION:
-            raise RuntimeError(
-                f"Weight transfer degenerate: {degenerate} of {vertex_count} vertices "
-                f"({degenerate_fraction:.1%}) had no usable skinning weight and would be bound "
-                f"rigidly to the pelvis (limit {MAX_DEGENERATE_VERTEX_FRACTION:.0%}). The "
-                f"garment mesh is probably too far from the avatar surface, or its topology is "
-                f"unsuitable."
+            # RiggingError, not RuntimeError: main.py reads `getattr(e, "failure_code", None)` to
+            # populate rigging_tasks.failure_code, so a bare RuntimeError left this one failure
+            # mode as the only NULL code in the table — undiagnosable next to the
+            # PREFLIGHT_FAILED / LOAD_FAILED / AVATAR_LOAD_FAILED raises in this same method.
+            raise RiggingError(
+                [
+                    f"Weight transfer degenerate: {degenerate} of {vertex_count} vertices "
+                    f"({degenerate_fraction:.1%}) had no usable skinning weight and would be "
+                    f"bound rigidly to the pelvis (limit "
+                    f"{MAX_DEGENERATE_VERTEX_FRACTION:.0%}). The garment mesh is probably too "
+                    f"far from the avatar surface, or its topology is unsuitable."
+                ],
+                "DEGENERATE_WEIGHT_TRANSFER",
             )
 
         ji, jw = dense_weights_to_top4(skin_weights)

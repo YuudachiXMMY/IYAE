@@ -212,6 +212,48 @@ class TestBlenderRiggingProviderGenerateSuccess:
         assert "output_path" in written_job
         assert "result_path" in written_job
 
+    def test_job_and_result_json_are_not_written_under_the_public_rigged_subtree(self, tmp_path):
+        """job.json / result.json must stay out of /assets/rigged/.
+
+        That subtree is served publicly — the rigged GLB is fetched straight from it by the
+        try-on viewer, so nginx and SecurityConfig both allow it. These two files are not
+        public: job.json carries absolute container paths and ``avatar_glb_url``, which
+        contains the owning user's id. They belong under ``rigging-work``, which appears in no
+        asset allow-list.
+        """
+        provider = BlenderRiggingProvider(output_dir=str(tmp_path))
+        seen: dict = {}
+
+        def fake_run_blender(job_path, result_path):
+            seen["job_path"] = job_path
+            seen["result_path"] = result_path
+            blender_result = _successful_result(str(tmp_path / "rigged" / "42" / "garment-rigged.glb"))
+            os.makedirs(os.path.dirname(result_path), exist_ok=True)
+            with open(result_path, "w") as rf:
+                json.dump(blender_result, rf)
+            return blender_result
+
+        with patch.object(provider, "_run_blender", side_effect=fake_run_blender):
+            payload = provider.generate(
+                task_id=5,
+                garment_asset_id=42,
+                input_payload={
+                    "source_glb_url": "/assets/products/1/preview.glb",
+                    "avatar_glb_url": "/assets/avatars/2/avatar.glb",
+                    "slot_hint": "TOP",
+                },
+            )
+
+        public_rigged = os.path.join(str(tmp_path), "rigged")
+        work = os.path.join(str(tmp_path), "rigging-work")
+        assert not seen["job_path"].startswith(public_rigged)
+        assert not seen["result_path"].startswith(public_rigged)
+        assert seen["job_path"].startswith(work)
+        assert seen["result_path"].startswith(work)
+        # The deliverable itself still goes to the public subtree, since that is what the
+        # viewer fetches.
+        assert payload["rigged_glb_url"].startswith("/assets/rigged/")
+
 
 # ---------------------------------------------------------------------------
 # BlenderRiggingProvider — generate (failure paths)

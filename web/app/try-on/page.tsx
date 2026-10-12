@@ -146,7 +146,11 @@ export default function TryOnPage() {
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             <span className="font-semibold">Start AI Styling</span>
-            <span className="text-sm text-primary-foreground/70">
+            {/* Plain token, not `/70`: this is descriptive text, and the alpha measured 3.77:1
+                against bg-primary in dark mode (it clears AA in light, which is why the
+                light-only opacity scan never saw it). The hierarchy against the label above is
+                already carried by size and weight. */}
+            <span className="text-sm text-primary-foreground">
               Chat with your AI stylist to build outfits
             </span>
           </Link>
