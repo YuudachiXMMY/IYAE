@@ -15,7 +15,7 @@ class TestTaskQueue:
         }
         self.queue = TaskQueue(self.db_config)
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_claim_task_returns_none_when_empty(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -27,7 +27,7 @@ class TestTaskQueue:
         assert result is None
         mock_conn.rollback.assert_called_once()
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_claim_task_returns_task(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -48,7 +48,7 @@ class TestRetryTask:
             "database": "test", "user": "test", "password": "test",
         })
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_retry_resets_failed_task_when_under_limit(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -61,7 +61,7 @@ class TestRetryTask:
         assert result is True
         mock_conn.commit.assert_called_once()
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_retry_refuses_when_not_eligible(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -74,7 +74,7 @@ class TestRetryTask:
         assert result is False
         mock_conn.commit.assert_called_once()
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_retry_returns_false_on_exception(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -96,7 +96,7 @@ class TestReclaimStaleTasks:
             "database": "test", "user": "test", "password": "test",
         })
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_reclaim_updates_stale_running_tasks(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -112,7 +112,7 @@ class TestReclaimStaleTasks:
         assert "INTERVAL 15 MINUTE" in sql
         assert "RUNNING" in sql
 
-    @patch("task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_reclaim_returns_zero_when_none_stale(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()

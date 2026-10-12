@@ -1,21 +1,26 @@
 """MySQL-based avatar task queue using SELECT ... FOR UPDATE SKIP LOCKED."""
 import json
 import logging
-import mysql.connector
 from mysql.connector import Error
+
+from queue_base import TaskQueueBase
 
 logger = logging.getLogger(__name__)
 
 
-class AvatarTaskQueue:
-    def __init__(self, db_config: dict):
-        self.db_config = db_config
-
-    def get_connection(self):
-        return mysql.connector.connect(**self.db_config)
+class AvatarTaskQueue(TaskQueueBase):
+    #: Connection handling, ``MAX_ATTEMPTS`` and ``heartbeat`` come from the base class.
+    TABLE = "avatar_generation_tasks"
 
     def claim_task(self) -> dict | None:
-        """Claim one PENDING avatar task using FOR UPDATE SKIP LOCKED."""
+        """Claim one PENDING avatar task using FOR UPDATE SKIP LOCKED.
+
+        Filtered on ``attempt_count``, like the model and rigging queues. Without it an avatar
+        task that reliably crashes or hangs the worker (an OOM loading the SMPL-X model body,
+        say) was reset to PENDING by the stale sweep every 15 minutes forever and — because the
+        claim orders by ``created_at ASC`` and that column never changes — re-claimed ahead of
+        every newer request each cycle, so one poison task starved avatar generation entirely.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(dictionary=True)
         try:
@@ -24,10 +29,11 @@ class AvatarTaskQueue:
                 SELECT id, user_id, input_payload, attempt_count
                 FROM avatar_generation_tasks
                 WHERE status = 'PENDING'
+                  AND COALESCE(attempt_count, 0) < %s
                 ORDER BY created_at ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
-            """)
+            """, (self.MAX_ATTEMPTS,))
             task = cursor.fetchone()
             if task is None:
                 conn.rollback()
@@ -100,43 +106,53 @@ class AvatarTaskQueue:
             cursor.close()
             conn.close()
 
-    def heartbeat(self, task_id: int) -> None:
-        """Push out a RUNNING task's staleness clock.
+    def reclaim_stale_tasks(self) -> int:
+        """Reset RUNNING avatar tasks stuck >15 minutes back to PENDING.
 
-        `reclaim_stale_tasks` decides staleness from `updated_at`, which nothing refreshed
-        during a run — so a job that legitimately outlives the 15-minute threshold was
-        reclaimed and handed to a second claimant while the first was still working on it.
-        `main.py` holds a heartbeat thread open for the duration of `provider.generate()`.
+        Capped at ``MAX_ATTEMPTS``, mirroring ``TaskQueue`` and ``RiggingTaskQueue``. This
+        queue had been left out of that fix: an avatar task that takes the worker down every
+        time it is claimed was reset to PENDING here forever, and re-claimed at the head of the
+        queue on each cycle, starving every newer avatar request indefinitely. Over the cap the
+        task is failed instead, which is a terminal state a human can see.
+
+        Staleness is measured from ``updated_at``, which :meth:`heartbeat` refreshes during a
+        long run, so a slow job is not mistaken for an abandoned one.
+
+        Returns the number of tasks reclaimed (not those failed for exceeding the cap).
         """
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 UPDATE avatar_generation_tasks
-                SET updated_at = NOW()
-                WHERE id = %s AND status = 'RUNNING'
-            """, (task_id,))
-            conn.commit()
-        except Error as e:
-            logger.warning(f"Heartbeat for task {task_id} failed: {e}")
-            conn.rollback()
-        finally:
-            cursor.close()
-            conn.close()
+                SET status = 'FAILED',
+                    error_message = %s,
+                    completed_at = NOW()
+                WHERE status = 'RUNNING'
+                  AND updated_at < NOW() - INTERVAL 15 MINUTE
+                  AND COALESCE(attempt_count, 0) >= %s
+            """, (
+                f"MAX_ATTEMPTS_EXCEEDED: still RUNNING and stale after "
+                f"{self.MAX_ATTEMPTS} attempts",
+                self.MAX_ATTEMPTS,
+            ))
+            exhausted = cursor.rowcount
 
-    def reclaim_stale_tasks(self) -> int:
-        """Reset RUNNING avatar tasks stuck >15 minutes back to PENDING."""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
             cursor.execute("""
                 UPDATE avatar_generation_tasks
                 SET status = 'PENDING'
                 WHERE status = 'RUNNING'
                   AND updated_at < NOW() - INTERVAL 15 MINUTE
-            """)
+                  AND COALESCE(attempt_count, 0) < %s
+            """, (self.MAX_ATTEMPTS,))
             reclaimed = cursor.rowcount
             conn.commit()
+
+            if exhausted > 0:
+                logger.error(
+                    f"Failed {exhausted} stale avatar task(s) that had already used all "
+                    f"{self.MAX_ATTEMPTS} attempts — they are poison and need investigation"
+                )
             if reclaimed > 0:
                 logger.info(f"Reclaimed {reclaimed} stale avatar RUNNING task(s)")
             return reclaimed

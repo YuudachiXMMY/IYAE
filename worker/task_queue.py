@@ -1,21 +1,15 @@
 """MySQL-based task queue using SELECT ... FOR UPDATE SKIP LOCKED."""
 import logging
-import mysql.connector
 from mysql.connector import Error
+
+from queue_base import TaskQueueBase
 
 logger = logging.getLogger(__name__)
 
 
-class TaskQueue:
-    #: Hard cap on how many times a task may be attempted. Shared by `retry_task` and the
-    #: stale sweep so a poison task cannot be recycled forever at the head of the queue.
-    MAX_ATTEMPTS = 3
-
-    def __init__(self, db_config: dict):
-        self.db_config = db_config
-
-    def get_connection(self):
-        return mysql.connector.connect(**self.db_config)
+class TaskQueue(TaskQueueBase):
+    #: Connection handling, ``MAX_ATTEMPTS`` and ``heartbeat`` come from the base class.
+    TABLE = "model_generation_tasks"
 
     def claim_task(self) -> dict | None:
         """Claim one PENDING task using FOR UPDATE SKIP LOCKED."""
@@ -99,31 +93,6 @@ class TaskQueue:
                 )
                 return False
             return True
-        finally:
-            cursor.close()
-            conn.close()
-
-    def heartbeat(self, task_id: int) -> None:
-        """Push out a RUNNING task's staleness clock.
-
-        ``reclaim_stale_tasks`` decides staleness from ``updated_at``, which nothing refreshed
-        during a long generation — so a task legitimately running for more than 15 minutes (a
-        real Tripo3D or Meshy job can) was reclaimed and handed to a second worker while the
-        first was still working on it. Both then wrote output for the same task. Long-running
-        provider calls call this so "stale" means "the worker is gone", not "the job is slow".
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                UPDATE model_generation_tasks
-                SET updated_at = NOW()
-                WHERE id = %s AND status = 'RUNNING'
-            """, (task_id,))
-            conn.commit()
-        except Error as e:
-            logger.warning(f"Heartbeat for task {task_id} failed: {e}")
-            conn.rollback()
         finally:
             cursor.close()
             conn.close()

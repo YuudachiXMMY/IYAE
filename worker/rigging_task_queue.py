@@ -1,20 +1,20 @@
 """MySQL-based rigging task queue using SELECT ... FOR UPDATE SKIP LOCKED."""
 import json
 import logging
-import mysql.connector
 from mysql.connector import Error
+
+from queue_base import TaskQueueBase
 
 logger = logging.getLogger(__name__)
 
-MAX_RIGGING_ATTEMPTS = 3
+#: Kept as a module-level name because callers and tests import it directly; the value is the
+#: shared cap on the base class, so the three queues cannot drift to different limits.
+MAX_RIGGING_ATTEMPTS = TaskQueueBase.MAX_ATTEMPTS
 
 
-class RiggingTaskQueue:
-    def __init__(self, db_config: dict):
-        self.db_config = db_config
-
-    def get_connection(self):
-        return mysql.connector.connect(**self.db_config)
+class RiggingTaskQueue(TaskQueueBase):
+    #: Connection handling, ``MAX_ATTEMPTS`` and ``heartbeat`` come from the base class.
+    TABLE = "rigging_tasks"
 
     def claim_task(self) -> dict | None:
         """Claim one PENDING rigging task using FOR UPDATE SKIP LOCKED."""
@@ -83,30 +83,6 @@ class RiggingTaskQueue:
                 WHERE id = %s AND status = 'RUNNING'
             """, (error_message, failure_code, task_id))
             conn.commit()
-        finally:
-            cursor.close()
-            conn.close()
-
-    def heartbeat(self, task_id: int) -> None:
-        """Push out a RUNNING task's staleness clock.
-
-        `reclaim_stale_tasks` decides staleness from `updated_at`, which nothing refreshed
-        during a run — so a job that legitimately outlives the 15-minute threshold was
-        reclaimed and handed to a second claimant while the first was still working on it.
-        `main.py` holds a heartbeat thread open for the duration of `provider.generate()`.
-        """
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                UPDATE rigging_tasks
-                SET updated_at = NOW()
-                WHERE id = %s AND status = 'RUNNING'
-            """, (task_id,))
-            conn.commit()
-        except Error as e:
-            logger.warning(f"Heartbeat for task {task_id} failed: {e}")
-            conn.rollback()
         finally:
             cursor.close()
             conn.close()

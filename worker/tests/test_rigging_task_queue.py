@@ -15,7 +15,7 @@ class TestRiggingTaskQueueClaim:
         }
         self.queue = RiggingTaskQueue(self.db_config)
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_claim_task_returns_task_dict(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -36,7 +36,7 @@ class TestRiggingTaskQueueClaim:
         assert result == task_data
         mock_conn.commit.assert_called_once()
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_claim_task_returns_none_when_empty(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -49,7 +49,7 @@ class TestRiggingTaskQueueClaim:
         assert result is None
         mock_conn.rollback.assert_called_once()
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_claim_skips_max_attempts(self, mock_connect):
         """Tasks with attempt_count >= MAX_RIGGING_ATTEMPTS should not be claimed."""
         mock_conn = MagicMock()
@@ -76,7 +76,7 @@ class TestRiggingTaskQueueComplete:
             "password": "test",
         })
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_complete_task_updates_status(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -104,7 +104,7 @@ class TestRiggingTaskQueueFail:
             "password": "test",
         })
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_fail_task_with_failure_code(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -121,7 +121,7 @@ class TestRiggingTaskQueueFail:
         assert params[1] == "INVALID_MESH"
         assert params[2] == 42
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_fail_task_without_failure_code(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -146,7 +146,7 @@ class TestRiggingReclaimStaleTasks:
             "password": "test",
         })
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_reclaim_stale_tasks(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -164,7 +164,7 @@ class TestRiggingReclaimStaleTasks:
         assert "RUNNING" in sql
         assert "claimed_at" in sql
 
-    @patch("rigging_task_queue.mysql.connector.connect")
+    @patch("queue_base.mysql.connector.connect")
     def test_reclaim_stale_fails_max_attempts(self, mock_connect):
         """Stale tasks over attempt limit should be set to FAILED with MAX_ATTEMPTS_EXCEEDED."""
         mock_conn = MagicMock()

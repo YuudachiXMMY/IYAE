@@ -35,7 +35,7 @@ OUTPUT_BASE_DIR = os.environ.get("WORKER_OUTPUT_DIR", "/var/iyae/assets")
 ALL_ROLES = ("model", "avatar", "rigging")
 
 
-def get_roles() -> set:
+def get_roles() -> set[str]:
     """Which task queues this process claims from.
 
     The rigging container runs this same `main.py`, so without a role switch it became a
@@ -257,8 +257,15 @@ def run():
                     logger.info(f"Model task {task_id} completed successfully")
                 except Exception as e:
                     logger.error(f"Model task {task_id} failed: {e}")
-                    queue.fail_task(task_id, str(e))
-                    logger.warning(f"Model task {task_id} marked as FAILED. Use designer retry endpoint to re-queue.")
+                    # fail_task only touches a task still RUNNING, and reports whether it did.
+                    # Claiming otherwise is misleading: the task may have been reclaimed by the
+                    # stale sweep and completed by a second worker while this one was still in
+                    # provider.generate(), in which case the guard correctly declined to flip a
+                    # finished generation to FAILED and there is nothing to re-queue.
+                    if queue.fail_task(task_id, str(e)):
+                        logger.warning(f"Model task {task_id} marked as FAILED. Use designer retry endpoint to re-queue.")
+                    else:
+                        logger.warning(f"Model task {task_id} was no longer RUNNING — left as it is; another worker or the stale sweep moved it on.")
 
             # --- Avatar task ---
             avatar_task = avatar_queue.claim_task() if "avatar" in roles else None
@@ -294,7 +301,8 @@ def run():
                     logger.info(f"Avatar task {task_id} completed successfully")
                 except Exception as e:
                     logger.error(f"Avatar task {task_id} failed: {e}")
-                    avatar_queue.fail_task(task_id, str(e))
+                    if not avatar_queue.fail_task(task_id, str(e)):
+                        logger.warning(f"Avatar task {task_id} was no longer RUNNING — left as it is; another worker or the stale sweep moved it on.")
 
             # --- Rigging task (skip when stub provider to avoid producing placeholder boxes) ---
             rigging_task = (rigging_queue.claim_task()
