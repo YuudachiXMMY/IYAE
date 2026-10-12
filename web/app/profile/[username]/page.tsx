@@ -159,7 +159,13 @@ export default function ProfilePage() {
   // Bumped by "Try again". The fetch effect keys on it as well as on the id, because clearing
   // the result alone would not re-run an effect whose only other dependency is unchanged.
   const [postsRetry, setPostsRetry] = useState(0);
-  const [followPending, setFollowPending] = useState(false);
+  // The id a follow write is in flight for, not a bare boolean — tagged the same way
+  // `counts` and `postsResult` are. App Router reuses this component instance across
+  // /profile/alice → /profile/bob (both match the same dynamic segment, and this page has no
+  // `key` to force a remount), so a boolean left bob's Follow button rendered disabled until
+  // alice's request settled, and permanently unresponsive if it stalled.
+  const [followPending, setFollowPending] = useState<number | null>(null);
+  const isFollowPending = followPending != null && followPending === targetUserId;
   const currentPosts = postsResult?.userId === targetUserId ? postsResult : null;
 
   useEffect(() => {
@@ -216,23 +222,37 @@ export default function ProfilePage() {
     // they can resolve in either order, and `isFollowing` is derived from local state with no
     // read-back, so the button could settle showing the opposite of the server's real state
     // with nothing to reconcile it.
-    if (followPending) return;
+    if (isFollowPending) return;
     const wasFollowing = isFollowing;
-    setFollowPending(true);
     toggleFollowFor(username); // optimistic
-    if (targetUserId == null) {
-      setFollowPending(false);
-      return;
-    }
-    const req = wasFollowing ? follows.remove(targetUserId) : follows.toggle(targetUserId);
+    if (targetUserId == null) return;
+
+    const pendingFor = targetUserId;
+    setFollowPending(pendingFor);
+    const req = wasFollowing ? follows.remove(pendingFor) : follows.toggle(pendingFor);
     req
-      .then(() => follows.counts(targetUserId))
-      .then((c) => setCounts({ userId: targetUserId, ...c }))
+      .then(() => {
+        // Refreshing the counts is a SEPARATE concern from the mutation. It used to be
+        // chained onto the same promise, so a counts fetch that failed — a transient 5xx, a
+        // dropped connection, a rate limit — ran the revert below: the button snapped back
+        // and the user was told the follow had failed, while the server had recorded it.
+        // Only `req` rejecting means the follow itself did not happen.
+        follows
+          .counts(pendingFor)
+          .then((c) => setCounts({ userId: pendingFor, ...c }))
+          .catch(() => {
+            /* Counts are a display refinement; the follow succeeded. */
+          });
+      })
       .catch(() => {
         toggleFollowFor(username); // revert
         toast.error("Couldn't update follow. Please try again.");
       })
-      .finally(() => setFollowPending(false));
+      // Only clear if this request is still the pending one, so a slow reply for a profile
+      // the user has left cannot re-enable the button for a newer in-flight write.
+      .finally(() =>
+        setFollowPending((prev) => (prev === pendingFor ? null : prev))
+      );
   }
 
   if (profileNotFound) {
@@ -359,7 +379,7 @@ export default function ProfilePage() {
                 {!isOwnProfile && user && (
                   <button
                     onClick={handleToggleFollow}
-                    disabled={followPending}
+                    disabled={isFollowPending}
                     aria-pressed={isFollowing}
                     aria-label={isFollowing ? `Unfollow ${username}` : `Follow ${username}`}
                     className={cn(
@@ -485,7 +505,13 @@ export default function ProfilePage() {
               if (!open) setSelectedPost(null);
             }}
             onUpdate={(updated) => {
-              setSelectedPost(updated);
+              // Guarded for the same reason as on /community: a failed comment write rolls
+              // back asynchronously, and the dialog is rendered as `{selectedPost && ...}`,
+              // so an unconditional set re-opened a dialog the user had closed — or, if they
+              // had opened another post, swapped its content for the old one.
+              setSelectedPost((prev) =>
+                prev && prev.id === updated.id ? updated : prev
+              );
               // Both stores, because the grid reads from whichever one supplied it. For a
               // server-sourced profile the post is not in the viewer's local cache at all, so
               // writing only there left the interaction invisible the moment the dialog closed.

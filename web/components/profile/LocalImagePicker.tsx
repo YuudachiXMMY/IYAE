@@ -120,25 +120,32 @@ export function LocalImagePicker({
   // separate tab stops and two announcements for one action, which is worse than the
   // unreachable div it replaced. `buttonVariants` from components/ui/button is the way to get
   // the pill look onto `className` without a nested control.
+  // The input is a SIBLING of the button, not a child of it. `<button>` only permits phrasing
+  // content with no interactive descendants, and an `<input>` is interactive whatever its
+  // styling — the nesting was invalid markup that happened to work because the input is
+  // `display:none` and non-tabbable. A `<span>` wrapper keeps the pair inline so the layout
+  // the call sites style through `className` is unchanged.
   return (
-    <button
-      type="button"
-      className={cn("cursor-pointer", className)}
-      onClick={handleClick}
-      aria-label={label}
-    >
+    <span className="contents">
+      <button
+        type="button"
+        className={cn("cursor-pointer", className)}
+        onClick={handleClick}
+        aria-label={label}
+      >
+        {children}
+      </button>
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         className="hidden"
         onChange={handleChange}
-        // Kept out of the accessibility tree deliberately: the button above is the labelled
+        // Kept out of the accessibility tree deliberately: the button is the labelled
         // control, and exposing both would announce the same thing twice.
         aria-hidden="true"
         tabIndex={-1}
       />
-      {children}
-    </button>
+    </span>
   );
 }

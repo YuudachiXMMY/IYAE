@@ -552,7 +552,16 @@ function CommunityFeed({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
             if (!open) setSelectedPost(null);
           }}
           onUpdate={(updated) => {
-            setSelectedPost(updated);
+            // Only patch the dialog while it is still showing this same post. A failed
+            // comment write rolls back asynchronously, and that rollback can land after the
+            // user has closed the dialog — the dialog is rendered as `{selectedPost && ...}`,
+            // so an unconditional set re-opened a dismissed dialog — or after they have
+            // opened a different post, where it would have swapped in the old post's
+            // content. The feed update below still runs either way, so the unsaved comment
+            // is removed regardless.
+            setSelectedPost((prev) =>
+              prev && prev.id === updated.id ? updated : prev
+            );
             handlePostUpdate(updated); // updates BOTH feedPosts and local state (not just state)
           }}
           onToggleLike={(p) => {

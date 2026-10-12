@@ -309,6 +309,28 @@ export function PostDetailDialog({
   function handleAddReply(commentId: string) {
     const draft = replyDrafts[commentId]?.trim();
     if (!draft) return;
+
+    // Server comment ids reach the local model prefixed (see toPostComment), so a reply can
+    // only be threaded server-side when its parent came from the server.
+    const parentId = commentId.startsWith("srv-c-")
+      ? Number(commentId.slice("srv-c-".length))
+      : undefined;
+
+    // Checked BEFORE the optimistic write, so there is nothing to roll back.
+    //
+    // A comment authored in this session has no server id yet. Sending its reply anyway meant
+    // `parentCommentId` was undefined, and `POST /api/posts/{id}/comments` then created a new
+    // TOP-LEVEL comment — the thread was silently flattened server-side and the user was told
+    // nothing, so it only showed up on the next reload. Refuse rather than write it to the
+    // wrong place. A demo post (no serverId) has nothing to persist to and stays local, which
+    // is not an error.
+    if (post.serverId != null && !Number.isFinite(parentId)) {
+      toast.error(
+        "Give the comment you're replying to a moment to save, then try again."
+      );
+      return;
+    }
+
     const updated = addReply(
       post,
       commentId,
@@ -319,19 +341,10 @@ export function PostDetailDialog({
     onUpdate(updated); // optimistic
     setReplyDrafts((prev) => ({ ...prev, [commentId]: "" }));
     setActiveReplyCommentId(null);
-    // Server comment ids reach the local model prefixed (see toPostComment), so a reply can
-    // only be threaded server-side when its parent came from the server.
-    const parentId = commentId.startsWith("srv-c-")
-      ? Number(commentId.slice("srv-c-".length))
-      : undefined;
     const addedReply = updated.comments
       .find((c) => c.id === commentId)
       ?.replies?.at(-1);
-    persistComment(
-      draft,
-      Number.isFinite(parentId) ? parentId : undefined,
-      addedReply?.id
-    );
+    persistComment(draft, parentId, addedReply?.id);
   }
 
   function handleToggleReply(commentId: string) {
