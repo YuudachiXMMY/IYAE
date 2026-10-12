@@ -1,7 +1,5 @@
 package com.iyae.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.Role;
 import com.iyae.repository.UserRepository;
@@ -23,7 +21,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +28,13 @@ import static org.mockito.Mockito.when;
  * B-15. Covers how the filter declines, which is the half of the defect that the entry point
  * alone does not fix: it used to decline with a bare {@code return} for four different reasons,
  * and every one of them then landed on the same generic status.
+ *
+ * <p>It no longer writes any response itself. Doing so for an unverified email ran ahead of
+ * {@code authorizeHttpRequests} and so overrode {@code permitAll}, locking a
+ * registered-but-unverified account out of the public catalogue and out of
+ * {@code GET /api/public/config}. The status now comes from
+ * {@link RestAuthenticationEntryPoint}, which reads the attribute this filter sets — see
+ * {@code RestAuthenticationEntryPointTest}.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -45,10 +49,7 @@ class JwtAuthenticationFilterTest {
 
     @BeforeEach
     void setUp() {
-        // Mirror the Boot-configured mapper: ErrorResponse carries an Instant, which a bare
-        // ObjectMapper cannot serialise.
-        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-        filter = new JwtAuthenticationFilter(jwtTokenProvider, userRepository, objectMapper);
+        filter = new JwtAuthenticationFilter(jwtTokenProvider, userRepository);
         ReflectionTestUtils.setField(filter, "requireEmailVerification", true);
         response = new MockHttpServletResponse();
     }
@@ -67,6 +68,18 @@ class JwtAuthenticationFilterTest {
         request.setRequestURI(uri);
         request.addHeader("Authorization", "Bearer token123");
         return request;
+    }
+
+    /**
+     * The method-scoped allow-list did not admit this request. The filter no longer writes the
+     * response — it leaves the request anonymous and marks it, and
+     * {@link RestAuthenticationEntryPoint} renders the 403 once the access rules have
+     * established that this endpoint needs an authenticated principal.
+     */
+    private void assertDeclinedAsUnverified(MockHttpServletRequest request) {
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(request.getAttribute(JwtAuthenticationFilter.UNVERIFIED_EMAIL_ATTRIBUTE))
+                .isEqualTo(Boolean.TRUE);
     }
 
     private User user(String email, boolean verified) {
@@ -96,21 +109,57 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void unverifiedEmail_answers403AndStopsTheChain() throws Exception {
-        // Not a silent decline: the credential is valid, so letting this fall through to the 401
-        // entry point would make the web client delete a usable session over an unread email.
+    void unverifiedEmail_marksTheRequestAndLetsTheAccessRulesDecide() throws Exception {
+        // The filter must NOT write the response itself. It runs before
+        // authorizeHttpRequests, so writing 403 here overrode every access rule including
+        // permitAll — see unverifiedEmail_doesNotBlockPublicEndpoints below. It marks the
+        // request instead; the entry point turns that into 403 (not 401) for the endpoints
+        // that genuinely need an authenticated principal, so the usable token survives.
         when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
         when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
         when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
         when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
-        filter.doFilter(requestFor("/api/cart"), response, chain);
+        MockHttpServletRequest request = requestFor("/api/cart");
+        filter.doFilter(request, response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getContentAsString()).contains("Email not verified");
-        verify(chain, never()).doFilter(any(), any());
+        assertThat(response.getStatus()).isEqualTo(200); // nothing written here
+        assertThat(response.getContentAsString()).isEmpty();
+        verify(chain).doFilter(any(), any());
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(request.getAttribute(JwtAuthenticationFilter.UNVERIFIED_EMAIL_ATTRIBUTE))
+                .isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
+    void unverifiedEmail_doesNotBlockPublicEndpoints() throws Exception {
+        // The regression. Registration hands back a JWT and the web client attaches it to every
+        // request, so this filter saw a token on calls to endpoints SecurityConfig marks
+        // permitAll — GET /api/products/**, /api/public/**, /api/auth/users/profile/**,
+        // /api/health/**. Writing 403 before the authorization rules ran meant a
+        // registered-but-unverified user could not browse the catalogue, and could not even read
+        // GET /api/public/config, which is what tells the client whether verification is
+        // required at all. The chain must continue so those rules still apply.
+        when(jwtTokenProvider.validateToken("token123")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("token123")).thenReturn("new@test.com");
+        when(jwtTokenProvider.extractTokenVersion("token123")).thenReturn(0);
+        when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
+        when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
+
+        for (String publicPath : new String[] {
+                "/api/products", "/api/public/config", "/api/health", "/api/auth/users/profile/luna" }) {
+            MockHttpServletResponse publicResponse = new MockHttpServletResponse();
+            FilterChain publicChain = org.mockito.Mockito.mock(FilterChain.class);
+
+            filter.doFilter(requestFor(publicPath), publicResponse, publicChain);
+
+            assertThat(publicResponse.getStatus())
+                    .as("filter must not decline the public path %s", publicPath)
+                    .isEqualTo(200);
+            assertThat(publicResponse.getContentAsString()).isEmpty();
+            verify(publicChain).doFilter(any(), any());
+        }
     }
 
     @Test
@@ -190,10 +239,10 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
-        filter.doFilter(requestFor("PUT", "/api/auth/me"), response, chain);
+        MockHttpServletRequest request = requestFor("PUT", "/api/auth/me");
+        filter.doFilter(request, response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
-        verify(chain, never()).doFilter(any(), any());
+        assertDeclinedAsUnverified(request);
     }
 
     @Test
@@ -204,10 +253,10 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
-        filter.doFilter(requestFor("DELETE", "/api/auth/me"), response, chain);
+        MockHttpServletRequest request = requestFor("DELETE", "/api/auth/me");
+        filter.doFilter(request, response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
-        verify(chain, never()).doFilter(any(), any());
+        assertDeclinedAsUnverified(request);
     }
 
     @Test
@@ -218,9 +267,10 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.extractUserId("token123")).thenReturn(1L);
         when(userRepository.findByEmail("new@test.com")).thenReturn(Optional.of(user("new@test.com", false)));
 
-        filter.doFilter(requestFor("GET", "/api/auth/resend-verification"), response, chain);
+        MockHttpServletRequest request = requestFor("GET", "/api/auth/resend-verification");
+        filter.doFilter(request, response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
+        assertDeclinedAsUnverified(request);
     }
 
     // ---- The token is bound to the account id, not just the email ----

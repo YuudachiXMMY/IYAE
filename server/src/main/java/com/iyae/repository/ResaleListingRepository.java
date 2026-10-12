@@ -62,7 +62,4 @@ public interface ResaleListingRepository
     int release(@Param("id") Long id, @Param("listed") ResaleStatus listed,
                 @Param("reserved") ResaleStatus reserved);
 
-    // Account deletion (AccountDeletionService): removes this user's resale listings.
-    void deleteBySellerId(Long sellerId);
-
 }

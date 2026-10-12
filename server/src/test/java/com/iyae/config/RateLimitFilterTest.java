@@ -442,4 +442,47 @@ class RateLimitFilterTest {
         assertThat(res.getStatus()).isEqualTo(429);
         assertThat(chain.getRequest()).isNull();
     }
+
+    // Liking posts must not consume the post-creation bucket. The create rule is a bare
+    // startsWith("/api/posts") prefix, so before the suffix-scoped rules were added ahead of
+    // it, ten likes while scrolling a feed exhausted the create allowance and the user's next
+    // POST /api/posts was 429'd.
+    @Test
+    void likingPosts_doesNotExhaustThePostCreateBucket() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 20; i++) {
+            MockHttpServletRequest like = makeRequest("POST", "/api/posts/" + i + "/like", "10.9.0.1");
+            invokeFilter(filter, like, new MockHttpServletResponse(), new MockFilterChain());
+        }
+
+        MockHttpServletRequest create = makeRequest("POST", "/api/posts", "10.9.0.1");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        invokeFilter(filter, create, res, chain);
+
+        assertThat(res.getStatus()).isNotEqualTo(429);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    // ...and the interaction endpoints are still individually capped, each on its own bucket.
+    @Test
+    void commentingOnPosts_hasItsOwnLimit() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 20; i++) {
+            MockHttpServletRequest comment =
+                    makeRequest("POST", "/api/posts/1/comments", "10.9.0.2");
+            invokeFilter(filter, comment, new MockHttpServletResponse(), new MockFilterChain());
+        }
+
+        MockHttpServletRequest overflow = makeRequest("POST", "/api/posts/1/comments", "10.9.0.2");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        invokeFilter(filter, overflow, res, new MockFilterChain());
+        assertThat(res.getStatus()).isEqualTo(429);
+
+        // A different bucket, so creating a post is unaffected by the exhausted comment one.
+        MockHttpServletRequest create = makeRequest("POST", "/api/posts", "10.9.0.2");
+        MockHttpServletResponse createRes = new MockHttpServletResponse();
+        invokeFilter(filter, create, createRes, new MockFilterChain());
+        assertThat(createRes.getStatus()).isNotEqualTo(429);
+    }
 }

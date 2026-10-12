@@ -54,9 +54,9 @@ class SavedProductControllerTest {
 
     @Test
     void getSavedProducts_unauthenticated_returns401() throws Exception {
-        // 403, not 401: the filter chain has no authentication entry point, so an
-        // anonymous request is denied rather than challenged. Matches every other
-        // controller test in this package.
+        // 401, not 403: the chain now has an authentication entry point, so an anonymous
+        // request is challenged rather than merely denied. The web client treats only 401 as
+        // session death, which is what lets it clear a dead token and redirect to /login.
         mockMvc.perform(get("/api/saved-products"))
                 .andExpect(status().isUnauthorized());
     }

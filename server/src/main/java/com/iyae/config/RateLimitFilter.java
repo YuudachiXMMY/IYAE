@@ -45,6 +45,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
             // the feed, bury the moderation queue it is reported through, and grow the database
             // unboundedly — on an instance where, until the ADMIN bootstrap landed, nobody could
             // action any of it. POST-scoped so reading the feed is never throttled.
+            //
+            // Interacting with a post is not creating one. These three suffix rules MUST stay
+            // ahead of the bare /api/posts rule below: matching is first-match-wins on
+            // startsWith, so without them POST /api/posts/{id}/like, /comments and /report all
+            // drew on the create bucket — liking ten posts while scrolling a feed exhausted it
+            // and then 429'd the user's attempt to actually post something, which is the
+            // opposite of the intent. Same reason the designer-products rules below are
+            // suffix-scoped.
+            new RateRule("POST", "/api/posts/", "/like", 60, 60_000),
+            new RateRule("POST", "/api/posts/", "/comments", 20, 60_000),
+            new RateRule("POST", "/api/posts/", "/report", 10, 60_000),
             new RateRule("POST", "/api/posts", null, 10, 60_000),
             new RateRule("POST", "/api/events", null, 60, 60_000),
             new RateRule("POST", "/api/follows/", null, 30, 60_000),

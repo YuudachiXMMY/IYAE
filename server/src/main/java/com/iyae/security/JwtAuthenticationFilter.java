@@ -1,7 +1,5 @@
 package com.iyae.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.iyae.dto.ErrorResponse;
 import com.iyae.entity.User;
 import com.iyae.repository.UserRepository;
 import jakarta.servlet.FilterChain;
@@ -10,8 +8,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,7 +17,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -30,7 +25,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
-    private final ObjectMapper objectMapper;
 
     @Value("${app.auth.require-email-verification:true}")
     private boolean requireEmailVerification;
@@ -53,6 +47,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             new AllowedRequest("GET", "/api/auth/me"),
             new AllowedRequest("POST", "/api/auth/resend-verification"));
 
+    /**
+     * Marks a request that presented a valid credential for an account whose email is not
+     * verified. {@link RestAuthenticationEntryPoint} reads it and answers 403 instead of 401, so
+     * the distinction this filter used to make by writing the response itself is preserved —
+     * without the filter having to decide which endpoints are public.
+     */
+    public static final String UNVERIFIED_EMAIL_ATTRIBUTE =
+            JwtAuthenticationFilter.class.getName() + ".unverifiedEmail";
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
@@ -60,26 +63,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             if (jwtTokenProvider.validateToken(token)) {
-                if (!authenticate(token, request, response)) {
-                    // A response has already been written (403 unverified). Stopping the chain
-                    // here keeps that status rather than letting the request fall through to the
-                    // 401 entry point, which would make the client discard a usable session.
-                    return;
-                }
+                authenticate(token, request);
             }
         }
         chain.doFilter(request, response);
     }
 
-    /** @return false when this filter has already written the response and the chain must stop. */
-    private boolean authenticate(String token, HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
+    private void authenticate(String token, HttpServletRequest request) {
         String email = jwtTokenProvider.extractEmail(token);
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
             // The row is gone: the credential is unusable, so leave the request anonymous and let
             // the entry point answer 401. The client clears the dead token and re-authenticates.
-            return true;
+            return;
         }
         // The subject is an email address, which is NOT a stable identity: deleting an account
         // scrubs its row's address, freeing the original for someone else to register. A token
@@ -91,25 +87,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // Null means a token minted before the claim existed. Rejecting those invalidates
             // any session predating this deploy, which is the safe direction and, pre-launch,
             // affects nobody.
-            return true;
+            return;
         }
         // Reject any token minted before a credential change (password reset bumps tokenVersion).
         if (jwtTokenProvider.extractTokenVersion(token) < user.getTokenVersion()) {
-            return true;
+            return;
         }
         // Registration hands back a JWT immediately, but an unverified account must not gain
         // authenticated access until it verifies its email — the same gate login enforces. Config-
         // gated (app.auth.require-email-verification) so dev can disable it.
         if (requireEmailVerification && !Boolean.TRUE.equals(user.getEmailVerified())) {
             if (!isUnverifiedAllowed(request)) {
-                // 403, not a silent decline: the credential is valid and the session must survive.
-                // A 401 here would make the web client wipe the token of a user whose only problem
-                // is an unread verification email.
-                response.setStatus(HttpStatus.FORBIDDEN.value());
-                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                objectMapper.writeValue(response.getOutputStream(), new ErrorResponse(
-                        "Email not verified", HttpStatus.FORBIDDEN.value(), Instant.now()));
-                return false;
+                // Mark the request and leave it anonymous; do NOT write a response here.
+                //
+                // Writing 403 from this filter ran before Spring Security's authorization rules
+                // and therefore overrode every one of them, including `permitAll`. Because
+                // registration hands back a JWT and the web client attaches it to every request,
+                // a registered-but-unverified account got 403 from the public catalog, public
+                // profiles, /api/health and /api/public/config — the last being exactly the
+                // endpoint that tells the client whether verification is required at all. The
+                // access policy belongs in SecurityConfig, which is now the only thing that
+                // decides whether a given request needs an authenticated principal.
+                //
+                // The credential is still valid and the session must survive, so for a request
+                // that DOES need authentication the entry point turns this attribute into 403
+                // rather than 401 — a 401 would make the web client wipe the token of a user
+                // whose only problem is an unread verification email.
+                request.setAttribute(UNVERIFIED_EMAIL_ATTRIBUTE, Boolean.TRUE);
+                return;
             }
         }
         UserDetails principal = new org.springframework.security.core.userdetails.User(
@@ -120,7 +125,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 principal, null, principal.getAuthorities());
         auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(auth);
-        return true;
     }
 
     private boolean isUnverifiedAllowed(HttpServletRequest request) {
