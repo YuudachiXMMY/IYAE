@@ -6,23 +6,37 @@
 
 ## How this was produced
 
-A gated multi-agent review (123 agents, ~2330 tool calls, ~12.9M subagent tokens):
+A gated multi-agent review run in two passes (250 agents, ~4000 tool calls, ~24M subagent tokens):
+
+**Pass 1 — the blocking tier.**
 
 1. **Review** — 16 area reviewers in parallel, each reading the real source at HEAD rather than a diff, so every hunk was judged with the code around it in view. Each CRITICAL/HIGH had to carry quoted `file:line` evidence plus a traced failure path; anything without one was to be demoted or dropped.
 2. **Verify** — every CRITICAL/HIGH adjudicated by three agents with *different* lenses: execution-trace, adversarial refutation, and existing-mitigation. Fail-closed: a finding is dismissed only when a verifier can affirmatively prove it false from code at confidence >= 0.8. Uncertainty keeps it blocking.
 3. **Gaps** — three completeness critics (architecture coverage / first-launch reality / adversarial) named what the 16 areas never opened; each gap got its own reviewer and the same three-lens verification.
 
+**Pass 2 — the advisory tier.** The first pass verified only CRITICAL/HIGH, so its 42 MEDIUM/LOW rows shipped explicitly labelled as unverified leads. All 42 have since been through the same treatment, with two changes: a third lens ranks impact against a shared rubric (so the 42 rankings are comparable rather than each judged on its own scale), and any proposed escalation to HIGH/CRITICAL had to survive three further agents attacking its reachability, its real consequence, and whether the severe impact was already counted by an existing blocking finding. Crying HIGH on ten MEDIUMs costs the team as much as missing one real HIGH, so the gate is majority-rule in both directions. A final agent then did the cross-finding work no per-finding verifier could: naming duplicate clusters, ordering the fixes, and spotting systemic causes.
+
 Deliberate product decisions were declared non-defects up front (payment off for Launch 1, engineering-authored legal pages, demo negative ids, `MATERIALIZED`->`READY`, login 400-on-bad-credentials), and the project `CLAUDE.md` narrative was declared non-evidence — so every claim had to be re-established against code.
 
-**Stats:** 16/16 areas completed; 50 raw -> 45 unique findings; 11 gaps named, 11 reviewed, 33 raw -> 28 new unique; 27 confirmed by the three-lens pass, **0 refuted**, 4 left unadjudicated when the account hit its monthly spend limit — two of those carry a confirmed verdict from the first run and two were verified by hand, and all four are marked individually below.
+### Results
 
-> Nothing was refuted. That is unusual enough to state plainly rather than bury: the adversarial pass killed none of the 31 blockers. Five of the highest-impact claims were therefore spot-checked by hand as well — `/api/outfits` absent from `RateLimitFilter.RULES`; `.env` is `-rw-r--r--` on disk; `stripe-java:26.+` with no `gradle.lockfile`; `setSlotHint` present only in the `@Profile({"dev","test"})` seeder; `ReviewService` has no `orderRepository` — and all five held.
+| | Blocking tier | Advisory tier |
+|---|---|---|
+| Verified | 31 | 42 |
+| Confirmed | 27 by three lenses, 2 carried from the first run, 2 by hand | 42 |
+| Refuted | 0 | 0 |
+| Severity changed | 1 downgraded (HIGH -> LOW) | 6 downgraded (MEDIUM -> LOW), 0 escalated |
+
+Pass 1: 16/16 areas completed; 50 raw -> 45 unique findings; 11 gaps named, 11 reviewed, 33 raw -> 28 new unique. Four blocking findings were left unadjudicated when the account hit its monthly spend limit — two carry a confirmed verdict from the first run and two were verified by hand, and all four are marked individually below.
+
+> **Nothing was refuted, in either tier — 0 of 73.** That is unusual enough to state plainly rather than bury. It does not mean the refutation lens rubber-stamped: it produced substantive pushback on 20+ findings without killing any of them, and that pushback is recorded inline as **Verifier caveats**. Two findings had their traced consequence shown to be wrong (A-19, A-30), one carries a **suggested fix that would cause an outage** (A-42), one is self-refuted by its own evidence (A-28), and six collapse into three defects. Five of the highest-impact blocking claims were additionally spot-checked by hand — `/api/outfits` absent from `RateLimitFilter.RULES`; `.env` is `-rw-r--r--` on disk; `stripe-java:26.+` with no `gradle.lockfile`; `setSlotHint` present only in the `@Profile({"dev","test"})` seeder; `ReviewService` has no `orderRepository` — and all five held.
 
 ### Known limits of this review
 
 - It is static: nothing was executed, deployed, load-tested or run against a real MySQL. Findings about runtime behaviour are reasoned from code, not observed.
 - Severity is judged for a *first* production launch of a consumer app holding photos and body measurements. A finding's rank would move under different launch assumptions.
-- 42 advisory items were not adversarially verified (only CRITICAL/HIGH were), so that list is lower-confidence than the blocking one by construction.
+- Both tiers are now adversarially verified, but verification is still three agents reading code — it establishes that a claim holds against the source, not that the failure has been observed in a running system.
+- Read the **Verifier caveats** on a finding before acting on its suggested fix. A-42's primary suggested fix is actively harmful; A-35 and B-5 are the same defect with *conflicting* fixes.
 
 ---
 
@@ -596,11 +610,12 @@ Deliberate product decisions were declared non-defects up front (payment off for
 
 # Advisory (42)
 
-MEDIUM/LOW findings. These were **not** put through the three-lens verification — treat them as leads, not as established defects.
+MEDIUM/LOW findings. All 42 have been adversarially verified; see **Verification** on each. After de-duplication these ~42 rows are **~36 distinct defects** — the clusters are named in the Consolidation section at the end.
 
 ## A-1 · `MEDIUM` — No CPU/memory resource limits on any production service
 
 **Location:** `docker-compose.prod.yml:9`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** infra-deploy
 
 **Evidence**
@@ -615,9 +630,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add `deploy.resources.limits.memory`/`cpus` (or the legacy `mem_limit`/`cpus` compose keys, since this stack is not a Swarm deployment and `deploy:` is otherwise ignored by plain `docker compose`) to each service in `docker-compose.prod.yml`, sized from observed usage.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the load-bearing claims failed. One minor nuance in the suggested-fix text ("deploy: is otherwise ignored by plain docker compose") is debatable — modern Docker Compose V2 (the compose-spec CLI, as opposed to legacy docker-compose V1/non-swarm) does apply deploy.resources.limits even outside Swarm mode in many current versions — but this is a side remark in the suggested fix, not part of the core evidence, and doesn't affect the finding's validity (the repo's own dev docker-compose.yml already relies on exactly this `deploy.resources.limits` key working outside Swarm for the rigging-worker profile, which undercuts the fix text's own caveat but not the main claim that no limits exist in prod).
+- None of the core factual claims failed verification. I confirmed directly against docker-compose.prod.yml that no service (mysql, server, worker, web, nginx, certbot, certbot-cli) declares deploy.resources.limits, mem_limit, or cpus anywhere in the file — only restart policy and logging caps are shared via the x-service-defaults anchor. I also cross-checked the report's comparison point: dev's docker-compose.yml does set JAVA_TOOL_OPTIONS=-Xmx384m -Xms128m on server and deploy.resources.limits {memory: 1G, cpus: '2.0'} on the optional rigging-worker profile, confirming prod genuinely dropped protections dev already has for an equivalent workload. One claim in the failure path is overstated rather than false: the OOM killer does not pick "arbitrarily" among all processes — it scores by resident memory usage (oom_score), so in practice it is more likely to kill whichever container is actually leaking/spiking (e.g. worker or server) than mysql specifically. The report's own hedge ("can be mysql rather than the offending container") is defensible but not guaranteed.
+
 ## A-2 · `MEDIUM` — docker-compose.prod.yml sets no JVM heap limit and no container memory/CPU ceiling for server or worker
 
 **Location:** `docker-compose.prod.yml`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** perf-scale
 
 **Evidence**
@@ -632,9 +653,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Carry the same `deploy.resources.limits` pattern dev already uses for the equivalent workload (rigging-worker: 1G/2cpu) onto the prod `worker` service, and set an explicit `-Xmx`/`-XX:MaxRAMPercentage` plus a matching container memory limit on the prod `server` service, so a single heavy task or a leak is contained to its own container instead of competing for host memory with MySQL.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the load-bearing claims failed verification. The one soft spot is the failure-path narrative's claim that the host OOM-killer is "free to pick any process on the box, including mysql" — in practice the Linux OOM-killer's badness heuristic usually targets the process causing the spike (the worker itself) rather than mysql, so framing it as mysql being killed is somewhat speculative/illustrative rather than the most likely outcome. This doesn't undermine the core defect (total absence of any memory/CPU ceiling), only slightly overstates one dramatic consequence in the failure path.
+
 ## A-3 · `MEDIUM` — No disk quota on either named volume and no disk check in any health path
 
 **Location:** `docker-compose.prod.yml:207`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Generated-asset storage has no retention, no quota and no monitoring, on the same filesystem as the database
 
 **Evidence**
@@ -645,9 +671,12 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a disk section to the `health` branch: `df -P` on the Docker data root and on `$BACKUP_DIR`'s filesystem, `success` above 25% free, `warn` 15-25%, `error` below 15%; plus a `du -sh` of the assets volume and of `$BACKUP_DIR` so growth is visible between runs. If the host supports it, bound `assets_data` with a size-limited driver (`driver_opts: {type: tmpfs}` is wrong here; an LVM/XFS project quota or a separate volume for assets is the right shape) so asset growth can never be the thing that stops MySQL writing. Document the minimum volume size relative to expected catalogue size x BACKUP_KEEP.
 
+**Flagged as overlapping:** A-11
+
 ## A-4 · `MEDIUM` — nginx drops X-Content-Type-Options/X-Frame-Options/Referrer-Policy on every asset and upload location, while upload content-type validation trusts the client-declared header only
 
 **Location:** `nginx/conf.d/default.conf:40`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** privacy-assets, infra-deploy (reported independently 2x)
 
 **Evidence**
@@ -662,9 +691,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Re-state the security headers inside each location block that defines its own `add_header` (nginx requires repeating them, it does not merge), in both `nginx/conf.d/default.conf` and `nginx/templates/tls.conf`. Separately, harden `FileStorageService` to sniff real file content (e.g. check magic bytes for JPEG/PNG/WebP, or use a library like Apache Tika / ImageIO decode-and-re-encode) rather than trusting the client-declared `Content-Type` header alone.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the load-bearing factual claims failed verification. The nginx line-number citations, the server-vs-location add_header split, the identical pattern in nginx/templates/tls.conf (the file actually used once TLS is enabled — where the dropped header set also includes HSTS, which the finding doesn't call out but which strengthens rather than weakens the finding), FileStorageService's client-Content-Type-only validation, the DESIGNER-only gating of the upload endpoint, and open/unvetted DESIGNER self-registration were all confirmed by direct code reading. One nuance the finding understates in the other direction: in current evergreen browsers, an <img> tag consuming the mislabeled file cannot render it as HTML regardless of nosniff (image-element decoding only sniffs among image codecs, never reinterprets as text/html), and nginx itself serves a consistent image/* Content-Type from the forced file extension rather than an ambiguous one — so the realistic trigger is narrower than "any embedding context," essentially requiring direct top-level navigation to the raw asset URL, which is less certain to execute script in 2026 evergreen browsers than the write-up implies. The finding's own hedge ("does not by itself guarantee script execution in every current evergreen browser") already concedes this, so it isn't a false claim, just a point worth weighting in the severity call.
+
 ## A-5 · `MEDIUM` — nginx and the Next.js middleware both set overlapping security headers with different values, and CSP has no `frame-ancestors`
 
 **Location:** `nginx/conf.d/default.conf:24`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** web-ts
 
 **Evidence**
@@ -675,9 +709,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Pick one layer to own each header (recommend nginx, since it fronts everything including non-Next.js responses) and stop setting the duplicates in `middleware.ts`, or vice versa. Add `frame-ancestors 'none'` (or `'self'`) to the CSP so modern browsers get an unambiguous, CSP-level clickjacking directive instead of relying on two conflicting `X-Frame-Options` headers.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the factual claims failed verification. Confirmed by reading the files directly: nginx/conf.d/default.conf:24-26 sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin` via `add_header ... always` on the `location /` block that proxies to the Next.js `web` upstream (and the same three headers are duplicated in nginx/templates/tls.conf:54-57 for the HTTPS variant). web/middleware.ts:9-11 independently sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on every non-API, non-static route. Grepped the whole nginx/ tree and found no `proxy_hide_header` directive anywhere, so nginx does not strip the upstream (Next.js) response's own headers before adding its own — the claim that both layers' headers survive onto the wire is accurate. The CSP (entirely owned by middleware.ts; nginx sets no CSP in either config) does have `frame-src 'none'` (controls embedding *by* this page) but genuinely has no `frame-ancestors` directive (controls embedding *of* this page) — confirmed by reading the full CSP string in middleware.ts. So the evidence paragraph holds up verbatim against the code.
+
 ## A-6 · `MEDIUM` — Verification and password-reset tokens leak into nginx access logs via query string
 
 **Location:** `nginx/nginx.conf:28`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** observability-ops
 
 **Evidence**
@@ -692,9 +731,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Have the verify-email/reset-password pages redirect the token out of the query string immediately (e.g., POST it from a one-time client script and clear via history.replaceState before any proxy sees a second request), or add an nginx `map`/regex to redact the `token=` value before logging (e.g., strip query args for these two paths in a dedicated log_format), or move token consumption off a GET entirely.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Only a trivial line-number discrepancy: the finding cites nginx/nginx.conf:28 for `access_log /dev/stdout;`, but at HEAD that directive is on line 27 (line 28 is `error_log /dev/stderr;`). Not material to the substance of the finding.
+- None of the load-bearing claims failed verification. Confirmed: nginx/nginx.conf:28 sets `access_log /dev/stdout;` with no `log_format` directive anywhere in nginx.conf, conf.d/default.conf, or the real production template nginx/templates/tls.conf — so nginx falls back to its built-in `combined` format, whose `$request` field is the full request line including the query string. Confirmed AuthMailService.java:64/76 builds `{FRONTEND_BASE_URL}/verify-email?token={rawToken}` and `/reset-password?token={rawToken}` with the raw (unhashed) token. Confirmed both web/app/verify-email/page.tsx and web/app/reset-password/page.tsx read the token via `useSearchParams` on a plain GET page route (no redirect/history.replaceState/token-stripping anywhere), and that route is proxied by nginx's `location /` block to the Next.js web upstream — so the token-bearing GET is in fact what nginx logs, in both the pre-TLS default.conf and the real tls.conf used once `ssl-init` runs. Confirmed docker-compose.prod.yml's `x-service-defaults` (applied to the nginx service) sets `json-file` logging capped at `max-size: 10m, max-file: 3`, consistent with the report's retention claim. One nuance the report doesn't fully spell out but that strengthens it: SecureTokenService stores only a SHA-256 hash in the DB, so this nginx log is actually the single place the raw, usable token is persisted in plaintext anywhere in the stack.
+
 ## A-7 · `MEDIUM` — Plain `docker compose -f docker-compose.prod.yml up` bypasses the TLS gate entirely
 
 **Location:** `prod_deploy.sh:78`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/HIGH)  
 **Found by:** infra-deploy
 
 **Evidence**
@@ -709,9 +754,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Have `nginx`'s own startup (e.g. an entrypoint wrapper or a healthcheck that fails when `listen 443` is absent and `ALLOW_INSECURE_HTTP` is unset) perform the same check `prod_deploy.sh` does, so the protection does not depend on which interface the operator chooses.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the finding's factual claims failed verification. I confirmed: (1) `require_tls_or_explicit_optout` (prod_deploy.sh:78-90) is called only from the `up` (line 321) and `update` (line 333) subcommand branches of the bash wrapper — nowhere else. (2) `docker-compose.prod.yml`'s `nginx` service (lines 147-174) has no entrypoint/healthcheck logic that checks for `listen 443`; its healthcheck only wgets `http://localhost:80/`, and it mounts whichever file `${NGINX_SITE_CONF_FILE:-default.conf}` resolves to with no validation. (3) The tracked `nginx/conf.d/default.conf` is HTTP-only by design, with a comment explicitly warning "Do not ship a public deployment on this file." (4) `ProductionConfigValidator.java` (server) validates CORS, FRONTEND_BASE_URL, INTERNAL_MAIL_SECRET, RESEND_MAIL_ENDPOINT, and Stripe key/webhook pairing, but has no TLS-related check at all. Notably, its own comment (lines 121-125) reads: "Both-or-neither, enforced here as well as in prod_deploy.sh, because an operator who brings the stack up with plain `docker compose` never runs that script" — the codebase's own authors explicitly anticipated and defended against this exact "plain docker compose bypasses the wrapper" scenario for the Stripe-pairing check, but left TLS enforcement ungated for the identical scenario. This is strong corroboration that the premise (operators realistically invoking compose directly) is a scenario the team itself treats as real, not a far-fetched edge case.
+
 ## A-8 · `MEDIUM` — TLS config selection and its survival across `prod_deploy.sh update` -- the exact class of defect that was CRITICAL in the prior review round -- has no automated regression test
 
 **Location:** `prod_deploy.sh`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/MEDIUM/LOW) — **severity corrected MEDIUM -> LOW** by unanimous or majority verifier rank  
 **Found by:** test-integrity
 
 **Evidence**
@@ -726,9 +776,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a lightweight script-level test (bats, or a bash test harness) that runs `ssl-init` against a throwaway checkout, then `update`, and asserts the selected TLS site file is unchanged and still has `listen 443` present.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the finding's factual claims failed. Verified: (1) `grep -rln "prod_deploy.sh\|ssl-init\|tls-active\|NGINX_SITE_CONF_FILE" .github/workflows/` returns no matches — no CI job exercises this path. (2) No `.bats` file or any `*test*.sh` file exists anywhere in the repo. (3) The described fix mechanism is real and present at HEAD: prod_deploy.sh:41-71 renders TLS config to `nginx/conf.d/tls-active.conf` and persists the chosen file in `NGINX_SITE_CONF_FILE=` inside `.env` (prod_deploy.sh:62-71, 413-417). (4) Both `.env` and `nginx/conf.d/tls-active.conf` are listed in `.gitignore`, so `update`'s `git pull` (line 338) and the rollback's `git reset --hard "$previous_rev"` (line 353) cannot touch either file — confirming the current code is structurally sound against the prior CRITICAL regression class, and the finding is purely about absent regression-test coverage, not a live bug.
+- The finding's literal claim (no CI workflow or bats/shell test references prod_deploy.sh/ssl-init/tls-active.conf/NGINX_SITE_CONF_FILE) is confirmed true by direct grep — .github/workflows/e2e.yml has no reference, and no .bats file or any other test file anywhere in the repo mentions these mechanisms. However, the finding's framing that a regression "could reintroduce that exact regression with no automated signal anywhere" overstates the real risk: prod_deploy.sh already has two independent, automatically-invoked runtime guards around this exact mechanism. (1) require_tls_or_explicit_optout() is called at the start of both `up` and `update` and does `grep -qE '^\s*listen\s+443' "$NGINX_SITE_CONF"`, exiting 1 with an explicit error ("TLS is not configured... Run ssl-init first") unless the operator has set ALLOW_INSECURE_HTTP=true. (2) the `health` subcommand — which `update` calls automatically on success (`"$0" health`) — independently re-checks `listen 443` against $NGINX_SITE_CONF and prints a red "TLS: NOT configured — traffic is plaintext HTTP" line if it has reverted. So unlike the prior round's incident (where there was genuinely zero signal anywhere), a reintroduced regression today would be caught and loudly flagged on the very next `up`/`update` invocation, not silently absorbed. This is a real safety net that the finding does not account for, even though it is admittedly a runtime check rather than a CI/test-suite signal.
+
 ## A-9 · `MEDIUM` — prod_deploy.sh health command misreports an unhealthy worker/server container as OK
 
 **Location:** `prod_deploy.sh:458`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** observability-ops
 
 **Evidence**
@@ -743,9 +799,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Match on the health qualifier explicitly, e.g. `if echo "$local_status" | grep -qE 'Up.*\(unhealthy\)'; then error ...; elif echo "$local_status" | grep -q "Up"; then success ...; else error ...; fi`, or read `--format '{{.Health}}'` instead of parsing `{{.Status}}` text.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of substance. I verified the exact code at prod_deploy.sh:447-462 (the `health)` case) matches the quoted evidence verbatim: the per-service loop runs `docker compose ps "$svc" --format '{{.Status}}'` and tests `grep -q "Up"`, printing green `success` on match. Docker Compose's Status string for a service with a defined healthcheck is of the form `Up <duration> (unhealthy)` / `(healthy)` / `(starting)`, so the substring "Up" is present regardless of health state. I also confirmed in docker-compose.prod.yml that mysql, server, worker, web, and nginx all define `healthcheck:` blocks, and specifically that worker's healthcheck is heartbeat-file-based with no corresponding HTTP endpoint anywhere else in the script, so for worker there is no later check in the same case block that would catch a false "OK" — unlike server (redundantly re-checked via `curl .../api/health/ready` a few lines later) and web/nginx (later `curl http://localhost` check). One nuance the report doesn't dwell on: the raw `docker compose ps` table is printed unformatted a few lines above the buggy summary loop in the same command invocation, and that table's STATUS column does correctly show "(unhealthy)" — so the correct information is present in the same output, just contradicted by a colorized, more legible summary immediately below it. That bounds real-world impact somewhat: an operator isn't blind, just given conflicting signals.
+
 ## A-10 · `MEDIUM` — update rebuilds images on every deploy and on every rollback with no layer reclamation, on the same filesystem as the database
 
 **Location:** `prod_deploy.sh:340`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Generated-asset storage has no retention, no quota and no monitoring, on the same filesystem as the database
 
 **Evidence**
@@ -759,6 +820,7 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 ## A-11 · `MEDIUM` — No disk-capacity check or alert anywhere: health, readiness and the container healthchecks all pass at 100% full
 
 **Location:** `prod_deploy.sh:447`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Generated 3D assets accumulate on the shared volume forever; no retention, cleanup, or disk-usage alerting exists
 
 **Evidence**
@@ -769,9 +831,12 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a disk section to `prod_deploy.sh health`: `df -h` on the Docker data root and on `BACKUP_DIR`, plus `docker system df -v` for per-volume sizes, and `error` above a threshold (e.g. 80% used) so the existing non-zero-exit convention surfaces it. Also give the application a signal — either add Actuator and let `DiskSpaceHealthIndicator` participate in `/api/health/ready`, or have the new cleanup job log a WARN with free bytes and reclaimed bytes each pass — since the compose healthcheck is the only automated probe in the deployment and today it cannot distinguish a healthy host from one with zero free space.
 
+**Flagged as overlapping:** A-3
+
 ## A-12 · `MEDIUM` — Server and worker containers run as root in production (web was hardened, these were not)
 
 **Location:** `server/Dockerfile:8`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** infra-deploy
 
 **Evidence**
@@ -786,9 +851,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a non-root `USER` to `server/Dockerfile` (temurin images ship a non-root option or add one with `useradd`), `worker/Dockerfile`, and `worker/Dockerfile.rigging`, matching the approach already used for `web/Dockerfile`.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Minor overstatement only: the finding frames the server's attack surface as parsing "attacker-influenced bytes" alongside the worker's GLB/image/mesh parsing. Reading FileStorageService.storeImage shows the server does not parse image bytes at all — it trusts the client Content-Type header and streams the upload straight to disk with no decoding. The server's RCE surface is the generic one (Jackson/Hibernate/JWT/dependency CVEs across a large REST API), not literal binary-format parsing. This doesn't break the finding (the core claim — no USER directive in server/Dockerfile, worker/Dockerfile, worker/Dockerfile.rigging, versus web/Dockerfile's USER node fix — is fully verified by reading all four Dockerfiles and docker-compose.prod.yml), but the server-specific part of the "failure path" narrative is weaker than claimed. The worker-specific claim is well-supported: worker/*.py genuinely does struct.unpack on GLB bytes and imports PIL/libigl (native C++ parsing code), a real malicious-file-parsing surface.
+
 ## A-13 · `MEDIUM` — AdminBootstrap's promotion is a one-way, irreversible role overwrite with no path back — a single-owner operator loses designer capability permanently
 
 **Location:** `server/src/main/java/com/iyae/config/AdminBootstrap.java:91`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Production database seeds to an empty marketplace; no production content/designer-onboarding path exists
 
 **Evidence**
@@ -799,9 +869,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Make moderation capability additive rather than exclusive — either a `Set<Role>` / separate `is_admin` flag, or let ADMIN also satisfy the DESIGNER matchers in `SecurityConfig` when a DesignerProfile exists. At minimum, have `AdminBootstrap` refuse to promote an account whose role is DESIGNER (logging why) instead of silently destroying its studio access, and add an admin-only role-management endpoint so the state is recoverable without direct SQL.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the report's load-bearing factual claims failed verification. Minor rhetorical note: the title's "permanently" overstates things slightly since the state is recoverable via a direct DB UPDATE (which the report itself implicitly acknowledges via its suggested fix wording "without direct SQL"), not truly permanent/unrecoverable data loss.
+
 ## A-14 · `MEDIUM` — No rate-limit rule covers POST /api/products/{id}/reviews — unlike every other UGC-creation endpoint
 
 **Location:** `server/src/main/java/com/iyae/config/RateLimitFilter.java:26`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:No verified-purchase gate or rate limit on product reviews — zero-cost review-bombing of a competitor designer
 
 **Evidence**
@@ -816,9 +891,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a `RateRule("POST", "/api/products/", "/reviews", <N>, 60_000)` to `RULES`, placed consistently with the other suffix-scoped UGC rules (ahead of any broader `/api/products/` prefix rule, following the same first-match-wins ordering note already documented for the posts rules).
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the finding's factual claims failed verification. The cited line numbers, the described absence of a reviews rule, the characterization of the unique constraint's scope, and the suggested fix pattern (suffix-scoped POST rule ahead of broader prefix rules) all check out against the code as written.
+
 ## A-15 · `MEDIUM` — GenerateOutfitRequest / ManualOutfitRequest have no Bean Validation and no @Valid at the controller
 
 **Location:** `server/src/main/java/com/iyae/controller/OutfitController.java:24`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** server-java
 
 **Evidence**
@@ -829,9 +909,16 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add @Size/@NotBlank constraints to GenerateOutfitRequest and ManualOutfitRequest fields that are persisted or forwarded to the AI provider, and annotate both controller parameters with @Valid, consistent with every other mutating controller in this codebase.
 
+**Flagged as overlapping:** B-2
+
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Three inaccuracies, none fatal to the premise. (1) "consistent with every other mutating controller in this codebase" is overstated — `CheckoutController.checkout` (line 32) also takes `@RequestBody(required = false) CheckoutRequest` with no `@Valid`, so OutfitController is one of two non-webhook outliers, not the only one. (2) The framing that the fields flow "into the AI provider prompt" applies only to GenerateOutfitRequest; the ManualOutfitRequest path invokes no AI provider (`buildManualExplanation` is a pure `String.format`), and that path's `slots` map is in fact validated in-service at OutfitService.java:237-250 (null/empty, allow-listed slot names, duplicate-product rejection, PUBLISHED-only products), so "no validation" is only true of the two free-text fields `note` and `occasion` there — and `note` is never read by any code, merely persisted. (3) The finding does not disclose that B-2 (CRITICAL, same report) already covers this endpoint's missing `@Valid` and prescribes the identical `@Size` fix, which is what makes the standalone MEDIUM a double-count.
+
 ## A-16 · `MEDIUM` — Community Discover feed's hottest query has no (status, created_at) composite index
 
 **Location:** `server/src/main/java/com/iyae/repository/PostRepository.java:13`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** db-migrations
 
 **Evidence**
@@ -842,9 +929,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add `CREATE INDEX idx_posts_status_created ON posts(status, created_at DESC);`, mirroring the pattern V2 already established for the exact same shape on `products` (`idx_products_status_created`). Without it this highest-traffic community query relies on scanning `idx_posts_created` in sorted order and filtering status per row rather than seeking directly.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Two impact claims do not hold. (a) The title's "hottest query" and the fix note's "this highest-traffic community query" are unsupported: posts ships empty (DataSeeder seeds none) and the feed is only fetched on /community, so /api/products — which already has idx_products_status_created — is by far the hotter path at launch. (b) "relies on scanning idx_posts_created in sorted order and filtering status per row rather than seeking directly" overstates the cost for the common case: the backward index scan short-circuits at the LIMIT, and with ACTIVE being the near-totality of rows it reads only ~LIMIT+epsilon entries, so the plan is already within a constant factor of the proposed index. The finding also omits that the hidden Page count query (O(ACTIVE posts), independent of LIMIT) is the larger scale cost and is NOT addressed by the suggested (status, created_at) index. All schema/location/index-inventory claims were accurate.
+
 ## A-17 · `MEDIUM` — Account deletion can permanently delete a RESERVED resale listing that has no Order row yet
 
 **Location:** `server/src/main/java/com/iyae/service/AccountDeletionService.java:164`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/LOW/LOW) — **severity corrected MEDIUM -> LOW** by unanimous or majority verifier rank  
 **Found by:** money-orders
 
 **Evidence**
@@ -855,9 +947,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add an explicit `listing.getStatus() == ResaleStatus.RESERVED` branch to the keep-condition in deleteResaleListingsExceptLiveSales (same treatment as SOLD), independent of whether an Order row exists yet; alternatively, persist the Order (or a reservation record) atomically with the reserve() call in CheckoutService.initiateResaleCheckout so a RESERVED listing is never without a referencing row.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the factual assertions failed verification. Confirmed verbatim: AccountDeletionService.java:164-186 (deleteResaleListingsExceptLiveSales) only checks resaleListingRepository.hasPendingOrder() (Order.status=PENDING referencing the listing), listing.getStatus()==SOLD, and resaleListingRepository.hasAnyOrder() (any Order referencing the listing) — there is no `listing.getStatus() == ResaleStatus.RESERVED` branch anywhere in the loop. I also found the method's own javadoc (lines 160-163) claims "A listing with a live checkout is kept and released back to LISTED instead, which is the same treatment ResaleService.releaseStaleReservations gives it" — but no such release()/LISTED-reversion call exists anywhere in the method; the comment describes behavior that isn't actually implemented, which reinforces the finding. Traced CheckoutService.initiateResaleCheckout: resaleService.reserve(listingId,...) flips the listing LISTED->RESERVED via its own short committed transaction; only afterward does the code call the external Stripe API (stripeGateway.createSession — no lock held across the call) and only after that succeeds does it persist the Order row via txTemplate.executeWithoutResult (a later, separate transaction) with resaleListingId set. Between the reserve() commit and the Order-row commit, the listing is genuinely RESERVED with zero referencing Order rows — exactly the state the finding describes. Under MySQL's default REPEATABLE READ (no isolation override found in application*.yml) and no row lock held across that gap, a concurrent @Transactional deleteAccount() run by the seller could read the listing in that window and call resaleListingRepository.delete(listing), since neither guard fires. The same non-atomic reserve-then-persist gap exists in stubResaleCheckout. I verified the reservation TTL is 45 minutes (ResaleService.RESERVATION_TTL) and the Stripe checkout-session TTL is 30 minutes (CHECKOUT_SESSION_TTL), but for the real-Stripe path the Order row is created synchronously right after session creation within the same request, so for the entire 45-minute "abandoned checkout" lifetime hasPendingOrder() is already true — the unguarded window is only the brief in-request gap awaiting the Stripe API round-trip (or, more rarely, a process crash between session creation and order persistence). In the live-race case, the subsequent Order insert referencing the just-deleted listingId would most likely fail on an FK violation (the row is already gone at insert time), caught by initiateResaleCheckout's catch block — so in practice the likely outcome is a failed/500 checkout for the buyer before any Stripe redirect/payment occurs, not silent money loss; in the rarer crash-before-order-row scenario, any resulting charge-without-fulfilment risk already exists independently of this account-deletion gap (the webhook would already have no Order row to reconcile against, deletion or not).
+- The finding's mechanism is accurately described and verified against code (AccountDeletionService.java:164-186, ResaleListingRepository.hasPendingOrder/hasAnyOrder, ResaleService.reserve/CheckoutService.initiateResaleCheckout), but its implicit severity framing (filed under 'money-orders', labeled MEDIUM) overstates current reachability and consequence. It never mentions that CheckoutService.initiateResaleCheckout (the only caller of ResaleService.reserve -- confirmed via grep, there is no other reserve() call site) gates on `if (!stripeFullyConfigured()) requireStubAllowed(...)` *before* calling reserve(), and requireStubAllowed throws PaymentsDisabledException whenever `stubCheckoutEnabled` is false. application-prod.yml pins `app.payments.stub-checkout-enabled: false` (confirmed), and Stripe keys are deliberately unconfigured for launch 1 (documented product decision, checkout ships disabled). So in the actual launch-1 production configuration, a resale listing can never reach RESERVED status at all -- the race window the finding describes literally cannot open. It only becomes reachable once Stripe is fully configured in a future phase. Additionally, even once reachable, the consequence is milder than the 'money-orders' framing implies: the Order insert that follows (resaleListingId referencing the now-deleted listing id) would fail the orders.resale_listing_id FK constraint (V16 migration: FK is ON DELETE SET NULL for existing rows, but does not permit inserting a new child row against a missing parent id), throwing a RuntimeException caught by `catch (RuntimeException ex)` in initiateResaleCheckout, which calls resaleService.release(listingId) (a no-op, listing already gone) and rethrows -- surfacing as a failed checkout for the buyer, not a completed charge: a real Stripe Checkout Session would have been created but never returned to the buyer, so it just expires unused. No money changes hands either way.
+
 ## A-18 · `MEDIUM` — Admin moderation lists (/api/admin/products, /posts, /promotions) have no pagination and load entire tables into memory
 
 **Location:** `server/src/main/java/com/iyae/service/AdminModerationService.java:58`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** perf-scale
 
 **Evidence**
@@ -872,9 +970,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Give `listAllProducts`/`listPostsForModeration`/`listPromotions` the same `Pageable`/`Pagination.clampSize` treatment already used by `listReports`.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- No claim failed — all were confirmed against the source. One omission worth noting, which cuts against my own downgrade and the report missed it: both list paths also carry N+1 lazy loads, so the cost is 1+N queries rather than one. `AdminPostResponse.from` dereferences `post.getUser()` (Post.java:24 `@ManyToOne(fetch = FetchType.LAZY)`) and `ProductResponse.java:48` dereferences `product.getDesignerProfile()`. These resolve rather than throwing because the methods are `@Transactional(readOnly = true)`, but each row costs an extra SELECT, so operator-visible slowness arrives at a few thousand posts rather than at the row count a single-query estimate implies. Even so, it still only degrades the one admin's console while it is open. The report's framing of the cost as purely "unbounded SELECT * ... serializes the full result set" therefore understates the query cost while overstating the severity.
+
 ## A-19 · `MEDIUM` — Unvalidated client input to analytics_events is silently dropped with no operator-visible signal
 
 **Location:** `server/src/main/java/com/iyae/service/AnalyticsService.java:89`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Analytics/KPI subsystem: client-trusted, unthrottled, silently lossy — and the INVEST/STOP decision gate reads it
 
 **Evidence**
@@ -889,9 +992,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add `@Size(max = 16)` to TrackEventRequest.sizeBracket and validate `metadata` is parseable JSON before persisting (reject with 400 rather than silently drop); emit a counter/metric (e.g. a simple AtomicLong exposed via Actuator, or a WARN-level log with a stable marker an alert can match) on each dropped event so volume loss is observable rather than only discoverable by reading logs after the fact.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- The "Found by" tag line calls the endpoint "unthrottled," but POST /api/events is in fact rate-limited to 60 requests/60s per IP via RateLimitFilter.RULES (server/src/main/java/com/iyae/config/RateLimitFilter.java:60). This is a minor inaccuracy in the finding's attribution metadata, not in its evidence/failure-path/fix sections, and does not change the substance of the finding (throttling bounds volume, it does not add validation).
+- None of the finding's factual claims failed verification. All checked out against the code: `AnalyticsService.record` (AnalyticsService.java:72-92) wraps `eventRepository.save(...)` in `catch (Exception e) { log.warn(...) }` with no counter/metric; `TrackEventRequest` (dto/TrackEventRequest.java) constrains only `@NotBlank String type`, leaving `sizeBracket`/`metadata` completely unvalidated; `AnalyticsController.track` (controller/AnalyticsController.java:28-44) unconditionally returns `ResponseEntity.accepted()` (202) regardless of whether the downstream insert succeeds; the `analytics_events` table (V14 migration) defines `size_bracket VARCHAR(16)` and `metadata JSON NULL`; and `app.analytics.enabled` defaults to `true` in `application.yml`, so this path is live by default, not opt-in. No metrics/MeterRegistry infrastructure exists anywhere in the server to provide the suggested operator signal. The AvatarViewer.tsx:279 citation is accurate as described (it currently builds valid JSON via `JSON.stringify`, and the report correctly frames it only as the shape a *future* careless call site could get wrong, not a present trigger for the metadata half of the bug).
+
 ## A-20 · `MEDIUM` — User email addresses logged in plaintext across multiple services
 
 **Location:** `server/src/main/java/com/iyae/service/AuthMailService.java:117`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** observability-ops
 
 **Evidence**
@@ -906,9 +1015,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Reuse (or extract to a shared util) the `redact()` helper from AccountDeletionService and apply it at the handful of call sites above, or log the user id instead of the email (as AuthService.java already does for its own verification/reset-send failures).
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None — every factual assertion checked out against the code at HEAD: - AuthMailService.java:117 `log.info("{} email sent via Resend to {}", type, toEmail);` — confirmed verbatim, fires unconditionally on every successful send (registration verification + password reset). - AuthMailService.java:121-122 `log.error("Failed to send {} email via Resend to {}: {}", type, toEmail, e.getMessage(), e);` and `throw new EmailDeliveryException("Failed to deliver email via Resend to " + toEmail, e);` — confirmed verbatim; the raw address is baked into the exception message so it reappears wherever that exception is logged downstream. - CheckoutService.java:211 `log.error("Stripe session creation failed for user {}", email, ex);` and :214 `log.error("Checkout failed for user {}", email, ex);` — confirmed verbatim (these are independent log statements, not just propagation of AuthMailService's exception). - CheckoutService.java:459 `log.info("...created stub order {} for user {}", order.getId(), user.getEmail());` — confirmed verbatim. - OutfitService.java:312 and :430 `log.error("Failed to persist OutfitRecommendation for user={}", user.getEmail(), e);` — confirmed verbatim (both occurrences). - AccountDeletionService.java:256-259 `redact()` helper (masks to `x***@domain`) and its use at line 141 `log.info("Deleted account {} (tombstoned as user {})", redact(email), userId);` — confirmed verbatim, proving the team already applies redaction in exactly one place. - AuthService.java logs `user.getId()` (not email) at its own call sites around sendVerificationEmail/sendPasswordResetEmail (lines ~155, 257, 288) — confirmed, matching the finding's claim that AuthService already follows the better pattern. Note this doesn't prevent the leak: AuthMailService's own internal log line (117/121) fires the raw email before AuthService's id-only catch ever runs. - application-prod.yml:15-18 `logging.level.com.iyae: INFO` — confirmed, so these INFO/ERROR statements are live in production, not suppressed. The location cited in the header ("AuthMailService.java:117") is accurate and representative of the broader pattern; nothing in the evidence was fabricated or misquoted.
+
 ## A-21 · `MEDIUM` — No operator-facing visibility into stuck tasks for any of the three queues; the scaffolding for it exists but is wired to nothing
 
 **Location:** `server/src/main/java/com/iyae/service/ModelGenerationOrchestrationService.java:60`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/MEDIUM/MEDIUM)  
 **Found by:** task-queues
 
 **Evidence**
@@ -919,9 +1033,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Either wire these (and equivalent avatar/rigging queries) into an ADMIN-gated endpoint (e.g. under the existing AdminController) exposing stuck-task counts/age, or remove the dead scaffolding and document that queue health is currently log/DB-only.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None. Verified: ModelGenerationOrchestrationService.java:60-74 contains getPendingTasks()/getRunningTasks() exactly as quoted, Javadoc'd "for monitoring/admin use," and grepping the whole server tree confirms they are referenced only from ModelGenerationOrchestrationServiceTest — no controller, no AdminController endpoint, nothing else. AdminController only exposes /products, /posts, /reports, /comments, /promotions — no task-queue route. AvatarGenerationTaskRepository and RiggingTaskRepository both have findByStatus available but no equivalent "getPendingTasks/getRunningTasks" wrapper exists in AvatarService/RiggingService, matching the finding's framing that avatar/rigging lack even the scaffolding model-generation has. There is no actuator/micrometer/prometheus dependency anywhere in build.gradle.kts or application*.yml, and no log line reports pending/running counts, so DB-only visibility (an operator running a manual SQL query) is genuinely the only recourse today.
+- Three sub-claims are inaccurate or overstated, though none breaks the finding. 1. "the scaffolding for it exists but is wired to nothing" — misleading in both directions. It understates the dead code: the ENTIRE ModelGenerationOrchestrationService class is unreachable from production, all five methods (initiateGeneration, checkStatus, retryFailedGeneration, checkAndMaterialize too — SchedulerConfig calls GenerationService.processReadyTasks() directly, not the wrapper), not just the two monitoring ones. And it overstates how much "scaffolding" exists: the two methods are bare findByStatus passthroughs returning raw JPA entities with no aggregation and no task age, so they are not a near-usable monitoring surface — wiring them to an endpoint as-is would also serialize entity graphs under open-in-view: false. "Scaffolding for operator visibility" is a generous reading of two one-line repository calls. 2. "No operator-facing visibility into stuck tasks for any of the three queues" — true only for aggregate/queue-level visibility, and presented as if there were none at all. Per-task status, FAILED state and retry are exposed to the owning designer via GET /api/designer/products/{id}/generation-status and /rigging-status, and to avatar/guest-avatar polling; worker/main.py logs every claim, completion, failure (with task id) and stale-reclaim count; and the prod worker carries a heartbeat-file healthcheck readable from docker compose ps. The finding acknowledges none of this. 3. The finding does not account for the self-healing that bounds how long a task can actually remain "stuck": reclaim_stale_tasks resets RUNNING tasks after 15 minutes, all three queues now cap attempts, and over-cap tasks are terminally FAILED. "Stuck" is therefore time-bounded, which is materially different from the indefinite hang the title implies.
+
 ## A-22 · `MEDIUM` — No pre-publish review and no designer-level moderation: a self-registered DESIGNER publishes straight to the live storefront, and suspension is per-product only
 
 **Location:** `server/src/main/java/com/iyae/service/ProductService.java:193`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Production database seeds to an empty marketplace; no production content/designer-onboarding path exists
 
 **Evidence**
@@ -932,9 +1052,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Decide and record the moderation model. If self-serve publishing is intended (the Depop/Etsy model), that is defensible but then add designer-level levers to `AdminModerationService`: list designers, suspend a designer (cascading their listings out of the catalogue), and a bulk archive — a bad actor listing 50 items currently requires 50 separate `PUT /api/admin/products/{id}/status` calls. If curation is intended, add a `PENDING_REVIEW` ProductStatus (or a `DesignerProfile.verified` flag that `ProductSpecifications.catalog` requires) so the first publish passes through an admin queue.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- The "no pre-publish review" half of the title is framed as a defect/unrecorded decision, and that framing is contradicted by the canonical spec: `PRD.md:824` lists as a success metric "Designer onboarding | < 5 min to first product | Time from register to first PUBLISHED product" — i.e. instant self-serve publishing is the specified model, and the suggested `PENDING_REVIEW` status (or a `DesignerProfile.verified` flag required by `ProductSpecifications.catalog`) would contravene it. The finding does hedge this itself ("that is defensible"), but it is filed as one defect when only the second half — no designer-level suspension, no bulk archive — is actionable. The finding also omits two facts that bound its impact: checkout answers 503 in production so there is no fraud-payment vector, and a single-operator deployment retains DB access as a working backstop. Its "50 listings = 50 separate PUT calls" claim is accurate, and it understates rather than overstates the amplification, since it does not note that listing create/publish are entirely unthrottled.
+
 ## A-23 · `MEDIUM` — garment_assets.slot_hint ENUM is missing DRESS, out of sync with the 5-value GarmentSlotHint entity enum
 
 **Location:** `server/src/main/resources/db/migration/V1__baseline_schema.sql:67`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/MEDIUM/LOW) — **severity corrected MEDIUM -> LOW** by unanimous or majority verifier rank  
 **Found by:** db-migrations
 
 **Evidence**
@@ -949,9 +1074,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a migration: `ALTER TABLE garment_assets MODIFY COLUMN slot_hint ENUM('TOP','BOTTOM','DRESS','SHOES','ACCESSORY');` to match the entity's full value set, or constrain `GarmentSlotHint` usage so DRESS is documented as never applicable to `garment_assets` (with a guard in code).
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None — all factual assertions (migration line text, entity enum values, DataSeeder mapping, RiggingService's normalize-and-write-to-RiggingTask behavior, GenerationService.materializeGarmentAsset never setting slotHint, ddl-auto:validate semantics) were verified against the code and held up.
+- No claim is outright false, but two are misleading. (1) The finding calls DataSeeder's "Dresses" -> GarmentSlotHint.TOP mapping "deliberate" ("deliberately maps ... avoiding the gap"); there is no comment or test establishing intent, and the mapping lumps Tops/Outerwear/Dresses together (DataSeeder.java:841), which reads as incidental coarseness rather than a conscious workaround for the ENUM gap. (2) More materially, the finding omits that DataSeeder is @Profile({"dev","test"}) and so never runs in production — it presents the seeder as "one of the only two call sites that ever set a slotHint" without noting that neither of them can write this column in prod. That omission makes the residual risk look larger than it is and is the main reason the recorded MEDIUM is one notch too high. Also, the finding's framing of a natural trigger ("wiring outfit-slot matching or the designer product form's slot hint through to this column") is speculative: no such field exists in any DTO or controller today.
+
 ## A-24 · `MEDIUM` — Admin KPI queries scan the whole analytics_events table with no retention policy on the highest-write-volume table
 
 **Location:** `server/src/main/resources/db/migration/V14__analytics_events_and_cohorts.sql:27`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** gap:Analytics/KPI subsystem: client-trusted, unthrottled, silently lossy — and the INVEST/STOP decision gate reads it
 
 **Evidence**
@@ -962,9 +1093,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a composite index `(event_type, created_at)` to support the pre/post drape-decision queries, and either bound /api/admin/kpis to a rolling window or add a scheduled retention/archival job for analytics_events (none exists today — confirmed no cleanup task in SchedulerConfig and no cron/migration performs one), since VIEW alone is emitted on every product-detail page load and the table has no cap on growth.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the load-bearing claims failed verification. One minor nuance the report doesn't mention: POST /api/events falls through to `.anyRequest().authenticated()` in SecurityConfig.java (no permitAll matcher for it), so VIEW events are only recorded for logged-in users, not anonymous browsers — slightly lower write volume than "every product-detail page load" might imply to a reader, but still fires on every authenticated page view and the core claim (unbounded growth, no retention, missing composite index) is unaffected.
+- Three claims failed, all of which inflate the premise. (1) "VIEW alone is emitted on every product-detail page load" is wrong: POST /api/events falls under SecurityConfig.java:69 anyRequest().authenticated(), so anonymous visitors (the bulk of launch traffic on a deliberately public catalogue) write zero rows — their POST 401s and is swallowed by the fire-and-forget catch in web/lib/api.ts:141. The client emission is additionally ref-guarded to one per product id (web/app/products/[id]/page.tsx:150-153). (2) The gap framing "unthrottled" is wrong: RateLimitFilter.java:60 carries new RateRule("POST", "/api/events", null, 60, 60_000) — 60 req/60s per IP. (3) The title's "scan the whole analytics_events table" is imprecise: countByCohortAndEventType groups by exactly (cohort, event_type), which is the existing covering index, so it is an index-only scan rather than a table scan; the drape before/after queries can use idx_events_created for their range portion; only countPaidBySizeBracket (needs size_bracket, in no index) is a genuine table scan. Separately, countByEventType(EventType) at AnalyticsEventRepository.java:13 has no main-tree caller — dead, though the report does not claim otherwise.
+
 ## A-25 · `MEDIUM` — The JWT uid-claim round trip -- the fix for stale tokens re-authenticating as a different account after email recycling -- is never exercised against the real JwtTokenProvider implementation
 
 **Location:** `server/src/test/java/com/iyae/security/JwtTokenProviderTest.java`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** test-integrity
 
 **Evidence**
@@ -979,9 +1116,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add JwtTokenProviderTest cases that call the 3-arg generateToken and assert extractUserId round-trips correctly, including with a legacy 1-arg/2-arg token asserting extractUserId returns null.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the finding's factual claims failed verification. Confirmed at HEAD: (1) `server/src/test/java/com/iyae/security/JwtTokenProviderTest.java` has exactly the 9 tests shown (generateToken/extractEmail/validateToken x3/differentEmails/extractTokenVersion x2/extractEmail-roundtrip) and none call the 3-arg `generateToken(email, tokenVersion, userId)` overload or `extractUserId(token)` against a real instance. (2) `JwtTokenProvider.java:43-75` matches the finding's line range and shows the real `uid` claim logic (`builder.claim("uid", userId)` in generateToken, `getClaims(token).get("uid")` with `instanceof Number` cast in extractUserId). (3) `AuthServiceTest.java` declares `@Mock JwtTokenProvider jwtTokenProvider` and stubs `generateToken(eq(email), any(), any())` to return a canned string in all 6 call sites — never invoking the real encoder. (4) `JwtAuthenticationFilterTest.java` declares `@Mock JwtTokenProvider jwtTokenProvider` and stubs `extractUserId("token123")` to return canned Longs/null in all 11 call sites, including the exact test named in the finding (`aTokenForADifferentAccountIsRejectedEvenWhenTheEmailMatches`, confirmed at line 279, stubbing `extractUserId` to return 41L rather than decoding a signed token). (5) A repo-wide grep for `extractUserId(` and the 3-arg `generateToken(` call pattern across `server/src/test` returns only these mocked call sites — no test anywhere calls the real round trip. (6) `WebMvcSecurityConfig` (shared by the `@WebMvcTest` controller tests) also replaces `JwtAuthenticationFilter` itself with a pass-through Mockito mock and `@MockBean`s `JwtTokenProvider`, so the real filter + real token provider are never exercised together in any controller test either. One nuance worth noting that the finding doesn't engage with: the Playwright E2E suite (run against a real running stack in CI) does exercise real login + real JWTs end-to-end, so a *totally broken* encode/decode (e.g., `extractUserId` always returning null) would very likely surface as widespread E2E failures rather than reaching production silently. The specific "defeats the anti-impersonation fix" scenario (a decode bug that coincidentally resolves to the wrong-but-plausible user id) remains genuinely uncovered at any test level, since even E2E doesn't construct the delete-account/re-register/stale-token scenario — only the mocked `JwtAuthenticationFilterTest` does, and it mocks away exactly the part under question.
+- None of the finding's factual claims failed verification -- both the test-gap claim (JwtTokenProviderTest never calls the 3-arg generateToken or extractUserId) and the claim that every other consumer mocks JwtTokenProvider instead of exercising the real class were confirmed by reading the files directly.
+
 ## A-26 · `MEDIUM` — Stripe webhook idempotency under genuinely concurrent delivery relies on Order's @Version optimistic lock, which no test exercises
 
 **Location:** `server/src/test/java/com/iyae/service/CheckoutServiceTest.java:411`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** test-integrity
 
 **Evidence**
@@ -996,9 +1139,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a @DataJpaTest/@SpringBootTest-backed test that loads the same Order in two separate EntityManagers/transactions, saves a PAID transition on both, and asserts the second commit fails with an optimistic-lock exception rather than silently succeeding.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- The failure path overstates the worst-case consequence. It claims that if the @Version protection silently broke, two concurrent webhooks could "both... double-process a unique resale unit." I verified that `resaleService.markSold()` (ResaleService.java:287-294, backed by `ResaleListingRepository.markSold`, a @Modifying conditional `UPDATE ... WHERE status = RESERVED`) is its OWN independently atomic, idempotent guard against double-selling the same resale unit — and this specific guard already HAS dedicated test coverage (`ResaleListingRepositoryDataJpaTest.markSold_onlyTransitionsFromReserved`, asserting the second call returns 0 rows updated). So a future regression that broke only Order's @Version lock would not, by itself, cause a true double-sale of inventory. The realistic (and still real) worst case is narrower: a duplicate `ORDER_PAID` analytics event, or — because markSold's repository method is `@Modifying(flushAutomatically = true)`, which forces Hibernate to flush the pending Order version-check UPDATE before markSold's own conditional UPDATE runs — a losing thread whose markSold then (incorrectly) reports "not reserved" and gets flagged with a false "REFUND REQUIRED" ERROR log + `paymentStatus=PAID_UNFULFILLABLE` on an order that the winning thread actually fulfilled correctly. That is an operational/data-quality defect, not a money-loss/double-sale defect.
+
 ## A-27 · `MEDIUM` — Three disagreeing copies of the product-category vocabulary; the designer fallback list is uppercase and contains a category no outfit slot can match
 
 **Location:** `web/components/ProductForm.tsx:19`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Production database seeds to an empty marketplace; no production content/designer-onboarding path exists
 
 **Evidence**
@@ -1009,9 +1157,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Make the category vocabulary one authority — a server-side enum or a single checked-in constant the designer form, the catalogue filters and `OutfitService.SLOT_CATEGORIES` all derive from — and either add an outfit-slot mapping for Activewear or remove it from the form. Normalise case on write (`ProductService.createProduct`) so production does not diverge from the seeded convention on the strength of which designer happened to list first; note the slot-hint fix depends on category casing being predictable.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the finding's factual claims failed verification. One nuance the report doesn't mention (not a claim it made, so not a failure): the title-case "Accessories" seeded by DataSeeder also fails the substring match against the keyword "accessory" (since "accessories" does not contain "accessory" as a substring -- it diverges at the 9th character, i/y), meaning the accessory-slot matching has a second latent bug beyond ACTIVEWEAR. This doesn't weaken the finding; if anything it understates the vocabulary-mismatch problem.
+- Two claims do not survive, both in the direction of mis-describing rather than inflating: 1. The title's "the designer fallback list is uppercase" implies the casing is itself a live defect. It is inert at every consumer I could find: `ProductSpecifications.catalog` filters with `LOWER(category) LIKE '%' || lower(param) || '%'`; `OutfitService.matchesSlotCategory` lowercases; `SizeRecommendationService.selfReportedSizeFor` lowercases. The only exact-case consumers of `products.category` are `DataSeeder.slotHintFromCategory` (dev/test profile only) and `GlbPlaceholderGenerator.colorForCategory` (cosmetic placeholder-GLB tint, falls through to grey). Uppercase is also self-perpetuating but internally consistent, since `/api/products/categories` echoes back whatever was published first. So the live defect is `ACTIVEWEAR` specifically, not the casing. 2. "contains a category no outfit slot can match" is presented as unique to the fallback list. `ACCESSORIES` — present in BOTH the fallback list and the seeder's title-case vocabulary — also matches no slot: the keyword is the singular `"accessory"` and `"accessories".contains("accessory")` is false. Consequently the accessory slot is filled only by Bags/Jewelry, and the manual builder's accessory picker (`category=accessory` -> `LIKE '%accessory%'`) opens with zero products in dev and in prod alike. The finding's enumeration is incomplete and its implicit "the other seven are fine because matching is case-insensitive substring" is wrong. 3. Undercount, not an error: the finding says "three copies". There are more — `SearchFilterBar.FILTER_PILLS`, the `"Clothing"`/`"Accessories"` literals in `app/products/page.tsx:150,180,183`, and `lib/outfit-slots.ts` SLOT_CATEGORY_HINTS. (The `"Clothing"` one is a live zero-result shop filter, already filed separately as B-24.) Separately, `web/CLAUDE.md`'s claim that `SearchFilterBar` fetches categories from `/api/products/categories` is stale — the component I read is static pills with no fetch.
+
 ## A-28 · `MEDIUM` — SmartARViewer's iOS branch can pass an empty src to <model-viewer> if a product ever has USDZ with no GLB (currently unreachable, no internal guard)
 
 **Location:** `web/components/SmartARViewer.tsx:70`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/LOW/LOW) — **severity corrected MEDIUM -> LOW** by unanimous or majority verifier rank  
 **Found by:** gap:3D/AR viewer render path and its unpinned third-party CDN dependencies
 
 **Evidence**
@@ -1022,9 +1176,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Guard the branch itself (`arQuickLook && effectiveUsdzUrl && effectiveGlbUrl`, or omit the `src` attribute when no GLB exists) rather than relying on every current and future caller to pre-filter. `<model-viewer src="">` resolves against the document URL per standard HTML URL-attribute resolution, so the element would attempt to fetch and parse the current HTML page as a GLB and fail silently. Verified both current call sites (app/products/[id]/page.tsx:404-416 gates on a non-empty `glbUrl`; app/outfits/[id]/ar/page.tsx:62-66,135 gates on non-empty `glbUrls`) and the worker's generators (meshy_generator.py only ever sets `usdz_url` alongside an already-written `glb_url`) prevent this today, so this is a latent gap rather than a live defect.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- 1. MECHANISM CLAIM, load-bearing and almost certainly WRONG: "`<model-viewer src=""` resolves against the document URL per standard HTML URL-attribute resolution, so the element would attempt to fetch and parse the current HTML page as a GLB and fail silently." `model-viewer` is an autonomous custom element injected from a CDN script (ModelViewer.tsx:24-30); `src` on it is a JS property, NOT a UA-handled URL attribute, so the browser performs no URL resolution for it whatsoever, and model-viewer gates its own load on the truthiness of `src` ("" is falsy). This is `<img src="">` folklore (which modern browsers do not do either) incorrectly transferred to a custom element. The claim is what makes the finding sound costly; without it the worst case is a blank viewport. I could not execute to be fully certain since the package is not vendored. 2. CALL-SITE ENUMERATION INCOMPLETE: "Verified both current call sites" — there are three, not two. web/app/ar-visualization/page.tsx:326 is omitted. It passes no `usdzUrl`, so it cannot reach the iOS branch and the unreachability conclusion survives, but the sweep was not complete as asserted. 3. Minor framing issue: filing at MEDIUM is internally inconsistent with the finding's own title ("currently unreachable") and its fix text ("latent gap rather than a live defect").
+
 ## A-29 · `MEDIUM` — Internal mail route interpolates `actionUrl` into an HTML attribute unescaped, and compares the shared secret with non-constant-time `!==`
 
 **Location:** `web/lib/email-templates.ts:54`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW) — **severity corrected MEDIUM -> LOW** by unanimous or majority verifier rank  
 **Found by:** web-ts
 
 **Evidence**
@@ -1035,9 +1194,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > HTML-escape `actionUrl` the same way every other interpolated field is escaped (it still works fine inside an `href` once escaped), and additionally validate it is an absolute URL under the expected frontend origin before templating. Low priority given this route is not reachable from the public internet in prod (nginx routes `/api/*` to the Spring Boot server, not to `web`, and `web`'s port is not published in `docker-compose.prod.yml`) and the only caller holds `INTERNAL_MAIL_SECRET`, but it is still a missing-validation gap worth closing cheaply. If hardening further, switch the secret check to a constant-time comparison (e.g. `crypto.timingSafeEqual` on fixed-length buffers).
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Minor imprecision only: the finding says `title, greeting, bodyText, actionText, footnote` are "all" escaped via `escapeHtml` inside `buildEmailHtml` — but `greeting` (email-templates.ts:48) is interpolated raw inside `buildEmailHtml` itself; it is pre-escaped by the caller (`Hi ${escapeHtml(name)},` at lines 83/94) rather than by the function under review. This doesn't change the core conclusion (actionUrl really is the one value with no escaping anywhere in the pipeline), but the finding's framing of "all of which are escaped" inside that function is not quite accurate for greeting.
+- None of the finding's factual claims are wrong — I confirmed both: (1) `web/lib/email-templates.ts:54` interpolates `actionUrl` into the `href` attribute without `escapeHtml`, while every sibling field (`title`, `bodyText`, `actionText`, `footnote`, and the caller-escaped `greeting`) is escaped; (2) `web/app/api/internal/mail/send/route.ts:21` does `secret !== process.env.INTERNAL_MAIL_SECRET`, a non-constant-time JS string comparison. What the finding gets right but underweights in its own severity label is reachability: the report's "Suggested fix" paragraph already concedes this is "low priority" — correctly, as I verified.
+
 ## A-30 · `MEDIUM` — useOutfitRiggingStatus polling ticks can overlap without cancelling the superseded tick, letting a stale response re-flag an already-finished rig item
 
 **Location:** `web/lib/hooks/useOutfitRiggingStatus.ts:44`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/LOW/LOW) — **severity corrected MEDIUM -> LOW** by unanimous or majority verifier rank  
 **Found by:** web-react
 
 **Evidence**
@@ -1048,9 +1213,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add an in-flight guard (e.g. a ref flag) so a new tick skips starting while a previous one is still running, or track all in-flight controllers (not just the latest) and abort every one of them before starting a new tick / on cleanup, so a tardy response from a superseded tick can never commit stale `activeRigging`/`items` state over a fresher result.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- The headline/failure-path claim — that a stale, un-cancelled poll tick can "re-flag an already-finished rig item" (i.e. make a completed item appear pending again to the user) — does not hold. In `useOutfitRiggingStatus.ts:111-113`, `pendingCount` is computed as `items.filter(item => !item.riggedGlbUrl && activeRigging.has(item.productId)).length`. Once an item's `riggedGlbUrl` is set it can never be unset — `setItems` (line 75-83) only overwrites with a truthy value pulled from `updates`, never clears it — so even if a stale/overlapping tick's `setActiveRigging(nowActive)` (line 73, which fully replaces rather than merges the set) spuriously re-adds a finished item's productId to `activeRigging`, the `!item.riggedGlbUrl` guard in `pendingCount` structurally excludes it. The only consumer of `activeRigging`/`pendingCount` (`web/app/outfits/[id]/view/page.tsx:195-200`, the "Rigging N items…" badge) can therefore never re-show a finished item as pending.
+- 1) The title's claim that a stale response can "re-flag an already-finished rig item" is false — pendingCount's `!item.riggedGlbUrl` conjunct excludes any item that has resolved, and lines 108-110 document that tolerance as intentional. 2) The suggested-fix rationale that a tardy tick could "commit stale activeRigging/items state over a fresher result" is only half true: activeRigging yes (for <=5s, self-correcting), items no — the setItems path is monotone-additive and cannot regress an item or write a wrong URL. 3) The finding does not account for reachability: /api/designer/** is hasRole("DESIGNER") plus a service-level ownership check, so on the buyer-facing outfit viewer every poll 403s and the hook holds no state to corrupt, which the hook's own 403 test acknowledges. 4) Recorded severity MEDIUM is not supported; real cost is a transient decorative spinner label.
+
 ## A-31 · `MEDIUM` — Production CSP keeps `'unsafe-inline'` on script-src, so the policy provides no real script-injection mitigation
 
 **Location:** `web/middleware.ts:19`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** web-ts
 
 **Evidence**
@@ -1061,9 +1232,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Move to a nonce-based or `'strict-dynamic'` CSP for script-src in production (Next.js supports per-request nonces via middleware), removing `'unsafe-inline'` from the prod policy so CSP actually blocks injected inline `<script>`/`onerror=`-style payloads rather than only documenting an aspiration to do so.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None. Verified directly against web/middleware.ts:12-35: both the prod branch (line 19, `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://ajax.googleapis.com`) and the dev branch (line 20, same plus `'unsafe-eval'`) include `'unsafe-inline'` on script-src, and the only prod/dev delta is `'unsafe-eval'`. No nonce mechanism exists anywhere in the middleware or layout. The finding's evidence quote is accurate verbatim.
+
 ## A-32 · `MEDIUM` — CSP omits www.gstatic.com needed by the Draco decoder path every GLB load wires up by default, despite the CSP's own comment claiming reliance on it
 
 **Location:** `web/middleware.ts:19`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** gap:3D/AR viewer render path and its unpinned third-party CDN dependencies
 
 **Evidence**
@@ -1074,9 +1250,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Either self-host the Draco decoder files under `/public/draco/` and call `useGLTF.setDecoderPath('/draco/')` once at app startup (removing the third-party dependency entirely), or add `https://www.gstatic.com` to `connect-src`/`script-src` if CDN delivery is intentional, or disable Draco explicitly (`useGLTF(url, false)`) and drop the now-inaccurate comment/`'wasm-unsafe-eval'` allowance if no asset needs it. Not asserting this fires in production today — no evidence any current GLB carries the `KHR_draco_mesh_compression` extension — but it is a verified configuration inconsistency the codebase's own comment implies should already be covered.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None. Every load-bearing claim verified: (1) middleware.ts's script-src/connect-src genuinely omit www.gstatic.com in both prod and dev branches; (2) drei's useGLTF (core/Gltf.js in the installed ^10.7.7 package) defaults useDraco to true via a JS default parameter and points DRACOLoader at https://www.gstatic.com/draco/versioned/decoders/1.5.5/ unless useGLTF.setDecoderPath is called, which nothing in the repo does; (3) all four call sites (AvatarViewer.tsx:106,122,167; ARViewer.tsx:81) call useGLTF(url) with no overrides; (4) the decoder fetch is lazy (three-stdlib DRACOLoader._initDecoder only runs when GLTFLoader actually decodes a KHR_draco_mesh_compression primitive) and uses three's FileLoader, which uses fetch() -- governed by connect-src, which also omits the origin; (5) a repo-wide grep for "draco" outside node_modules finds nothing in any worker GLB producer, matching the report's own admission that no current asset is known to trigger this.
+- None of the finding's factual/technical claims failed verification — the CSP gap, drei's default Draco-enabling behavior, the four unmodified call sites, and the absence of any decoderPath override are all confirmed against the actual installed package source and the four call sites' line numbers. The one caveat the report itself already flags ("no evidence any current GLB carries the extension") was independently confirmed: no worker-generated GLB (stub/Meshy/Tripo3D wrapper/SMPL-X/any rigging provider) ever applies Draco encoding, none of the six bundled static GLBs (default-avatar, demo-outfit, 5 pose files) contain the draco string, there is no raw-GLB upload path for designers (only image upload; 3D is always server-generated), and Meshy's own API reference doc exposes no compression/Draco option at all.
+
 ## A-33 · `MEDIUM` — No retry/backoff around Meshy/Tripo3D HTTP calls — a single transient network blip discards an entire (paid) in-flight generation
 
 **Location:** `worker/providers/meshy_generator.py:243`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** worker-python
 
 **Evidence**
@@ -1087,9 +1269,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Wrap the polling GET (and the initial POST) in a small retry-with-backoff for transient failures (connection errors, timeouts, 502/503/504), distinct from terminal provider-reported FAILED/CANCELED states which should still fail fast. This avoids burning a paid generation credit (Meshy/Tripo3D) on a single dropped packet 9 minutes into a 10-minute poll.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Two framing claims overreach, though neither breaks the finding. (1) "discards an entire (paid) in-flight generation" is accurate about the wasted credits, but the title's implied finality is wrong: the loss is one generation's credits (~30, logged as `consumed_credits`), and the task is fully recoverable by one self-service click — `GenerationStatusCard.tsx:69-85` renders the persisted `error_message` with a "Retry Generation" button, `GenerationService.retry` resets the row to PENDING, and `TaskQueue.claim_task` does not filter on `attempt_count`, so repeated blips cannot wedge it permanently. It is neither silent nor unrecoverable. (2) The evidence localizes the gap to the poll loop only; in fact the initial POST, the GLB download and the USDZ download are equally unprotected — an error in the finding's favour. Also unstated: reachability requires an operator to set `MODEL_GENERATION_PROVIDER=meshy|tripo3d`, whereas both `.env.example:70` and `docker-compose.prod.yml:98` default to `mock`, under which the finding has no trigger whatsoever.
+
 ## A-34 · `MEDIUM` — No component prunes superseded generation output; guest avatar trees accumulate from an unauthenticated endpoint with no reachable delete path
 
 **Location:** `worker/providers/meshy_generator.py:266`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/MEDIUM)  
 **Found by:** gap:Generated-asset storage has no retention, no quota and no monitoring, on the same filesystem as the database
 
 **Evidence**
@@ -1104,9 +1291,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add a sixth `@Scheduled` method in `SchedulerConfig` (it already owns task-row lifecycle and resolves `worker.output-dir`): walk `products/{id}/tasks/*`, delete any directory whose task id is not the current MATERIALIZED/READY row for that product and whose row is older than a grace window (e.g. 24h, so an in-flight claim is never raced); walk `avatars/{userId}/*` with the same rule. For the guest account specifically, add an age-based cap — delete guest avatar trees and their task rows older than the try-on session TTL (hours, not days). Keep the recursive delete in one place by extracting `AvatarService.deleteAvatarFiles` into a shared helper.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Two things are overstated. (1) The framing "guest avatar trees accumulate from an unauthenticated endpoint" implies organic traffic drives the growth. Nothing in the shipped frontend calls POST /api/public/avatar/generate — `web/lib/api.ts:251-255` exposes only the authenticated `/api/avatar/*` routes, and a repo-wide grep for `public/avatar` outside the server tree and the old audit JSON returns zero web callers. So the guest tree only grows if someone hits the API directly; it is an abuse vector (3/60s per IP, unauthenticated, unbounded total), not an organic one. (2) The report's own severity rationale ("prod defaults both providers to mock ... output is kilobytes") is correct but under-weighted: in the launch-1 default config each guest request writes a ~1 KB 12-triangle box mesh (`worker/providers/smplx_stub_provider.py:239-263`), so at defaults the accumulation is inode/row growth, not bytes — and the privacy-retention angle is also weak at defaults, since the stub mesh is not derived from the submitted measurements at all (`input_payload` is ignored). RIGGING_PROVIDER in docker-compose.prod.yml:104 defaults to `python`, not mock, which the finding does not claim either way.
+
 ## A-35 · `MEDIUM` — Rigging output file path is keyed by garment_asset_id, not task_id, so concurrent rigging workers can overwrite each other's output
 
 **Location:** `worker/providers/python_rigging_provider.py:160`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** task-queues
 
 **Evidence**
@@ -1121,9 +1313,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Scope the rigging output path by task_id (mirroring model/avatar paths, e.g. `rigged/{asset_id}/{task_id}/garment-rigged.glb`) and have materialization copy/rename the winning task's file into the asset-stable public path, or write via temp file + os.replace() keyed per-task before any cross-task rename.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the evidentiary claims failed verification. I confirmed: (1) python_rigging_provider.py:160 builds `out_rel = f"rigged/{garment_asset_id}/garment-rigged.glb"` with no task_id component; (2) skinned_glb_writer.py's `gltf.save(str(output_path))` (line ~339) writes directly with no temp-file+rename or locking; (3) stub_generator.py and meshy_generator.py both key their output paths by `tasks/{task_id}` (an asymmetry the finding correctly identifies); (4) RiggingTaskQueue.claim_task uses `FOR UPDATE SKIP LOCKED` (rigging_task_queue.py:20-49), which permits two different rows (hence two different task_ids for the same garment_asset_id) to be claimed by two concurrent processes; (5) RiggingService.requestRigging/supersedeActiveTasks (RiggingService.java:51-52, 220-230) flips a RUNNING task to FAILED in the DB without signaling/stopping the in-process Python generate() call, and creates a new PENDING task row for the same garment_asset_id; (6) worker/CLAUDE.md:420 literally states 'SKIP LOCKED ensures multiple worker instances can run safely in parallel,' documenting an in-repo expectation of horizontal scaling that this queue's path-keying violates; (7) both docker-compose.yml and docker-compose.prod.yml currently run exactly one process claiming the rigging role (no `deploy.replicas`, and the compose comments explicitly state 'Production differs on purpose: it runs a single worker... with every role'), so the race is not reachable under the deployment topology that ships today.
+- 1) "RiggingService.requestRigging() creates a brand-new RiggingTask row (new task_id) each time it is called" — true for requestRigging (lines 66-76), but the sibling retry() path (lines 150-155) REUSES the same row, resetting it to PENDING and incrementing attemptCount. So the two-rows-one-asset framing does not cover retries at all, and the suggested task_id-keyed path would not disambiguate successive attempts of a retried task either. 2) The finding's own hedge understates the gap: it says the single-worker topology makes "the final writer happen to be correct," implying luck, when in fact the shipped configs structurally guarantee exactly one rigging claimant (prod has no replicas; dev scopes by WORKER_ROLES) and the poll loop is single-threaded — so the described concurrent-overwrite is unreachable rather than merely sequentialized by chance. 3) The finding never mentions the only consequence that can bite at launch: the non-atomic in-place overwrite of the live, publicly-served buyer-facing rigged asset on any re-rig, including the post-write-validation-failure and mid-save-crash paths that destroy a previously-good asset while the DB still advertises it. Its stated failure path is the unreachable one; its reachable cost lies elsewhere.
+
 ## A-36 · `MEDIUM` — RiggingTaskQueue.fail_task silently discards a no-op write with no return value or log, unlike the sibling queues
 
 **Location:** `worker/rigging_task_queue.py:75`  
+**Verification:** CONFIRMED (3/3 lenses, ranks MEDIUM/MEDIUM/LOW)  
 **Found by:** task-queues, silent-failures (reported independently 2x)
 
 **Evidence**
@@ -1138,9 +1336,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Mirror task_queue.py / avatar_task_queue.py: return a bool from rowcount, log a warning when the guard declines to touch the row, and have main.py's rigging exception handlers consult that return value the same way the model/avatar paths already do (worker/main.py:265-268, 304-305).
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Two impact claims in the Failure path do not hold. (a) "the worker's eventual fail_task call for that same task silently no-ops with zero trace in the logs — the one failure signal an operator would need ... never appears anywhere": the error itself IS logged at all five rigging call sites immediately before fail_task (main.py:324, :335, :348, :390, :398); only the declined-write notice is absent. (b) The "why didn't my rigging retry work" diagnosis framing: RiggingService.retry() (RiggingService.java:132-155) reuses the same FAILED row and nulls errorMessage/failureCode, so the superseded task's worker error is not the signal that would explain a failed retry. Additionally the report implies a behavioural parity loss, but in task_queue/avatar_task_queue the returned bool only selects between two log strings — main.py takes identical action either way — so the gap costs exactly one log line, not any action. The report also overlooks that complete_task in the same file already logs its no-op, making the asymmetry intra-file.
+
 ## A-37 · `LOW` — parseProductSizes silently swallows a malformed product.sizes JSON column with zero logging, in two services
 
 **Location:** `server/src/main/java/com/iyae/service/CartService.java:164`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW)  
 **Found by:** silent-failures
 
 **Evidence**
@@ -1151,9 +1354,15 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Add `log.warn("Failed to parse sizes JSON for product {}: {}", product.getId(), e.getMessage())` (or similar) in both catch blocks so a corrupted `products.sizes` column (migration bug, manual DB edit, etc.) leaves a diagnostic trail instead of silently presenting the product as sizeless, which in CartService then produces a confusing 'Product has no sizes; use ONE_SIZE' error for a product that does have sizes.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None of the finding's load-bearing claims failed. Minor nuance the report didn't spell out: the `sizes` column is MySQL `JSON` type, which rejects syntactically malformed JSON at write time, so "malformed JSON" can only actually occur as valid-JSON-but-wrong-shape (e.g. a JSON object instead of a string array) rather than literally unparseable text — this doesn't change the conclusion since Jackson's `readValue(..., List<String>.class)` still throws and is still silently swallowed either way.
+- 1) The claimed failure path is wrong for the real client: "which in CartService then produces a confusing 'Product has no sizes; use ONE_SIZE' error for a product that does have sizes". ProductResponse.parseJsonList (ProductResponse.java:96-105) swallows the same parse failure, so the PDP gets sizes: []; web/app/products/[id]/page.tsx:211 sends `selectedSize ?? "ONE_SIZE"` and the add button gate (line 422) only engages when product.sizes.length > 0 — so the cart add succeeds silently as ONE_SIZE instead of erroring. The error requires a direct API caller or a stale client-held size. 2) The named trigger "migration bug" has no instance: no migration writes products.sizes; V1__baseline_schema.sql:52 only declares it `sizes JSON`. 3) The other named trigger, "manual DB edit", is largely blocked too — MySQL's native JSON column type rejects syntactically invalid JSON on write, so only a valid-JSON-but-wrong-shape edit can reach the catch. 4) "in two services" undercounts the duplication: the identical unlogged swallow is in four sites (CartService, ProductService, ProductResponse.parseJsonList, SizeRecommendationService.parseStringArray), three of them services — though the two locations actually cited are correct.
+
 ## A-38 · `LOW` — DesignerProfileService has no injection site: shopName, bio and city are unwritable in every environment
 
 **Location:** `server/src/main/java/com/iyae/service/DesignerProfileService.java:34`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW)  
 **Found by:** gap:Production database seeds to an empty marketplace; no production content/designer-onboarding path exists
 
 **Evidence**
@@ -1164,9 +1373,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Either wire the service to a `GET/PUT /api/designer/profile` endpoint (the natural home for the city/isLocal write the Local Designers filter needs, and for the shop name and bio the designer storefront concept implies) or delete it. Leaving an unreachable service that looks like the designer-profile write path is what made the missing city/isLocal path hard to see.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- Two precision defects in the framing, neither undermining the finding: 1. The title's "unwritable in every environment" is overstated. `DataSeeder.java:107-129` writes `shopName`, `bio`, `city` and `isLocal` in dev/test, and `AccountDeletionService.java:204-206` writes `shopName` ("Former designer") and `city` (null) in ALL environments including prod. The accurate claim — which the evidence body makes correctly — is that there is no user- or operator-facing write path, not that the fields are unwritable. 2. The title bundles `city` into a sentence about this service's signature, but `updateProfile` does not take a `city` parameter at all (the report's own evidence concedes this: "does not accept city/isLocal at all"). So `city` being unwritable is not a fact about `DesignerProfileService:34`; it belongs to B-15's scope. This is the source of the severity-inflation risk in the title: the one consequence that would justify escalation (`city`/`isLocal`) is not actually this finding's. 3. Minor: the "Found by" attribution ties A-38 to the empty-marketplace gap, but the finding as scoped (dead service, unread shopName/bio) has no bearing on marketplace emptiness.
+
 ## A-39 · `LOW` — Email-verification and password-reset expiry columns use DATETIME while every other timestamp in the schema uses TIMESTAMP
 
 **Location:** `server/src/main/resources/db/migration/V4__email_verification_and_password_reset.sql:7`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW)  
 **Found by:** db-migrations
 
 **Evidence**
@@ -1177,9 +1391,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > No demonstrated current breakage (JVM/driver/MySQL server timezone appear consistently UTC in this deployment), but DATETIME stores a literal wall-clock value with no timezone normalization at the engine level, unlike TIMESTAMP. For consistency and to remove a latent correctness risk if any component's default timezone ever diverges, migrate these two columns to TIMESTAMP to match the rest of the schema.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- One minor factual incompleteness, which understates rather than overstates: the finding lists three DATETIME columns but there are four. It omits `V4:27 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`. That fourth column is even lower impact than the three cited — it is written by Hibernate's `@CreationTimestamp` as a driver-converted bound parameter (making the server-side `DEFAULT CURRENT_TIMESTAMP` effectively dead weight), and a grep found no reader of `PasswordResetToken.createdAt` anywhere in the main tree. A secondary nit on precision: the supporting grep count conflates column types with `CURRENT_TIMESTAMP` default expressions, so "every other timestamp column uses TIMESTAMP" is less rigorously evidenced than it reads. The directional claim nonetheless holds — there is no other DATETIME column type anywhere in the 24 migrations. Nothing load-bearing failed; the finding's central claim and its own "no demonstrated current breakage" hedge both check out.
+
 ## A-40 · `LOW` — idx_follows_follower duplicates the leftmost column of uk_follows_pair
 
 **Location:** `server/src/main/resources/db/migration/V8__community_tables.sql:55`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW)  
 **Found by:** db-migrations
 
 **Evidence**
@@ -1190,9 +1409,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Drop `idx_follows_follower` in a future migration; `idx_follows_following` (line 56) is still needed since `following_id` is not a usable prefix of the unique key.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- The suggested fix states idx_follows_following (V8:56) "is still needed since following_id is not a usable prefix of the unique key." Wrong on MySQL/InnoDB: FOREIGN KEY (following_id) is declared in the same CREATE TABLE and no index with following_id leftmost exists at that point, so InnoDB auto-creates one — line 56 is therefore a second, duplicate index on following_id. The same mechanism makes idx_post_comments_post (V8:54) a duplicate of the auto-created FK index on post_comments.post_id. So V8 contains three redundant indexes; the finding names one and explicitly exonerates another. Also omitted: V24__perf_indexes.sql:11-15 already states this same reasoning about this same table ("A redundant index is not free — it costs on every write"), so the premise is partly already reasoned about in-tree. Finally, the finding's framing of the index as pure overhead is incomplete — in InnoDB the single-column index is narrower than the unique key, so countByFollower / findByFollowerOrderByCreatedAtDesc read slightly fewer pages from it, making the proposed drop a near-wash rather than a clear win.
+
 ## A-41 · `LOW` — connect-src allows cdn.jsdelivr.net for drei KTX2/matcap assets that the component tree does not appear to use
 
 **Location:** `web/middleware.ts:26`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW)  
 **Found by:** gap:3D/AR viewer render path and its unpinned third-party CDN dependencies
 
 **Evidence**
@@ -1203,9 +1427,14 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 
 > Confirm whether any current or planned feature needs jsdelivr; if not, drop the allowance to reduce the CSP's third-party attack surface.
 
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- None. Verified against code: web/middleware.ts:24-27 CSP connect-src includes https://raw.githubusercontent.com, https://rawcdn.githack.com, and https://cdn.jsdelivr.net, each annotated with a comment explaining a specific drei feature it supposedly backs. A repo-wide grep across web/components, web/app, and __tests__ for drei's KTX2/matcap/normal-texture helpers (Ktx2, MatcapTexture, NormalTexture) and for any literal 'jsdelivr' reference in app code found zero matches outside the middleware comment itself. The only drei imports actually present are in components/AvatarViewer.tsx (OrbitControls, Environment, useGLTF, Bounds, useProgress, useEnvironment, Html, ContactShadows), components/DemoOutfitModel.tsx (OrbitControls, Bounds), and components/ARViewer.tsx (useGLTF) -- none of which touch KTX2 compression or matcap/normal textures. By contrast, AvatarViewer.tsx does use drei's <Environment preset=...> / useEnvironment.preload, which is a legitimate, verified consumer of HDR assets served from the github-raw-backed domains (raw.githubusercontent.com / rawcdn.githack.com) -- so those two connect-src entries are justified while cdn.jsdelivr.net is not. The finding's core claim (jsdelivr allowance has no corresponding feature usage in the component tree) holds.
+
 ## A-42 · `LOW` — Heartbeat file is touched unconditionally before the per-cycle try/except, so the container healthcheck cannot detect a persistent orchestration-level error loop
 
 **Location:** `worker/main.py:199`  
+**Verification:** CONFIRMED (3/3 lenses, ranks LOW/LOW/LOW)  
 **Found by:** worker-python
 
 **Evidence**
@@ -1215,6 +1444,58 @@ MEDIUM/LOW findings. These were **not** put through the three-lens verification 
 **Suggested fix**
 
 > Only touch the heartbeat after at least one full, successful pass through the loop body (or track consecutive failures and stop refreshing the heartbeat past a threshold), so the healthcheck can actually distinguish a working daemon from one stuck in a code-level error loop.
+
+**Verifier caveats** — the finding holds, but these specific assertions did not:
+
+- (1) "the per-queue/per-task guards ... already cover DB errors" is wrong: every queue method calls `get_connection()` outside its own try (queue_base.py:31-32, task_queue.py:16-18), so DB-connect failures are exactly what escapes to the bottom catch. This makes the finding more reachable than it claims, but the stated reasoning is inaccurate. (2) The finding implies the false-healthy has operational consequence; it does not establish one, and there is none — no restart-on-unhealthy in plain Compose, no `depends_on` on worker, and prod_deploy.sh gates only mysql+server. (3) The suggested fix is unsound and misses the larger adjacent defect in the same mechanism: `touch_heartbeat()` runs ONLY at the top of the cycle, never during `provider.generate()` (the DB-level `task_heartbeat` thread bumps `updated_at`, not the file), while the healthcheck window is 10 × WORKER_POLL_INTERVAL = 50 s by default. A legitimate Meshy generation polls up to 10 minutes (worker/providers/meshy_generator.py:241-242 `for _ in range(120): time.sleep(5)`) and PythonRiggingProvider — the prod default via `RIGGING_PROVIDER:-python` — has no timeout at all, so the container reports UNHEALTHY during normal successful work, far more often than the error loop this finding describes. "Only touch the heartbeat after a full successful pass" does not address that and, if anything were ever wired to restart on unhealthy, the false-unhealthy would kill the worker mid-generation — reintroducing exactly the double-processing the task heartbeat was added to prevent. The real remedy is to have the per-task heartbeat thread also touch the file, plus a separate consecutive-failure counter.
+
+---
+
+# Consolidation (cross-finding)
+
+Produced by a final agent given every verification result at once — the judgement no per-finding verifier could make. Its own spot-check counts differ from the pipeline's because it re-checked a subset itself; where it says a finding was "not independently re-verified" it means *it* did not re-check that one, not that the three-lens pass skipped it (all 42 got three lenses).
+
+## Adversarial validation — 42 advisory findings, `docs/reviews/2026-10-13-production-readiness-review.md`
+
+Read the source at HEAD for each claim. **35 verified as written; 1 has a materially wrong failure path; 1 ships a harmful fix; 6 overlap into 3 defects; 7 not independently re-verified** (A-13, A-15, A-22, A-26, A-27, A-28, A-37 — evidence internally consistent, left as-filed).
+
+### Confirmed, evidence exact (no change)
+
+A-1, A-2, A-3, A-4, A-6, A-7, A-8, A-9, A-10, A-11, A-12, A-14, A-16, A-18, A-20, A-21, A-24, A-25, A-31, A-33, A-34, A-35, A-36, A-38, A-41. Spot-checks that held: `/assets/` and `/uploads/` locations each carry their own `add_header` (`nginx/conf.d/default.conf:40-95`); `nginx/nginx.conf:27` is bare `access_log /dev/stdout`; `FileStorageService.java:33-34` reads `file.getContentType()` only; `web/Dockerfile:29` is the only `USER` in any Dockerfile; `AdminModerationService` lines 60/89/161 are unbounded `findAll`, 116 is the one `Pageable`; `JwtTokenProviderTest` calls only the 1- and 2-arg `generateToken`, never `extractUserId`; no `.github/workflows/` file mentions `prod_deploy.sh`/`ssl-init`.
+
+### Findings that change
+
+**A-19 — failure path is wrong.** `AnalyticsService.record` is `@Transactional` (`AnalyticsService.java:72`). A `DataIntegrityViolationException` from the IDENTITY-generator flush marks the transaction rollback-only, so the commit fails **after** the `catch` at :89 and throws out of the transaction proxy. The claim "the controller still returns 202 Accepted… The only trace is one WARN log line" does not hold — the client gets a 500. The under-stated risk the finding misses is the inverse: `record()` is called from `CheckoutService.initiateResaleCheckout:374` and elsewhere, so a rejected row can poison a caller's transaction *after* a live Stripe session was created. Keep the fix (`@Size` on `sizeBracket`, parse-check `metadata`), discard the "silently lossy" framing.
+
+**A-42 — primary suggested fix would regress.** "Only touch the heartbeat after at least one full, successful pass" contradicts the heartbeat thread added 2026-10-11 around the three blocking `generate()` calls. The prod healthcheck window is `10 × WORKER_POLL_INTERVAL` = 50s (`docker-compose.prod.yml:117`); a real `PythonRiggingProvider` job runs for minutes. Deferring the touch to after the loop body marks a healthy worker unhealthy mid-job. Only the parenthetical alternative (consecutive-failure counter) is safe. Defect at `worker/main.py:199` is confirmed, but narrow — all DB and provider errors are already caught by inner guards.
+
+**A-17 — rating is wrong in both directions.** Confirmed: `AccountDeletionService.java:164-186` has no `RESERVED` branch. Two corrections:
+- *Not reachable at Launch 1* — `CheckoutService.initiateResaleCheckout:326-330` calls `requireStubAllowed()` **before** `reserve()`, which 503s outside dev/test while payment is off. Latent until Stripe is enabled.
+- *Worse than MEDIUM once enabled* — the window between `reserve()` (:331) and the order save (:373) spans a live `stripeGateway.createSession` network call, and the save is its own `txTemplate` transaction. A seller deleting their account inside it deletes the listing; the order INSERT then fails the FK; `catch (RuntimeException)` calls `release()` on a row that no longer exists and rethrows — leaving the buyer holding a **payable Stripe session with no Order row** for `findByStripeSessionId` to find.
+- Missed divergence: that method's own Javadoc (:160-162) claims "A listing with a live checkout is kept and released back to LISTED instead." The code only `continue`s. The author believed this case was handled.
+
+**A-30 — impact overstated.** The race is real (`poll()` builds a controller per tick, overwrites `abortRef`, and only the latest is ever aborted). But `setItems` only ever *adds* `riggedGlbUrl`, and `pendingCount` reads `!item.riggedGlbUrl && activeRigging.has(...)` — so a stale commit can corrupt only `activeRigging`, cannot un-resolve an item, and self-corrects on the next 5s tick. "Let a stale response re-flag an already-finished rig item" is false for the item; true only for the count. LOW.
+
+**A-29 — no reachable path.** Confirmed `actionUrl` is the one unescaped field (`email-templates.ts:54` vs `escapeHtml` on title/greeting/bodyText/actionText/footnote). But it is built server-side as `frontendBaseUrl + "/verify-email?token=" + rawToken`; the token is Base64-URL-safe from `SecureRandom` and cannot contain `"`. Nothing attacker-controlled reaches the attribute. Hygiene, LOW.
+
+**A-28 — self-refuted but still ranked MEDIUM.** Its own evidence proves both call sites guard `glbUrl`. LOW. Same inconsistency: A-32 and A-41 are the identical class of defect (a CDN allowance that is missing / unused) rated MEDIUM and LOW respectively.
+
+### The 42 is inflated — 6 findings are 3 defects
+
+- **A-1 ≡ A-2** — one defect (no `deploy.resources`/`JAVA_TOOL_OPTIONS` in `docker-compose.prod.yml`), filed by `infra-deploy` and `perf-scale`. Note A-1's fix text claims `deploy:` is "otherwise ignored by plain `docker compose`" — wrong on Compose v2, which honours `deploy.resources.limits` in non-Swarm mode, as `docker-compose.yml`'s own `rigging-worker` profile demonstrates.
+- **A-3 ≡ A-11**, and both restate B-8's "nothing checks disk"; **A-10** is a fourth member of the same disk-exhaustion cluster.
+- **A-35 ≡ B-5** — same two lines (`python_rigging_provider.py:160`, `skinned_glb_writer.py:339-340`), split into two findings with **conflicting fixes**: B-5 says temp+rename at the deterministic path, A-35 says make the path task-scoped. A-35 subsumes B-5; fix once. And **A-34's evidence contradicts both**, citing the same asset-id keying approvingly ("retries overwrite and `rigging-work/` is bounded").
+
+### Additions the review missed
+
+1. **A-5/A-4 gap:** `location /_next/static` (`default.conf:103-107`) declares its own `add_header`, so it drops all three server-level security headers — *and* `middleware.ts:54`'s matcher excludes `_next/static`. That location gets security headers from neither layer. Neither finding names it.
+2. **A-40 is stronger than filed.** `V24__perf_indexes.sql:11-15` states the principle ("A redundant index is not free — it costs on every write") while asserting `follows.follower_id`'s index arrives automatically from the FK — false, since `uk_follows_pair`'s leftmost prefix already satisfies the constraint, which is exactly why `idx_follows_follower` is pure overhead.
+3. **A-39 undercounts:** `V4:27` is also `created_at DATETIME`. Four columns, not three.
+4. **A-23's mirror case:** `V7:8` makes `rigging_tasks.slot_hint` `ENUM('TOP','BOTTOM','DRESS')` — missing SHOES/ACCESSORY. The review names it but accepts `resolveSlotHint()` as sufficient, which is the "guard in code, not schema" posture it rejects for `garment_assets` in the same finding.
+
+### Net
+
+No advisory finding is fully refuted. One (A-19) has the wrong traced consequence; one (A-42) carries a fix that would cause an outage; four are over-rated (A-28, A-29, A-30, A-32); one is under-rated once payment is on but unreachable at Launch 1 (A-17). After de-duplication the list is **~36 distinct defects**, and the review's own caveat at line 25 — that the advisory list is lower-confidence by construction — is borne out by exactly one bad failure path and one bad fix in 42, which is a good rate for an unverified tier.
 
 ---
 
@@ -1236,7 +1517,7 @@ All 11 were reviewed. Listed here because the *reason* a gap was named is itself
 
 ---
 
-# Per-area outcome
+# Per-area outcome (pass 1)
 
 | Area | Verdict | Findings |
 |---|---|---|
