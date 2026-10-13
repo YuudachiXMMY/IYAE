@@ -3,6 +3,8 @@ import os
 import time
 import json
 import logging
+import threading
+from contextlib import contextmanager
 
 from task_queue import TaskQueue
 from avatar_task_queue import AvatarTaskQueue
@@ -29,6 +31,89 @@ logger = logging.getLogger("worker")
 
 POLL_INTERVAL = int(os.environ.get("WORKER_POLL_INTERVAL", "5"))
 OUTPUT_BASE_DIR = os.environ.get("WORKER_OUTPUT_DIR", "/var/iyae/assets")
+
+ALL_ROLES = ("model", "avatar", "rigging")
+
+
+def get_roles() -> set[str]:
+    """Which task queues this process claims from.
+
+    The rigging container runs this same `main.py`, so without a role switch it became a
+    second claimant for model and avatar tasks — and since it is configured with
+    MODEL_GENERATION_PROVIDER=mock, it would race the real worker and win sometimes,
+    completing a genuine generation request with stub output. Set WORKER_ROLES=rigging on
+    any rigging-only container.
+
+    Defaults to all three, which is the single-worker production topology.
+    """
+    raw = os.environ.get("WORKER_ROLES", "").strip()
+    if not raw:
+        return set(ALL_ROLES)
+    roles = {r.strip().lower() for r in raw.split(",") if r.strip()}
+    unknown = roles - set(ALL_ROLES)
+    if unknown:
+        raise ValueError(
+            f"Unknown WORKER_ROLES {sorted(unknown)}; valid roles are {list(ALL_ROLES)}"
+        )
+    if not roles:
+        raise ValueError("WORKER_ROLES was set but parsed to nothing")
+    return roles
+
+
+# Touched once per poll cycle so the container healthcheck can tell a live daemon from one
+# that is wedged on a hung provider call. A process that is merely *running* says nothing
+# about whether it is still working through its queues.
+HEARTBEAT_PATH = os.environ.get("WORKER_HEARTBEAT_PATH", "/tmp/worker-heartbeat")
+
+
+def touch_heartbeat() -> None:
+    try:
+        with open(HEARTBEAT_PATH, "w") as fh:
+            fh.write(str(int(time.time())))
+    except OSError as exc:  # never let the heartbeat kill the loop
+        logger.warning(f"Could not write heartbeat to {HEARTBEAT_PATH}: {exc}")
+
+
+#: How often a claimed task's staleness clock is pushed out while it is being worked on.
+#: Comfortably under the 15-minute reclaim threshold so one missed tick is harmless.
+TASK_HEARTBEAT_INTERVAL = int(os.environ.get("WORKER_TASK_HEARTBEAT_INTERVAL", "60"))
+
+
+@contextmanager
+def task_heartbeat(queue, task_id: int):
+    """Keeps a claimed task's ``updated_at`` fresh for as long as we are working on it.
+
+    ``reclaim_stale_tasks`` treats a RUNNING task whose ``updated_at`` is older than 15
+    minutes as abandoned. Nothing refreshed that column during a run, so a job that
+    legitimately takes longer — a real Tripo3D or Meshy generation polls for up to 10 minutes
+    before the download even starts — was reclaimed while its worker was still inside
+    ``provider.generate()``, handed to a second claimant, and written twice.
+
+    A daemon thread rather than a callback threaded through every provider: the providers are
+    synchronous and blocking, so there is no point in their call stack where they could
+    cooperatively yield, and making each one accept and periodically invoke a callback is a
+    change to four provider APIs to achieve the same thing less reliably.
+    """
+    stop = threading.Event()
+
+    def beat():
+        while not stop.wait(TASK_HEARTBEAT_INTERVAL):
+            try:
+                queue.heartbeat(task_id)
+            except Exception as exc:  # diagnostics must never take down the run
+                logger.warning(f"Heartbeat for task {task_id} failed: {exc}")
+
+    thread = threading.Thread(
+        target=beat, name=f"heartbeat-{task_id}", daemon=True
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        # Short join: the thread is parked in `stop.wait`, so it returns immediately. The
+        # timeout is only here so a wedged thread cannot stall the poll loop.
+        thread.join(timeout=5)
 
 
 def get_db_config() -> dict:
@@ -98,7 +183,9 @@ def run():
     avatar_provider = get_avatar_provider()
     rigging_provider = get_rigging_provider(OUTPUT_BASE_DIR)
     rigging_enabled = not isinstance(rigging_provider, StubRiggingProvider)
+    roles = get_roles()
     logger.info(
+        f"Roles: {sorted(roles)}, "
         f"Model provider: {provider.__class__.__name__}, "
         f"Avatar provider: {avatar_provider.__class__.__name__}, "
         f"Rigging provider: {rigging_provider.__class__.__name__} "
@@ -109,21 +196,22 @@ def run():
     poll_count = 0
     while True:
         poll_count += 1
+        touch_heartbeat()
         try:
             if poll_count % 12 == 0:
                 try:
-                    reclaimed = queue.reclaim_stale_tasks()
+                    reclaimed = queue.reclaim_stale_tasks() if "model" in roles else 0
                     if reclaimed > 0:
                         logger.info(f"Reclaimed {reclaimed} stale model tasks")
                 except Exception as e:
                     logger.error(f"Failed to reclaim stale model tasks: {e}")
                 try:
-                    reclaimed = avatar_queue.reclaim_stale_tasks()
+                    reclaimed = avatar_queue.reclaim_stale_tasks() if "avatar" in roles else 0
                     if reclaimed > 0:
                         logger.info(f"Reclaimed {reclaimed} stale avatar tasks")
                 except Exception as e:
                     logger.error(f"Failed to reclaim stale avatar tasks: {e}")
-                if rigging_enabled:
+                if rigging_enabled and "rigging" in roles:
                     try:
                         reclaimed = rigging_queue.reclaim_stale_tasks()
                         if reclaimed > 0:
@@ -135,7 +223,7 @@ def run():
             processed_any = False
 
             # --- Product task ---
-            task = queue.claim_task()
+            task = queue.claim_task() if "model" in roles else None
             if task is not None:
                 processed_any = True
                 task_id = task["id"]
@@ -143,7 +231,8 @@ def run():
                 logger.info(f"Claimed model task {task_id} for product {product_id}")
                 try:
                     input_payload = json.loads(task["input_payload"]) if task["input_payload"] else None
-                    output = provider.generate(task_id, product_id, input_payload)
+                    with task_heartbeat(queue, task_id):
+                        output = provider.generate(task_id, product_id, input_payload)
 
                     glb_path = os.path.join(OUTPUT_BASE_DIR, output["glb_path"])
                     validation = validate_glb(glb_path)
@@ -168,11 +257,18 @@ def run():
                     logger.info(f"Model task {task_id} completed successfully")
                 except Exception as e:
                     logger.error(f"Model task {task_id} failed: {e}")
-                    queue.fail_task(task_id, str(e))
-                    logger.warning(f"Model task {task_id} marked as FAILED. Use designer retry endpoint to re-queue.")
+                    # fail_task only touches a task still RUNNING, and reports whether it did.
+                    # Claiming otherwise is misleading: the task may have been reclaimed by the
+                    # stale sweep and completed by a second worker while this one was still in
+                    # provider.generate(), in which case the guard correctly declined to flip a
+                    # finished generation to FAILED and there is nothing to re-queue.
+                    if queue.fail_task(task_id, str(e)):
+                        logger.warning(f"Model task {task_id} marked as FAILED. Use designer retry endpoint to re-queue.")
+                    else:
+                        logger.warning(f"Model task {task_id} was no longer RUNNING — left as it is; another worker or the stale sweep moved it on.")
 
             # --- Avatar task ---
-            avatar_task = avatar_queue.claim_task()
+            avatar_task = avatar_queue.claim_task() if "avatar" in roles else None
             if avatar_task is not None:
                 processed_any = True
                 task_id = avatar_task["id"]
@@ -180,7 +276,8 @@ def run():
                 logger.info(f"Claimed avatar task {task_id} for user {user_id}")
                 try:
                     input_payload = json.loads(avatar_task["input_payload"]) if avatar_task["input_payload"] else None
-                    output = avatar_provider.generate(task_id, user_id, input_payload)
+                    with task_heartbeat(avatar_queue, task_id):
+                        output = avatar_provider.generate(task_id, user_id, input_payload)
 
                     glb_path = os.path.join(OUTPUT_BASE_DIR, output["glb_path"])
                     validation = validate_glb(glb_path)
@@ -204,10 +301,12 @@ def run():
                     logger.info(f"Avatar task {task_id} completed successfully")
                 except Exception as e:
                     logger.error(f"Avatar task {task_id} failed: {e}")
-                    avatar_queue.fail_task(task_id, str(e))
+                    if not avatar_queue.fail_task(task_id, str(e)):
+                        logger.warning(f"Avatar task {task_id} was no longer RUNNING — left as it is; another worker or the stale sweep moved it on.")
 
             # --- Rigging task (skip when stub provider to avoid producing placeholder boxes) ---
-            rigging_task = rigging_queue.claim_task() if rigging_enabled else None
+            rigging_task = (rigging_queue.claim_task()
+                            if rigging_enabled and "rigging" in roles else None)
             if rigging_task is not None:
                 processed_any = True
                 task_id = rigging_task["id"]
@@ -215,7 +314,8 @@ def run():
                 logger.info(f"Claimed rigging task {task_id} for garment asset {garment_asset_id}")
                 try:
                     input_payload = json.loads(rigging_task["input_payload"]) if rigging_task.get("input_payload") else {}
-                    output = rigging_provider.generate(task_id, garment_asset_id, input_payload)
+                    with task_heartbeat(rigging_queue, task_id):
+                        output = rigging_provider.generate(task_id, garment_asset_id, input_payload)
 
                     rigged_path = output.get("rigged_glb_path", "")
                     absolute_path = os.path.join(OUTPUT_BASE_DIR, rigged_path) if rigged_path else ""

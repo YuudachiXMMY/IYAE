@@ -50,9 +50,9 @@ class BodyProfileControllerTest {
     }
 
     @Test
-    void getProfile_unauthenticated_returns403() throws Exception {
+    void getProfile_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/body-profile"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -73,7 +73,7 @@ class BodyProfileControllerTest {
     }
 
     @Test
-    void upsertProfile_unauthenticated_returns403() throws Exception {
+    void upsertProfile_unauthenticated_returns401() throws Exception {
         BodyProfileRequest request = new BodyProfileRequest(
                 170.0, 65.0, 90.0, 72.0, 95.0, 40.0, 80.0, "7", "M", "30", "8", "M");
         String body = objectMapper.writeValueAsString(request);
@@ -82,6 +82,6 @@ class BodyProfileControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

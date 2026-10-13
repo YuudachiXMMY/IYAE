@@ -73,9 +73,9 @@ class RiggingControllerTest {
     }
 
     @Test
-    void requestRigging_unauthenticated_returns403() throws Exception {
+    void requestRigging_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/designer/products/1/rigging")
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

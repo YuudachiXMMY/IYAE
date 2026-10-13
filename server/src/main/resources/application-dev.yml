@@ -5,6 +5,9 @@ spring:
 app:
   auth:
     require-email-verification: false
+  payments:
+    # Dev convenience only: lets checkout complete without Stripe credentials.
+    stub-checkout-enabled: true
 
 logging:
   level:

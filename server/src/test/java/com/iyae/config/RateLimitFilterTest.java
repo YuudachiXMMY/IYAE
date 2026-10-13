@@ -351,4 +351,138 @@ class RateLimitFilterTest {
             assertThat(chain.getRequest()).isNotNull();
         }
     }
+
+    // ---- UGC and paid-job-creation throttles ----
+
+    @Test
+    void postingToTheCommunity_blocksAfterLimit() throws Exception {
+        // The product ships user-generated content plus the report queue it is reported
+        // through, and the allow-list throttled neither — a script could fill the feed and
+        // bury the queue, on an instance where nobody could action any of it.
+        RateLimitFilter filter = newFilter();
+        for (int i = 0; i < 10; i++) {
+            assertNotBlocked(filter, "POST", "/api/posts", "10.1.0.1");
+        }
+        assertBlocked(filter, "POST", "/api/posts", "10.1.0.1");
+    }
+
+    @Test
+    void readingTheCommunityFeed_isNeverThrottled() throws Exception {
+        // POST-scoped on purpose: a user scrolling the feed must not spend their own posting
+        // budget (the same mistake the chat rule had before it was POST-scoped).
+        RateLimitFilter filter = newFilter();
+        for (int i = 0; i < 50; i++) {
+            assertNotBlocked(filter, "GET", "/api/posts", "10.1.0.2");
+        }
+    }
+
+    @Test
+    void reportingAPost_sharesThePostingBudget() throws Exception {
+        // /api/posts/{id}/report sits under the /api/posts prefix, so the same throttle covers
+        // it — which is what stops the moderation queue being flooded.
+        RateLimitFilter filter = newFilter();
+        for (int i = 0; i < 10; i++) {
+            assertNotBlocked(filter, "POST", "/api/posts/5/report", "10.1.0.3");
+        }
+        assertBlocked(filter, "POST", "/api/posts/5/report", "10.1.0.3");
+    }
+
+    @Test
+    void avatarGeneration_blocksAfterLimit() throws Exception {
+        // Compute-heavy: each call queues minutes of SMPL-X work.
+        RateLimitFilter filter = newFilter();
+        for (int i = 0; i < 5; i++) {
+            assertNotBlocked(filter, "POST", "/api/avatar/generate", "10.1.0.4");
+        }
+        assertBlocked(filter, "POST", "/api/avatar/generate", "10.1.0.4");
+    }
+
+    @Test
+    void designerImageUpload_blocksAfterLimit() throws Exception {
+        // Unthrottled, this was a disk-fill DoS against the shared assets volume — the same
+        // volume that holds every generated model and, until the backup command landed, the
+        // only copy of the uploads.
+        RateLimitFilter filter = newFilter();
+        for (int i = 0; i < 20; i++) {
+            assertNotBlocked(filter, "POST", "/api/designer/products/upload/image", "10.1.0.5");
+        }
+        assertBlocked(filter, "POST", "/api/designer/products/upload/image", "10.1.0.5");
+    }
+
+    @Test
+    void modelRegeneration_blocksAfterLimit() throws Exception {
+        // Each regenerate spends a third-party 3D generation credit — real money.
+        RateLimitFilter filter = newFilter();
+        for (int i = 0; i < 5; i++) {
+            assertNotBlocked(filter, "POST", "/api/designer/products/9/regenerate", "10.1.0.6");
+        }
+        assertBlocked(filter, "POST", "/api/designer/products/9/regenerate", "10.1.0.6");
+    }
+
+    private RateLimitFilter newFilter() {
+        return new RateLimitFilter(new RateLimitProperties(List.of(), true));
+    }
+
+    private void assertNotBlocked(RateLimitFilter filter, String method, String path, String ip)
+            throws Exception {
+        MockHttpServletRequest req = makeRequest(method, path, ip);
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        invokeFilter(filter, req, res, chain);
+        assertThat(res.getStatus()).isNotEqualTo(429);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    private void assertBlocked(RateLimitFilter filter, String method, String path, String ip)
+            throws Exception {
+        MockHttpServletRequest req = makeRequest(method, path, ip);
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        invokeFilter(filter, req, res, chain);
+        assertThat(res.getStatus()).isEqualTo(429);
+        assertThat(chain.getRequest()).isNull();
+    }
+
+    // Liking posts must not consume the post-creation bucket. The create rule is a bare
+    // startsWith("/api/posts") prefix, so before the suffix-scoped rules were added ahead of
+    // it, ten likes while scrolling a feed exhausted the create allowance and the user's next
+    // POST /api/posts was 429'd.
+    @Test
+    void likingPosts_doesNotExhaustThePostCreateBucket() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 20; i++) {
+            MockHttpServletRequest like = makeRequest("POST", "/api/posts/" + i + "/like", "10.9.0.1");
+            invokeFilter(filter, like, new MockHttpServletResponse(), new MockFilterChain());
+        }
+
+        MockHttpServletRequest create = makeRequest("POST", "/api/posts", "10.9.0.1");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        invokeFilter(filter, create, res, chain);
+
+        assertThat(res.getStatus()).isNotEqualTo(429);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    // ...and the interaction endpoints are still individually capped, each on its own bucket.
+    @Test
+    void commentingOnPosts_hasItsOwnLimit() throws Exception {
+        RateLimitFilter filter = createFilter("");
+        for (int i = 0; i < 20; i++) {
+            MockHttpServletRequest comment =
+                    makeRequest("POST", "/api/posts/1/comments", "10.9.0.2");
+            invokeFilter(filter, comment, new MockHttpServletResponse(), new MockFilterChain());
+        }
+
+        MockHttpServletRequest overflow = makeRequest("POST", "/api/posts/1/comments", "10.9.0.2");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        invokeFilter(filter, overflow, res, new MockFilterChain());
+        assertThat(res.getStatus()).isEqualTo(429);
+
+        // A different bucket, so creating a post is unaffected by the exhausted comment one.
+        MockHttpServletRequest create = makeRequest("POST", "/api/posts", "10.9.0.2");
+        MockHttpServletResponse createRes = new MockHttpServletResponse();
+        invokeFilter(filter, create, createRes, new MockFilterChain());
+        assertThat(createRes.getStatus()).isNotEqualTo(429);
+    }
 }

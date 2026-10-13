@@ -85,14 +85,14 @@ class DesignerUploadControllerTest {
     }
 
     @Test
-    void uploadImage_unauthenticated_returns403() throws Exception {
+    void uploadImage_unauthenticated_returns401() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "img.jpg", "image/jpeg", "fake-image-content".getBytes());
 
         mockMvc.perform(multipart("/api/designer/products/upload/image")
                         .file(file)
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

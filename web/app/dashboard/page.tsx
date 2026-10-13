@@ -62,7 +62,7 @@ function ProfileSidebar({
         <p className="font-display text-2xl leading-tight text-background">
           {displayName}
         </p>
-        <p className="mt-1 text-[12px] text-background/55">
+        <p className="mt-1 text-[12px] text-inverted-muted-foreground">
           Style profile · <span className="tabular-nums">{completion}%</span>{" "}
           complete
         </p>
@@ -203,7 +203,7 @@ function OverviewPanel({
 
         {/* Style note */}
         <DarkPanel className="flex flex-col rounded-[12px] p-6">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.12px] text-background/55">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.12px] text-inverted-muted-foreground">
             This week&apos;s style note
           </p>
           <p className="mt-4 font-display text-2xl leading-snug text-background">
@@ -243,7 +243,12 @@ function OverviewPanel({
         ) : (
           <p className="mt-6 text-[14px] text-muted-foreground">
             You haven&apos;t saved any pieces yet.{" "}
-            <Link href="/products" className="text-brand hover:underline">
+            {/* Underlined always, not just on hover. This link sits inside a sentence, and
+                `text-brand` against the surrounding `text-muted-foreground` is 1.33:1 — far
+                under the 3:1 that would let colour alone carry it. WCAG 1.4.1 and axe's
+                link-in-text-block both want a non-colour cue; a hover-only underline is not
+                one, because it does not exist until you already know the link is there. */}
+            <Link href="/products" className="text-brand underline hover:no-underline">
               Explore the shop
             </Link>{" "}
             to start your edit.

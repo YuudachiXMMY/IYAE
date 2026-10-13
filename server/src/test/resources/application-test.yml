@@ -23,3 +23,6 @@ app:
     enabled: false
   cors:
     origins: http://localhost:3000
+  payments:
+    # Integration tests exercise the stub path; unit tests flip the field directly.
+    stub-checkout-enabled: true

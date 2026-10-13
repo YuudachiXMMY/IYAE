@@ -38,9 +38,12 @@ test.describe('Authentication flows', () => {
     await expect(page.getByLabel('Email')).toBeVisible();
     await expect(page.getByLabel('Password')).toBeVisible();
 
-    // Fill required fields on step 1 (Basics)
+    // Fill required fields on step 1 (Basics). Terms/Privacy consent is part of the gate — it
+    // used to be inert local state in StepBasics, so an account could be created without it
+    // ever being ticked; `canAdvance` now requires it.
     await page.getByLabel('Email').fill(`testuser+${Date.now()}@example.com`);
     await page.getByLabel('Password').fill('testpassword123');
+    await page.getByRole('checkbox').check();
 
     // The step CTA is "CONTINUE" (CTA_LABEL in app/register/page.tsx), not "Next".
     const nextButton = page.getByRole('button', { name: 'CONTINUE' });

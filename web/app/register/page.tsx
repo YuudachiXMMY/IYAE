@@ -42,6 +42,11 @@ function displayGroup(step: number): number {
 export default function RegisterPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<Partial<RegisterRequest>>(DEFAULT_FORM);
+  // Terms/Privacy consent lives here, not inside StepBasics. It was local state in that step
+  // with no reader but its own `checked` prop, so the box gated nothing: a user could leave it
+  // unticked, click through every step and create an account — including the body measurements
+  // collected later in the wizard — with no consent given at all.
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const { register } = useAuth();
@@ -58,7 +63,8 @@ export default function RegisterPage() {
         formData.email &&
         formData.password &&
         formData.password.length >= 8 &&
-        formData.role
+        formData.role &&
+        agreedToTerms
       );
     }
     return true;
@@ -82,6 +88,13 @@ export default function RegisterPage() {
       setError("Please complete all required fields");
       return;
     }
+    // Checked again at submit, not only in canAdvance: "Complete Later" skips forward from a
+    // later step, so the CONTINUE gate is not the only way to reach this function.
+    if (!agreedToTerms) {
+      setCurrentStep(0);
+      setError("Please agree to the Terms and Privacy Policy to create an account");
+      return;
+    }
     setIsLoading(true);
     try {
       // Strip empty strings to avoid server validation failures on optional fields
@@ -92,7 +105,7 @@ export default function RegisterPage() {
       const registeredUser = await register({ email, password, role, ...optionalFields } as RegisterRequest);
       // In prod an unverified account is not authenticated on the client (see auth-context);
       // route it to the verify-email page instead of the dashboard. Dev → "/dashboard" as before.
-      router.push(resolvePostRegisterRedirect(registeredUser));
+      router.push(await resolvePostRegisterRedirect(registeredUser));
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -119,7 +132,14 @@ export default function RegisterPage() {
         <WizardProgress currentStep={currentStep} totalSteps={TOTAL_STEPS} />
 
         <div className="rounded-card bg-card p-6 shadow-soft sm:p-10">
-          {currentStep === 0 && <StepBasics data={formData} onChange={handleChange} />}
+          {currentStep === 0 && (
+            <StepBasics
+              data={formData}
+              onChange={handleChange}
+              agreed={agreedToTerms}
+              onAgreedChange={setAgreedToTerms}
+            />
+          )}
           {currentStep === 1 && <StepStylePrefs data={formData} onChange={handleChange} />}
           {currentStep === 2 && <StepColors data={formData} onChange={handleChange} />}
           {currentStep === 3 && <StepMeasurements data={formData} onChange={handleChange} />}

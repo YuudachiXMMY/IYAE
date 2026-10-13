@@ -146,7 +146,7 @@ public class ProductService {
                 .colorTags(toJsonString(request.colorTags()))
                 .sizes(toJsonString(request.sizes()))
                 .media(toJsonString(request.media()))
-                .glbUrl(request.glbUrl())
+                .glbUrl(validatedGlbUrl(request.glbUrl()))
                 .status(ProductStatus.DRAFT)
                 .build();
 
@@ -188,7 +188,7 @@ public class ProductService {
             product.setMedia(toJsonString(request.media()));
         }
         if (request.glbUrl() != null) {
-            product.setGlbUrl(request.glbUrl());
+            product.setGlbUrl(validatedGlbUrl(request.glbUrl()));
         }
         if (request.status() != null && request.status() != product.getStatus()) {
             // PR#10 M2: once an admin ARCHIVE has locked the listing, the owning designer cannot
@@ -408,4 +408,35 @@ public class ProductService {
             throw new IllegalArgumentException("Failed to serialize list to JSON", e);
         }
     }
+
+    /**
+     * Rejects a designer-supplied glbUrl that is not a plain path under {@code /assets/models/}.
+     *
+     * <p>Defence in depth for the traversal that {@code GlbAssetInitializer} used to resolve:
+     * {@code "/assets/models/../../../../etc/cron.d/x"} satisfies a {@code startsWith} check on
+     * the prefix, and the initializer then wrote a file at the resolved location on every boot.
+     * That is fixed at the point of use as well; this stops the value entering the database in
+     * the first place, so the stored data stays trustworthy for any future reader.
+     *
+     * @return the url unchanged when acceptable, or null when blank
+     */
+    static String validatedGlbUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        if (url.contains("..") || url.contains("\\") || url.contains("\0")) {
+            throw new IllegalArgumentException("Invalid glbUrl");
+        }
+        // Absolute http(s) URLs are a legitimate case (an externally hosted model); anything
+        // else must be a path inside the public models subtree.
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return url;
+        }
+        if (!url.startsWith("/assets/models/") || !url.endsWith(".glb")) {
+            throw new IllegalArgumentException(
+                    "glbUrl must be an http(s) URL or a path under /assets/models/ ending in .glb");
+        }
+        return url;
+    }
+
 }

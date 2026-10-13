@@ -35,6 +35,12 @@
   --card-foreground: #171717;
   --muted: #f4f1ee;
   --muted-foreground: #5f5f5f;
+  /* De-emphasised text ON a `bg-foreground` panel (the dashboard sidebar and its cards),
+     where `muted-foreground` is the wrong token — it is tuned for `bg-background`/`bg-muted`.
+     The 0.70 blend of `background` over `foreground`: 9.14:1 here, 6.03:1 in dark. Use this
+     instead of `text-background/<alpha>`, which produces a colour no token defines and which
+     measured 3.73:1 in dark mode. */
+  --inverted-muted-foreground: #b9b9b9;
   --border: rgba(23, 23, 23, 0.18);
   --input: rgba(23, 23, 23, 0.08);
   --ring: #8a0f2d;
@@ -85,6 +91,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-inverted-muted-foreground: var(--inverted-muted-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -174,6 +181,8 @@
   --card-foreground: #ece6e0;
   --muted: #2a2624;
   --muted-foreground: #a8a29e;
+  /* 0.70 blend of the dark `background` over the dark `foreground` panel — 6.03:1. */
+  --inverted-muted-foreground: #595451;
   --border: rgba(236, 230, 224, 0.15);
   --input: rgba(236, 230, 224, 0.08);
   --ring: #d46b86;

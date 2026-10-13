@@ -71,10 +71,10 @@ class ChatControllerTest {
     }
 
     @Test
-    void createSession_unauthenticated_returns403() throws Exception {
+    void createSession_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/chat/sessions")
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

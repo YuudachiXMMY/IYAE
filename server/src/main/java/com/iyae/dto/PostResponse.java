@@ -39,9 +39,8 @@ public record PostResponse(
 
     public static PostResponse from(Post post, long likeCount, long commentCount, boolean likedByCurrentUser) {
         List<String> urls = parseMediaUrls(post.getMediaUrls());
-        String username = post.getUser().getUsername() != null
-            ? post.getUser().getUsername()
-            : post.getUser().getEmail();
+        // Never the email address — see User.publicDisplayName().
+        String username = post.getUser().publicDisplayName();
         return new PostResponse(
             post.getId(),
             post.getUser().getId(),

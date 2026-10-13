@@ -2,6 +2,7 @@
 
 import { useRef, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface LocalImagePickerProps {
   onSelect: (dataUrl: string) => void;
@@ -11,6 +12,12 @@ interface LocalImagePickerProps {
   quality?: number;
   className?: string;
   children?: ReactNode;
+  /**
+   * Accessible name for the control. Required in spirit: the visual content is an icon and
+   * some prose inside a button, which on its own tells a screen-reader user nothing about
+   * what activating it does.
+   */
+  label?: string;
 }
 
 function compressImage(
@@ -51,6 +58,7 @@ export function LocalImagePicker({
   quality = 0.7,
   className,
   children,
+  label = "Choose an image",
 }: LocalImagePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -100,17 +108,44 @@ export function LocalImagePicker({
     [maxSizeMB, maxDimension, quality, onSelect]
   );
 
+  // A real <button>, not a <div onClick>. The picker used to be a plain div wrapping a
+  // `hidden` + `aria-hidden` file input, so it was reachable by neither keyboard nor screen
+  // reader — and since choosing an image is mandatory to create a community post, a
+  // keyboard-only user could not post at all. A button is focusable, activates on Enter and
+  // Space without extra handlers, and is announced.
+  //
+  // THIS IS THE BUTTON. Call sites must pass non-interactive children (text, icons, a styled
+  // span) and put the visual button styling on `className` — several sites originally nested
+  // a shadcn <Button> inside here, which put a real <button> node inside another one: two
+  // separate tab stops and two announcements for one action, which is worse than the
+  // unreachable div it replaced. `buttonVariants` from components/ui/button is the way to get
+  // the pill look onto `className` without a nested control.
+  // The input is a SIBLING of the button, not a child of it. `<button>` only permits phrasing
+  // content with no interactive descendants, and an `<input>` is interactive whatever its
+  // styling — the nesting was invalid markup that happened to work because the input is
+  // `display:none` and non-tabbable. A `<span>` wrapper keeps the pair inline so the layout
+  // the call sites style through `className` is unchanged.
   return (
-    <div className={className} onClick={handleClick}>
+    <span className="contents">
+      <button
+        type="button"
+        className={cn("cursor-pointer", className)}
+        onClick={handleClick}
+        aria-label={label}
+      >
+        {children}
+      </button>
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         className="hidden"
         onChange={handleChange}
+        // Kept out of the accessibility tree deliberately: the button is the labelled
+        // control, and exposing both would announce the same thing twice.
         aria-hidden="true"
+        tabIndex={-1}
       />
-      {children}
-    </div>
+    </span>
   );
 }

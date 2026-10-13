@@ -88,12 +88,12 @@ class PromotionControllerTest {
     }
 
     @Test
-    void createPromotion_unauthenticated_returns403() throws Exception {
+    void createPromotion_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/promotions")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(promotionRequestJson()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

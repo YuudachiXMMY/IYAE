@@ -24,28 +24,45 @@ class TestSmplxStubProviderGenerate:
     def test_creates_glb_file(self, tmp_path):
         provider = SmplxStubProvider(output_base_dir=str(tmp_path))
         provider.generate(task_id=1, user_id=42, input_payload=None)
-        glb = tmp_path / "avatars" / "42" / "avatar.glb"
+        glb = tmp_path / "avatars" / "42" / "1" / "avatar.glb"
         assert glb.exists()
         assert glb.stat().st_size > 0
 
     def test_creates_correct_directory_structure(self, tmp_path):
         provider = SmplxStubProvider(output_base_dir=str(tmp_path))
         provider.generate(task_id=3, user_id=99, input_payload=None)
-        expected_dir = tmp_path / "avatars" / "99"
+        # Per TASK, not per user — see test_two_tasks_for_one_user_do_not_overwrite.
+        expected_dir = tmp_path / "avatars" / "99" / "3"
         assert expected_dir.is_dir()
 
     def test_does_not_create_usdz_file(self, tmp_path):
         provider = SmplxStubProvider(output_base_dir=str(tmp_path))
         provider.generate(task_id=1, user_id=42, input_payload=None)
-        usdz = tmp_path / "avatars" / "42" / "avatar.usdz"
+        usdz = tmp_path / "avatars" / "42" / "1" / "avatar.usdz"
         assert not usdz.exists()
 
     def test_different_users_write_to_different_dirs(self, tmp_path):
         provider = SmplxStubProvider(output_base_dir=str(tmp_path))
         provider.generate(task_id=1, user_id=10, input_payload=None)
         provider.generate(task_id=2, user_id=20, input_payload=None)
-        assert (tmp_path / "avatars" / "10" / "avatar.glb").exists()
-        assert (tmp_path / "avatars" / "20" / "avatar.glb").exists()
+        assert (tmp_path / "avatars" / "10" / "1" / "avatar.glb").exists()
+        assert (tmp_path / "avatars" / "20" / "2" / "avatar.glb").exists()
+
+    def test_two_tasks_for_one_user_do_not_overwrite(self, tmp_path):
+        """#46: every unauthenticated visitor shares ONE internal guest account.
+
+        A per-user output path therefore meant all guests wrote to the same file, and a visitor
+        could be served another visitor's body mesh — generated from their measurements. The
+        existing test above only covered two *different* users, which is not the guest case.
+        """
+        provider = SmplxStubProvider(output_base_dir=str(tmp_path))
+        first = provider.generate(task_id=1, user_id=7, input_payload=None)
+        second = provider.generate(task_id=2, user_id=7, input_payload=None)
+
+        assert first["glb_path"] != second["glb_path"]
+        assert first["glb_url"] != second["glb_url"]
+        assert (tmp_path / "avatars" / "7" / "1" / "avatar.glb").exists()
+        assert (tmp_path / "avatars" / "7" / "2" / "avatar.glb").exists()
 
     def test_accepts_input_payload_without_error(self, tmp_path):
         provider = SmplxStubProvider(output_base_dir=str(tmp_path))

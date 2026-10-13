@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { resale, ApiError, type ResaleListing } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { usePublicConfig } from "@/lib/hooks/usePublicConfig";
+import { CheckoutUnavailableNotice } from "@/components/CheckoutUnavailableNotice";
 
 const CONDITION_LABEL: Record<string, string> = {
   NEW_WITH_TAGS: "New with tags",
@@ -36,6 +38,7 @@ export default function ResaleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
+  const checkoutConfig = usePublicConfig();
 
   useEffect(() => {
     if (!id) return;
@@ -121,13 +124,25 @@ export default function ResaleDetailPage() {
               {listing.sellerNote && (
                 <p className="whitespace-pre-line text-sm text-muted-foreground">{listing.sellerNote}</p>
               )}
-              <Button
-                onClick={handleBuy}
-                disabled={!available || buying}
-                className="mt-2 rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
-              >
-                {available ? (buying ? "Redirecting…" : "Buy now") : "No longer available"}
-              </Button>
+              {checkoutConfig.error ? (
+                <CheckoutUnavailableNotice variant="error" onRetry={checkoutConfig.reload} />
+              ) : checkoutConfig.config && !checkoutConfig.config.checkoutEnabled ? (
+                <CheckoutUnavailableNotice />
+              ) : (
+                <Button
+                  onClick={handleBuy}
+                  disabled={!available || buying || checkoutConfig.loading}
+                  className="mt-2 rounded-full bg-brand text-primary-foreground hover:bg-brand-hover"
+                >
+                  {!available
+                    ? "No longer available"
+                    : checkoutConfig.loading
+                      ? "Checking…"
+                      : buying
+                        ? "Redirecting…"
+                        : "Buy now"}
+                </Button>
+              )}
             </div>
           </div>
         )}

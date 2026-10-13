@@ -2,6 +2,7 @@ package com.iyae.controller;
 
 import com.iyae.entity.User;
 import com.iyae.entity.enums.Role;
+import com.iyae.exception.PaymentsDisabledException;
 import com.iyae.repository.UserRepository;
 import com.iyae.service.CheckoutService;
 import com.iyae.testsupport.WebMvcSecurityConfig;
@@ -67,9 +68,9 @@ class CheckoutControllerTest {
     }
 
     @Test
-    void checkout_unauthenticated_returns403() throws Exception {
+    void checkout_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/checkout").with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -92,5 +93,18 @@ class CheckoutControllerTest {
 
         mockMvc.perform(post("/api/checkout").with(csrf()))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "buyer@example.com")
+    void checkout_paymentsDisabled_returns503() throws Exception {
+        when(userRepository.findByEmail("buyer@example.com"))
+                .thenReturn(Optional.of(verifiedBuyer("buyer@example.com")));
+        when(checkoutService.initiateCheckout(anyString(), any()))
+                .thenThrow(new PaymentsDisabledException("Checkout is currently unavailable"));
+
+        mockMvc.perform(post("/api/checkout").with(csrf()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("Checkout is currently unavailable"));
     }
 }

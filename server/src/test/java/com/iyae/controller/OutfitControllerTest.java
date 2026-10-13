@@ -58,7 +58,7 @@ class OutfitControllerTest {
     }
 
     @Test
-    void generateOutfit_unauthenticated_returns403() throws Exception {
+    void generateOutfit_unauthenticated_returns401() throws Exception {
         GenerateOutfitRequest request = new GenerateOutfitRequest("casual", "minimalist", List.of("black"), null, null, List.of());
         String body = objectMapper.writeValueAsString(request);
 
@@ -66,7 +66,7 @@ class OutfitControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -80,8 +80,8 @@ class OutfitControllerTest {
     }
 
     @Test
-    void getOutfits_unauthenticated_returns403() throws Exception {
+    void getOutfits_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/outfits"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

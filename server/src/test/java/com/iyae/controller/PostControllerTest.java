@@ -68,14 +68,14 @@ class PostControllerTest {
     }
 
     @Test
-    void createPost_unauthenticated_returns403() throws Exception {
+    void createPost_unauthenticated_returns401() throws Exception {
         String body = objectMapper.writeValueAsString(new PostRequest("Hello world", null));
 
         mockMvc.perform(post("/api/posts")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -142,14 +142,14 @@ class PostControllerTest {
     }
 
     @Test
-    void report_unauthenticated_returns403() throws Exception {
+    void report_unauthenticated_returns401() throws Exception {
         String body = objectMapper.writeValueAsString(new PostReportRequest("spam"));
 
         mockMvc.perform(post("/api/posts/1/report")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -191,9 +191,9 @@ class PostControllerTest {
     }
 
     @Test
-    void deletePost_unauthenticated_returns403() throws Exception {
+    void deletePost_unauthenticated_returns401() throws Exception {
         mockMvc.perform(delete("/api/posts/1")
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

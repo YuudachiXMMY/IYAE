@@ -48,9 +48,9 @@ class OrderControllerTest {
     }
 
     @Test
-    void getOrders_unauthenticated_returns403() throws Exception {
+    void getOrders_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/orders"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -93,6 +93,27 @@ describe('globals.css light-mode token contrast (WCAG 2.1 AA)', () => {
     expect(ratio).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
   });
 
+  it('inverted muted text (text-inverted-muted-foreground on bg-foreground) clears AA 4.5:1', () => {
+    // The light half of the pairing. The dark describe enumerates PROMISED_PAIRINGS; light mode
+    // is checked case by case, so the new token needs its own entry here or only one of its two
+    // values is ever measured.
+    const foreground = hexToRgb(lightToken(css, 'foreground'));
+    const invertedMuted = hexToRgb(lightToken(css, 'inverted-muted-foreground'));
+    expect(contrastRatio(invertedMuted, foreground)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+  });
+
+  it('regression guard: the two ad-hoc alphas it replaced would have failed in dark mode', () => {
+    // Documents why the token exists rather than just that it passes. `text-background/55` and
+    // `/60` on `bg-foreground` were the pairing the opacity scan could not see, because its
+    // regex only matched tokens ending in `foreground`.
+    const darkForeground = hexToRgb(darkToken(css, 'foreground'));
+    const darkBackground = hexToRgb(darkToken(css, 'background'));
+    for (const alpha of [0.55, 0.6]) {
+      const composited = composite(darkBackground, alpha, darkForeground);
+      expect(contrastRatio(composited, darkForeground)).toBeLessThan(WCAG_AA_NORMAL);
+    }
+  });
+
   it('regression guard: the pre-fix destructive red (#dc2626) would have failed AA', () => {
     // Documents WHY the token was darkened — locks the intent, not just the value.
     const oldBannerBg = composite(hexToRgb('#dc2626'), 0.1, background);
@@ -154,6 +175,11 @@ const PROMISED_PAIRINGS: ReadonlyArray<readonly [string, string]> = [
   ['brand', 'card'],
   ['landing-accent', 'background'],
   ['landing-accent', 'card'],
+  // The inverted panel. `text-inverted-muted-foreground` exists specifically to replace the
+  // `text-background/55` and `/60` that measured 3.73:1 and 4.38:1 in dark mode on
+  // `bg-foreground`; without a pairing here the replacement token itself was unchecked, so the
+  // fix could have been re-broken by a single edit to either half of it.
+  ['inverted-muted-foreground', 'foreground'],
 ];
 
 describe('globals.css dark-mode token contrast (WCAG 2.1 AA)', () => {
@@ -255,7 +281,13 @@ const SOURCE_EXTENSIONS = ['.tsx', '.ts'];
 
 // Arbitrary values (`text-[#abc]/50`) are deliberately not matched: they are
 // not token-derived, and this guard is about tokens drifting below AA.
-const OPACITY_CLASS = /\btext-((?:[a-z]+-)*foreground)\/(\d{1,3})\b/g;
+// `background` is in here as well as `*foreground`. It was not, and that was a real
+// blind spot: `text-background/<alpha>` is how de-emphasis was written on the
+// `bg-foreground` panels (the dashboard sidebar, its cards, /chat's dark panels), the
+// inverse pairing. Three of those uses measured 3.73:1 and 4.38:1 in dark mode and
+// survived the pass that fixed all 28 `muted-foreground` ones, because the regex could
+// not see them. The dark-mode axe check on /dashboard had been failing on main ever since.
+const OPACITY_CLASS = /\btext-((?:[a-z]+-)*foreground|background)\/(\d{1,3})\b/g;
 
 // Known debt, as `text-<token>/<alpha>` → number of occurrences. Every entry
 // below 4.5:1 that is still here is non-text: a decorative glyph, or a
@@ -277,15 +309,41 @@ const KNOWN_BELOW_AA: Record<string, number> = {
   // 2.51:1. ar-visualization's <PlatformIcon/>, between the feature title and
   // a text pill that already names the platform.
   'text-muted-foreground/60': 1,
+  // No `text-background/*` entry: now that the regex can see them, the five that remain
+  // (/70 x2, /85 x3) all clear AA on bg-foreground — 6.03:1 and higher in dark mode — so
+  // they are not debt and this map is only for what is below AA. They are left as-is for
+  // the same reason the passing ink/primary uses were: churning a compliant colour is not
+  // a fix. The two sub-AA alphas (/55 at 3.73:1, /60 at 4.38:1) are gone, replaced by
+  // `text-inverted-muted-foreground`.
+};
+
+// The same map for the DARK composite. It is separate rather than a union because the two
+// palettes are independent: `--muted-foreground` is `#5f5f5f` in light and a different value in
+// dark, so the same class can be debt in one theme and compliant in the other. Keeping two maps
+// is what makes each entry's stated ratio checkable.
+const KNOWN_BELOW_AA_DARK: Record<string, number> = {
+  // The same five no-image placeholder glyphs as in light mode, at 2.12:1 here. Non-text, with
+  // the name and price beside them carrying the information.
+  'text-muted-foreground/40': 5,
+  // 2.57:1. Same three as in light: community/page's empty-state glyph, style-lab's decorative
+  // chevron, and SuggestionChips' *disabled* branch, which 1.4.3 exempts outright.
+  'text-muted-foreground/50': 3,
+  // 3.08:1. ar-visualization's decorative <PlatformIcon/>.
+  'text-muted-foreground/60': 1,
+  // No `text-primary-foreground/70` entry, and that is the point of this map existing: adding
+  // the dark pass surfaced one occurrence that cleared AA in light (5.05:1) and failed in dark
+  // (3.77:1) — real descriptive text on /try-on, not a glyph. It is fixed rather than recorded,
+  // so this map holds only what WCAG exempts, exactly like its light-mode sibling.
 };
 
 type AdHocOpacity = { file: string; token: string; alpha: number };
 
 /** `muted-foreground` → `muted`, `primary-foreground` → `primary`, … */
 function pairedSurfaceToken(textToken: string): string {
-  return textToken === 'foreground'
-    ? 'background'
-    : textToken.replace(/-foreground$/, '');
+  if (textToken === 'foreground') return 'background';
+  // The inverted panel: `text-background` is what you put ON `bg-foreground`.
+  if (textToken === 'background') return 'foreground';
+  return textToken.replace(/-foreground$/, '');
 }
 
 function sourceFiles(root: string): string[] {
@@ -339,6 +397,17 @@ describe('ad-hoc text opacities (text-<token>/<alpha>) against their paired surf
     return contrastRatio(composite(text, occurrence.alpha, surface), surface);
   }
 
+  // The dark half. `ratioFor` read `lightToken` only, which is the gap that let the defect this
+  // scan was extended to catch go unmeasured in the first place: the motivating failures
+  // (`text-background/55` at 3.73:1, `/60` at 4.38:1) were *dark-mode* values, and every
+  // assertion here was computing the `:root` composite. An ad-hoc opacity renders in both
+  // themes, so both have to be checked.
+  function ratioForDark(occurrence: AdHocOpacity): number {
+    const surface = hexToRgb(darkToken(css, pairedSurfaceToken(occurrence.token)));
+    const text = hexToRgb(darkToken(css, occurrence.token));
+    return contrastRatio(composite(text, occurrence.alpha, surface), surface);
+  }
+
   function className(occurrence: AdHocOpacity): string {
     return `text-${occurrence.token}/${Math.round(occurrence.alpha * 100)}`;
   }
@@ -369,6 +438,25 @@ describe('ad-hoc text opacities (text-<token>/<alpha>) against their paired surf
       .map((o) => [`${o.file} — ${className(o)}`, o] as const)
   )('%s clears AA 4.5:1', (_label, occurrence) => {
     expect(ratioFor(occurrence)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
+  });
+
+  it('no ad-hoc opacity falls below AA in DARK mode except the recorded debt', () => {
+    const failing: Record<string, number> = {};
+    for (const occurrence of occurrences) {
+      if (ratioForDark(occurrence) < WCAG_AA_NORMAL) {
+        const key = className(occurrence);
+        failing[key] = (failing[key] ?? 0) + 1;
+      }
+    }
+    expect(failing).toEqual(KNOWN_BELOW_AA_DARK);
+  });
+
+  it.each(
+    occurrences
+      .filter((o) => !(className(o) in KNOWN_BELOW_AA_DARK))
+      .map((o) => [`${o.file} — ${className(o)}`, o] as const)
+  )('%s clears AA 4.5:1 in dark mode', (_label, occurrence) => {
+    expect(ratioForDark(occurrence)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL);
   });
 
   it('documents the headroom that motivated replacing the ink/60 scroll cue', () => {

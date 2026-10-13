@@ -429,6 +429,13 @@ liveness from readiness. Keep the AI probe off the healthcheck path.
 
 ### B-9 ✅ VERIFIED · HIGH · Community comments and follows are never sent to the server
 
+> **Launch scope, decided 2026-10-11:** the community feature **ships**. The question this
+> finding left open — step 8 of the recommended order asks whether it ships at all — is
+> answered: it does. So the fix was to wire the writes, not to remove the feature. Comments,
+> replies, the public-profile follow button and the profile post grid now go through the
+> server; the UGC write paths are throttled in the same pass (gap G-22). See
+> `fix(community): persist the writes, throttle the abuse surface, and let keyboards post`.
+
 `web/components/PostDetailDialog.tsx:230` · `web/lib/hooks/useCommunityState.ts:116`
 
 `handleAddComment` calls the pure localStorage helper `addComment(...)` and then
@@ -864,8 +871,9 @@ application layer is the strongest part of this codebase.
    carry 3/3.
 7. **Close the structural test gap**: B-10 Testcontainers schema test, scoped at the
    *worker* · B-11 CI audit gate.
-8. **Then** the N+1 and front-end-race tier, and decide whether the community feature ships
-   at all (B-9). Rate-limit the UGC writes in the same pass (gap G-22) — `POST /api/posts`,
+8. **Then** the N+1 and front-end-race tier. ~~and decide whether the community feature ships
+   at all (B-9)~~ — **decided 2026-10-11: it ships**, so B-9 was fixed by wiring the writes
+   rather than by removing the feature. Rate-limit the UGC writes in the same pass (gap G-22) — `POST /api/posts`,
    its comments, the report intake and `POST /api/events` are all unthrottled.
 
 ## Fully adjudicated — how the last 16 leads resolved

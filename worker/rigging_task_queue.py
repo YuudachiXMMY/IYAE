@@ -1,20 +1,20 @@
 """MySQL-based rigging task queue using SELECT ... FOR UPDATE SKIP LOCKED."""
 import json
 import logging
-import mysql.connector
 from mysql.connector import Error
+
+from queue_base import TaskQueueBase
 
 logger = logging.getLogger(__name__)
 
-MAX_RIGGING_ATTEMPTS = 3
+#: Kept as a module-level name because callers and tests import it directly; the value is the
+#: shared cap on the base class, so the three queues cannot drift to different limits.
+MAX_RIGGING_ATTEMPTS = TaskQueueBase.MAX_ATTEMPTS
 
 
-class RiggingTaskQueue:
-    def __init__(self, db_config: dict):
-        self.db_config = db_config
-
-    def get_connection(self):
-        return mysql.connector.connect(**self.db_config)
+class RiggingTaskQueue(TaskQueueBase):
+    #: Connection handling, ``MAX_ATTEMPTS`` and ``heartbeat`` come from the base class.
+    TABLE = "rigging_tasks"
 
     def claim_task(self) -> dict | None:
         """Claim one PENDING rigging task using FOR UPDATE SKIP LOCKED."""
@@ -92,6 +92,16 @@ class RiggingTaskQueue:
 
         Tasks under the attempt limit are returned to PENDING.
         Tasks at or over the limit are marked FAILED.
+
+        Staleness is measured from ``updated_at``, not ``claimed_at``. ``claimed_at`` is written
+        once when the task is claimed and never refreshed, so keying off it made
+        ``TaskQueueBase.heartbeat()`` — which bumps ``updated_at`` every
+        ``WORKER_TASK_HEARTBEAT_INTERVAL`` while ``provider.generate()`` runs — completely inert
+        for this queue, while ``TaskQueue`` and ``AvatarTaskQueue`` both honour it. A rigging job
+        legitimately running past 15 minutes (``PythonRiggingProvider`` has no timeout and does
+        SMPL-X loading plus biharmonic inpainting) was reclaimed to PENDING under the original
+        worker, letting a second claimant process the same task concurrently — the exact case the
+        heartbeat exists to prevent.
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -101,7 +111,7 @@ class RiggingTaskQueue:
                 UPDATE rigging_tasks
                 SET status = 'PENDING', claimed_at = NULL
                 WHERE status = 'RUNNING'
-                  AND claimed_at < NOW() - INTERVAL 15 MINUTE
+                  AND updated_at < NOW() - INTERVAL 15 MINUTE
                   AND attempt_count < %s
             """, (MAX_RIGGING_ATTEMPTS,))
             reclaimed = cursor.rowcount
@@ -114,7 +124,7 @@ class RiggingTaskQueue:
                     error_message = 'Task exceeded maximum retry attempts',
                     completed_at = NOW()
                 WHERE status = 'RUNNING'
-                  AND claimed_at < NOW() - INTERVAL 15 MINUTE
+                  AND updated_at < NOW() - INTERVAL 15 MINUTE
                   AND attempt_count >= %s
             """, (MAX_RIGGING_ATTEMPTS,))
             failed = cursor.rowcount

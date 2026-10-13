@@ -52,10 +52,10 @@ class FollowControllerTest {
     }
 
     @Test
-    void toggleFollow_unauthenticated_returns403() throws Exception {
+    void toggleFollow_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/follows/2")
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -80,9 +80,9 @@ class FollowControllerTest {
     }
 
     @Test
-    void getFollowers_unauthenticated_returns403() throws Exception {
+    void getFollowers_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/follows/2/followers"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -57,17 +57,15 @@ export function ProfileHeader({ user, surface, onUpdateSurface }: ProfileHeaderP
 
         {/* Banner upload button */}
         <div className="absolute right-3 top-3">
+          {/* The picker IS the button — do not nest another one inside it. */}
           <LocalImagePicker
             onSelect={(url) => onUpdateSurface({ bannerDataUrl: url })}
+            label="Choose a banner image"
             maxDimension={1200}
+            className="flex items-center gap-1.5 rounded-full bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-background/80"
           >
-            <button
-              type="button"
-              className="flex items-center gap-1.5 rounded-full bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-background/80"
-            >
-              <Camera className="h-3 w-3" />
-              Add banner photo
-            </button>
+            <Camera className="h-3 w-3" />
+            Add banner photo
           </LocalImagePicker>
         </div>
       </div>
@@ -94,17 +92,17 @@ export function ProfileHeader({ user, surface, onUpdateSurface }: ProfileHeaderP
             </div>
 
             {/* Avatar upload overlay */}
+            {/* The picker IS the button — do not nest another one inside it. The hover-reveal
+                overlay styling moves onto it, and `focus-visible:opacity-100` is what makes a
+                keyboard user able to see the control they have landed on: an overlay that only
+                appears on hover is invisible to them. */}
             <LocalImagePicker
               onSelect={(url) => onUpdateSurface({ avatarDataUrl: url })}
+              label="Choose a profile photo"
               maxDimension={400}
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-foreground/0 opacity-0 transition-opacity hover:bg-foreground/30 hover:opacity-100 focus-visible:bg-foreground/30 focus-visible:opacity-100"
             >
-              <button
-                type="button"
-                className="absolute inset-0 flex items-center justify-center rounded-full bg-foreground/0 opacity-0 transition-opacity hover:bg-foreground/30 hover:opacity-100"
-                aria-label="Upload avatar photo"
-              >
-                <Camera className="h-5 w-5 text-background" />
-              </button>
+              <Camera className="h-5 w-5 text-background" />
             </LocalImagePicker>
           </div>
         </div>

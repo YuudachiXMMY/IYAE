@@ -1,9 +1,11 @@
 package com.iyae.testsupport;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iyae.config.RateLimitFilter;
 import com.iyae.config.SecurityConfig;
 import com.iyae.security.JwtAuthenticationFilter;
 import com.iyae.security.JwtTokenProvider;
+import com.iyae.security.RestAuthenticationEntryPoint;
 import com.iyae.security.UserDetailsServiceImpl;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -62,5 +64,14 @@ public class WebMvcSecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         return new UrlBasedCorsConfigurationSource();
+    }
+
+    /**
+     * The real entry point, not a mock — the status an unauthenticated request receives is part
+     * of the contract these slice tests are pinning (401, not the Spring default 403).
+     */
+    @Bean
+    public RestAuthenticationEntryPoint restAuthenticationEntryPoint(ObjectMapper objectMapper) {
+        return new RestAuthenticationEntryPoint(objectMapper);
     }
 }

@@ -350,3 +350,65 @@ class TestDenseWeightsToTop4:
         original = w.copy()
         dense_weights_to_top4(w)
         np.testing.assert_array_equal(w, original)
+
+
+class TestDegenerateVertexGuard:
+    """#31: a degenerate transfer used to ship silently.
+
+    Vertices with no usable weight are bound rigidly to the pelvis, so a garment with many of
+    them deforms as one lump at the hips. That happened with no error, no log and nothing in
+    the validator to catch it, which made a failed transfer look like a modelling problem.
+    """
+
+    def test_counts_rows_with_no_weight(self):
+        from providers.weight_transfer import count_degenerate_vertices
+
+        w = np.zeros((5, 55))
+        w[0, 3] = 1.0
+        w[4, 7] = 0.5
+
+        assert count_degenerate_vertices(w) == 3
+
+    def test_counts_zero_for_a_fully_weighted_matrix(self):
+        from providers.weight_transfer import count_degenerate_vertices
+
+        w = np.zeros((4, 55))
+        w[:, 0] = 1.0
+
+        assert count_degenerate_vertices(w) == 0
+
+    def test_handles_an_empty_matrix(self):
+        from providers.weight_transfer import count_degenerate_vertices
+
+        assert count_degenerate_vertices(np.zeros((0, 55))) == 0
+
+    def test_agrees_with_the_fallback_it_reports_on(self):
+        """The count must describe the same vertices dense_weights_to_top4 actually rescues.
+
+        The two use different expressions — the full row sum here, the top-k sum there — and
+        they only coincide because Phase 3 has already pruned each row to at most 4 influences.
+        If that ever stops holding, the guard would under-report and this fails.
+        """
+        from providers.weight_transfer import count_degenerate_vertices, dense_weights_to_top4
+
+        w = np.zeros((6, 55))
+        w[1, 2] = 1.0
+        w[3, 5] = 0.8
+        w[3, 9] = 0.2
+
+        counted = count_degenerate_vertices(w)
+        ji, jw = dense_weights_to_top4(w)
+        # A rescued row is weight 1.0 on joint index 0 (the pelvis) and nothing else. The joint
+        # index matters: a row legitimately carrying its whole weight on some other single
+        # joint also normalises to [1, 0, 0, 0], and must not be counted as rescued.
+        rescued = int(
+            np.sum((ji[:, 0] == 0) & (jw[:, 0] == 1.0) & (jw[:, 1:].sum(axis=1) == 0.0))
+        )
+
+        assert counted == rescued == 4
+
+    def test_the_threshold_is_a_small_fraction(self):
+        from providers.weight_transfer import MAX_DEGENERATE_VERTEX_FRACTION
+
+        # A handful of stray vertices is tolerable; a twentieth of the mesh is not.
+        assert 0 < MAX_DEGENERATE_VERTEX_FRACTION <= 0.05

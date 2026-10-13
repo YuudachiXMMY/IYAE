@@ -9,6 +9,8 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
+import { usePublicConfig } from "@/lib/hooks/usePublicConfig";
+import { CheckoutUnavailableNotice } from "@/components/CheckoutUnavailableNotice";
 import { useCart } from "@/lib/cart-context";
 import {
   api,
@@ -40,6 +42,7 @@ export default function CheckoutPage() {
   const { serverItems, demoItems, totalCount, loading: cartLoading } = useCart();
   const router = useRouter();
 
+  const checkoutConfig = usePublicConfig();
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,6 +129,29 @@ export default function CheckoutPage() {
   }
 
   if (!user) return null;
+
+  // Payment off: show the state instead of a fulfillment form that cannot submit. The cart and
+  // resale surfaces already hide their entry points, but this route is directly addressable.
+  if (checkoutConfig.error || (checkoutConfig.config && !checkoutConfig.config.checkoutEnabled)) {
+    return (
+      <>
+        <SiteHeader variant="app" />
+        <PageShell>
+          <div className="mx-auto max-w-lg">
+            <h1 className="font-display text-2xl font-semibold text-foreground">Checkout</h1>
+            <CheckoutUnavailableNotice
+              variant={checkoutConfig.error ? "error" : "default"}
+              onRetry={checkoutConfig.reload}
+            />
+            <Link href="/cart" className="mt-4 inline-block text-sm text-brand hover:underline">
+              Back to bag
+            </Link>
+          </div>
+        </PageShell>
+        <Footer />
+      </>
+    );
+  }
 
   return (
     <>
@@ -321,12 +347,21 @@ export default function CheckoutPage() {
                   <span data-testid="checkout-total">{formatPrice(grandTotal)}</span>
                 </div>
 
+                {/* `checkoutConfig.loading` matters here as much as on the cart and resale
+                    surfaces: the page-level gate above only fires once the flag has resolved,
+                    so without this a direct visit to /checkout (bookmark, back button, or
+                    simply the first page in the session to touch the config) shows a live
+                    Place Order button before the client knows whether orders are open. */}
                 <Button
                   onClick={handlePlaceOrder}
-                  disabled={placing || !selectionValid}
+                  disabled={placing || !selectionValid || checkoutConfig.loading}
                   className="mt-6 w-full rounded-full bg-brand py-3 text-primary-foreground hover:bg-brand-hover"
                 >
-                  {placing ? "Processing..." : "Place Order"}
+                  {checkoutConfig.loading
+                    ? "Checking…"
+                    : placing
+                      ? "Processing..."
+                      : "Place Order"}
                 </Button>
 
                 <p className="mt-3 text-center text-xs text-muted-foreground">

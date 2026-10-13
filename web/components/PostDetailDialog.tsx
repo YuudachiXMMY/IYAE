@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Heart, MessageCircleMore, Bookmark, Flag, X } from "lucide-react";
 import { PostMedia } from "@/components/community/PostMedia";
@@ -27,6 +27,27 @@ interface PostDetailDialogProps {
   onToggleLike?: (post: SocialPost) => void;
   currentUserName?: string;
   currentUserHandle?: string;
+}
+
+/**
+ * Drops one comment or reply by id, leaving everything else as it is.
+ *
+ * Used to undo a single failed optimistic write. Replacing the whole post with the snapshot
+ * captured when the request started also undid anything the user did in the meantime — two
+ * quick comments where the first failed made the second disappear from the screen while it sat
+ * in the database.
+ */
+function removeCommentById(post: SocialPost, id: string): SocialPost {
+  return {
+    ...post,
+    comments: post.comments
+      .filter((c) => c.id !== id)
+      .map((c) =>
+        c.replies.some((r) => r.id === id)
+          ? { ...c, replies: c.replies.filter((r) => r.id !== id) }
+          : c
+      ),
+  };
 }
 
 /** Maps a server comment to the local display shape (read-only; replies are lazy/absent). */
@@ -169,6 +190,11 @@ export function PostDetailDialog({
   currentUserHandle,
 }: PostDetailDialogProps) {
   const [commentDraft, setCommentDraft] = useState("");
+  // The latest post, for the failure path of an optimistic write. Reading the `post` prop from
+  // a closure captured when the request started is what made a failed comment undo a later,
+  // successful one.
+  const postRef = useRef(post);
+  postRef.current = post;
   const [activeReplyCommentId, setActiveReplyCommentId] = useState<
     string | null
   >(null);
@@ -194,10 +220,16 @@ export function PostDetailDialog({
     const ctrl = new AbortController();
     postsApi
       .listComments(serverId, 0, 50, ctrl.signal)
-      .then((res) =>
-        setLoadedThread({ serverId, comments: res.content.map(toPostComment) })
-      )
-      .catch(() => setLoadedThread({ serverId, comments: [] }));
+      .then((res) => {
+        if (ctrl.signal.aborted) return;
+        setLoadedThread({ serverId, comments: res.content.map(toPostComment) });
+      })
+      .catch(() => {
+        // Gate the failure commit too: closing and reopening the same post quickly let a
+        // cancelled request's catch write an empty thread over one that had just loaded.
+        if (ctrl.signal.aborted) return;
+        setLoadedThread({ serverId, comments: [] });
+      });
     return () => ctrl.abort();
   }, [open, post.serverId]);
 
@@ -228,20 +260,77 @@ export function PostDetailDialog({
   }
 
   function handleAddComment() {
-    if (!commentDraft.trim()) return;
+    const content = commentDraft.trim();
+    if (!content) return;
     const updated = addComment(
       post,
       currentUserName ?? "You",
       currentUserHandle ?? "you",
-      commentDraft.trim()
+      content
     );
-    onUpdate(updated);
+    onUpdate(updated); // optimistic
     setCommentDraft("");
+    // The id of the comment just prepended, so a failure can remove exactly that one.
+    persistComment(content, undefined, updated.comments[0]?.id);
+  }
+
+  /**
+   * Sends the comment to the server.
+   *
+   * Comments were purely local: the UI appended them, said nothing, and the write was
+   * discarded — so a user saw their comment, reloaded, and it was gone, and nobody else ever
+   * saw it. The endpoint existed the whole time (`POST /api/posts/{id}/comments`).
+   *
+   * A post with no `serverId` is a seeded demo post that exists only in this browser; there is
+   * nothing to persist it to, and that is not an error.
+   */
+  function persistComment(
+    content: string,
+    parentCommentId?: number,
+    optimisticId?: string
+  ) {
+    if (post.serverId == null) return;
+    postsApi
+      .comment(post.serverId, content, parentCommentId)
+      .catch((err) => {
+        // Remove only the comment that failed, from the CURRENT state — not a wholesale
+        // restore of the snapshot captured when this request started. Two quick comments
+        // where the first fails and the second succeeds used to make the second disappear
+        // from the screen while it sat in the database.
+        if (optimisticId) {
+          onUpdate(removeCommentById(postRef.current, optimisticId));
+        }
+        toast.error(
+          err instanceof ApiError ? err.message : "Your comment couldn't be saved"
+        );
+      });
   }
 
   function handleAddReply(commentId: string) {
     const draft = replyDrafts[commentId]?.trim();
     if (!draft) return;
+
+    // Server comment ids reach the local model prefixed (see toPostComment), so a reply can
+    // only be threaded server-side when its parent came from the server.
+    const parentId = commentId.startsWith("srv-c-")
+      ? Number(commentId.slice("srv-c-".length))
+      : undefined;
+
+    // Checked BEFORE the optimistic write, so there is nothing to roll back.
+    //
+    // A comment authored in this session has no server id yet. Sending its reply anyway meant
+    // `parentCommentId` was undefined, and `POST /api/posts/{id}/comments` then created a new
+    // TOP-LEVEL comment — the thread was silently flattened server-side and the user was told
+    // nothing, so it only showed up on the next reload. Refuse rather than write it to the
+    // wrong place. A demo post (no serverId) has nothing to persist to and stays local, which
+    // is not an error.
+    if (post.serverId != null && !Number.isFinite(parentId)) {
+      toast.error(
+        "Give the comment you're replying to a moment to save, then try again."
+      );
+      return;
+    }
+
     const updated = addReply(
       post,
       commentId,
@@ -249,9 +338,13 @@ export function PostDetailDialog({
       currentUserHandle ?? "you",
       draft
     );
-    onUpdate(updated);
+    onUpdate(updated); // optimistic
     setReplyDrafts((prev) => ({ ...prev, [commentId]: "" }));
     setActiveReplyCommentId(null);
+    const addedReply = updated.comments
+      .find((c) => c.id === commentId)
+      ?.replies?.at(-1);
+    persistComment(draft, parentId, addedReply?.id);
   }
 
   function handleToggleReply(commentId: string) {

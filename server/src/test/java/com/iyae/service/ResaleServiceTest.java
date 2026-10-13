@@ -209,7 +209,127 @@ class ResaleServiceTest {
 
     @Test
     void markSold_delegatesToRepository() {
-        service.markSold(500L);
+        when(resaleRepo.markSold(500L, ResaleStatus.SOLD, ResaleStatus.RESERVED)).thenReturn(1);
+
+        assertThat(service.markSold(500L)).isTrue();
         verify(resaleRepo).markSold(500L, ResaleStatus.SOLD, ResaleStatus.RESERVED);
+    }
+
+    // ---- #45: a lost reservation must be reported, not swallowed ----
+
+    @Test
+    void markSold_whenNoRowMatched_reportsFailure() {
+        // It used to log at INFO and return void, so the webhook carried on and the buyer stayed
+        // charged for a unit that had gone to someone else. The caller now gets to know.
+        when(resaleRepo.markSold(500L, ResaleStatus.SOLD, ResaleStatus.RESERVED)).thenReturn(0);
+
+        assertThat(service.markSold(500L)).isFalse();
+    }
+
+    // ---- #15/#44: one listing per owned unit ----
+
+    @Test
+    void createListing_whenTheUnitIsAlreadyListed_throws() {
+        // The guard existed only in the eligibility read; posting straight to the API created a
+        // second listing for the same physical garment, and both could be sold.
+        ResaleListing active = ResaleListing.builder().id(5L).seller(buyer).product(product)
+                .originalOrderId(10L).sizeLabel("M").status(ResaleStatus.LISTED).build();
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(buyer));
+        when(orderRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(paidOrder()));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(resaleRepo.findByOriginalOrderIdAndProductIdAndSizeLabel(10L, 100L, "M"))
+                .thenReturn(Optional.of(active));
+
+        assertThatThrownBy(() -> service.createListing("buyer@test.com", listingRequest()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already listed");
+
+        verify(resaleRepo, org.mockito.Mockito.never()).save(any(ResaleListing.class));
+    }
+
+    @Test
+    void createListing_whenTheUnitIsAlreadySold_throws() {
+        ResaleListing sold = ResaleListing.builder().id(5L).seller(buyer).product(product)
+                .originalOrderId(10L).sizeLabel("M").status(ResaleStatus.SOLD).build();
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(buyer));
+        when(orderRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(paidOrder()));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(resaleRepo.findByOriginalOrderIdAndProductIdAndSizeLabel(10L, 100L, "M"))
+                .thenReturn(Optional.of(sold));
+
+        assertThatThrownBy(() -> service.createListing("buyer@test.com", listingRequest()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already sold");
+    }
+
+    @Test
+    void createListing_whenTheUnitWasWithdrawn_revivesTheSameRow() {
+        // Re-listing is legitimate; inserting a second row for the same unit is not.
+        ResaleListing removed = ResaleListing.builder().id(5L).seller(buyer).product(product)
+                .originalOrderId(10L).sizeLabel("M").status(ResaleStatus.REMOVED)
+                .askingPrice(new BigDecimal("20.00")).build();
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(buyer));
+        when(orderRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(paidOrder()));
+        when(productRepository.findById(100L)).thenReturn(Optional.of(product));
+        when(resaleRepo.findByOriginalOrderIdAndProductIdAndSizeLabel(10L, 100L, "M"))
+                .thenReturn(Optional.of(removed));
+        when(resaleRepo.save(any(ResaleListing.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ResaleListingResponse resp = service.createListing("buyer@test.com", listingRequest());
+
+        assertThat(resp.id()).isEqualTo(5L);
+        assertThat(resp.status()).isEqualTo(ResaleStatus.LISTED);
+        assertThat(resp.askingPrice()).isEqualByComparingTo("32.00");
+    }
+
+    // ---- #3: the sweep must not release a unit a live checkout can still pay for ----
+
+    @Test
+    void releaseStaleReservations_skipsAListingWithAPendingOrder() {
+        // Releasing it put the unit back on sale while the first buyer's payment was still
+        // settling, so a second buyer could reserve and pay for the same garment.
+        ResaleListing stale = ResaleListing.builder().id(7L).seller(buyer).product(product)
+                .sizeLabel("M").status(ResaleStatus.RESERVED).build();
+        when(resaleRepo.findByStatusAndReservedAtBefore(eq(ResaleStatus.RESERVED), any()))
+                .thenReturn(List.of(stale));
+        when(resaleRepo.hasPendingOrder(7L)).thenReturn(true);
+
+        service.releaseStaleReservations();
+
+        verify(resaleRepo, org.mockito.Mockito.never())
+                .release(eq(7L), any(), any());
+    }
+
+    @Test
+    void releaseStaleReservations_releasesAnAbandonedReservation() {
+        ResaleListing stale = ResaleListing.builder().id(8L).seller(buyer).product(product)
+                .sizeLabel("M").status(ResaleStatus.RESERVED).build();
+        when(resaleRepo.findByStatusAndReservedAtBefore(eq(ResaleStatus.RESERVED), any()))
+                .thenReturn(List.of(stale));
+        when(resaleRepo.hasPendingOrder(8L)).thenReturn(false);
+        when(resaleRepo.release(8L, ResaleStatus.LISTED, ResaleStatus.RESERVED)).thenReturn(1);
+
+        service.releaseStaleReservations();
+
+        verify(resaleRepo).release(8L, ResaleStatus.LISTED, ResaleStatus.RESERVED);
+    }
+
+    @Test
+    void theCheckoutSessionAlwaysExpiresBeforeTheReservationDoes() {
+        // The invariant the double-sale fix rests on. Asserted directly because the two
+        // constants live apart from each other and a later edit to either could silently
+        // re-open the window.
+        java.time.Duration reservationTtl = (java.time.Duration) org.springframework.test.util
+                .ReflectionTestUtils.getField(ResaleService.class, "RESERVATION_TTL");
+        assertThat(ResaleService.CHECKOUT_SESSION_TTL).isLessThan(reservationTtl);
+        // Stripe rejects an expiry under 30 minutes from now.
+        assertThat(ResaleService.CHECKOUT_SESSION_TTL)
+                .isGreaterThanOrEqualTo(java.time.Duration.ofMinutes(30));
+    }
+
+    private CreateResaleListingRequest listingRequest() {
+        return new CreateResaleListingRequest(
+                100L, "M", ResaleCondition.EXCELLENT, new BigDecimal("32.00"), "great",
+                List.of("/a.jpg"));
     }
 }

@@ -5,6 +5,13 @@ spring:
 # Email verification is REQUIRED in production (base default app.auth.require-email-verification=true).
 # Do not re-add an override here — dev keeps it off via application-dev.yml.
 
+app:
+  payments:
+    # Pinned off in prod as well as in the base config, so that enabling the free-order stub in
+    # production takes an edit to a file named -prod. Launch #1 ships without payment: checkout
+    # answers 503 until STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are both supplied.
+    stub-checkout-enabled: false
+
 logging:
   level:
     root: INFO

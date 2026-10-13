@@ -5,13 +5,14 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, BadgeCheck, Globe2, Heart, MessageCircleMore } from "lucide-react";
 import { findSocialProfile } from "@/lib/social-graph";
-import { type SocialPost } from "@/lib/community-feed";
+import { type SocialPost, toSocialPost } from "@/lib/community-feed";
 import { useCommunityState } from "@/lib/hooks/useCommunityState";
 import { PostDetailDialog } from "@/components/PostDetailDialog";
 import { useAuth } from "@/lib/auth-context";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { cn } from "@/lib/utils";
-import { api, follows } from "@/lib/api";
+import { api, follows, posts as postsApi } from "@/lib/api";
+import { toast } from "sonner";
 import { BRAND } from "@/lib/brand";
 
 interface PublicProfileResponse {
@@ -143,17 +144,115 @@ export default function ProfilePage() {
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [outfitTab, setOutfitTab] = useState<"posts" | "tagged">("posts");
 
-  const userPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
-  const taggedPosts =
-    state?.posts.filter(
-      (p) => p.productLinks.length > 0 && p.creatorUsername === username
-    ) ?? [];
+  // The grid used to be `state.posts.filter(creatorUsername === username)` — the *viewer's*
+  // own local community cache. That cache only ever contains the viewer's seeded demo posts
+  // and whatever they created themselves, so in production every other account's profile
+  // rendered an empty grid regardless of how much they had posted. The profiled user's posts
+  // come from the server, keyed on their numeric id.
+  // Tagged with the id it was fetched for, like `counts` above, so switching profiles reads as
+  // "not loaded yet" without an extra effect to clear it — and so the effect body writes no
+  // state synchronously (`react-hooks/set-state-in-effect`, which this repo keeps at zero).
+  const [postsResult, setPostsResult] = useState<{
+    userId: number;
+    posts: SocialPost[] | null;
+  } | null>(null);
+  // Bumped by "Try again". The fetch effect keys on it as well as on the id, because clearing
+  // the result alone would not re-run an effect whose only other dependency is unchanged.
+  const [postsRetry, setPostsRetry] = useState(0);
+  // The id a follow write is in flight for, not a bare boolean — tagged the same way
+  // `counts` and `postsResult` are. App Router reuses this component instance across
+  // /profile/alice → /profile/bob (both match the same dynamic segment, and this page has no
+  // `key` to force a remount), so a boolean left bob's Follow button rendered disabled until
+  // alice's request settled, and permanently unresponsive if it stalled.
+  const [followPending, setFollowPending] = useState<number | null>(null);
+  const isFollowPending = followPending != null && followPending === targetUserId;
+  const currentPosts = postsResult?.userId === targetUserId ? postsResult : null;
+
+  useEffect(() => {
+    if (targetUserId == null) return;
+    const ctrl = new AbortController();
+    postsApi
+      .byUser(targetUserId, 0, 30, ctrl.signal)
+      .then((page) => {
+        if (ctrl.signal.aborted) return;
+        setPostsResult({ userId: targetUserId, posts: page.content.map(toSocialPost) });
+      })
+      .catch(() => {
+        if (ctrl.signal.aborted) return;
+        // `posts: null` is a failure, which is NOT "this person has never posted" — rendering
+        // an empty grid for an outage is the failure mode the audit found all over /admin.
+        setPostsResult({ userId: targetUserId, posts: null });
+      });
+    return () => ctrl.abort();
+  }, [targetUserId, postsRetry]);
+
+  const postsFailed = currentPosts != null && currentPosts.posts === null;
+  const postsLoading = targetUserId != null && currentPosts == null;
+
+  /**
+   * Applies a dialog interaction to the server-sourced list, by id.
+   *
+   * A plain function, not a useCallback: it is only ever passed straight into a JSX handler,
+   * never into a dependency array, and the React Compiler rejected the hand-written
+   * memoization here anyway ("existing memoization could not be preserved").
+   */
+  function patchServerPost(updated: SocialPost) {
+    setPostsResult((prev) =>
+      prev?.posts == null
+        ? prev
+        : { ...prev, posts: prev.posts.map((p) => (p.id === updated.id ? updated : p)) }
+    );
+  }
+
+  // Local-only fallback for an unauthenticated viewer or a demo profile with no numeric id.
+  const localUserPosts = state?.posts.filter((p) => p.creatorUsername === username) ?? [];
+  const userPosts =
+    currentPosts?.posts ?? (targetUserId == null ? localUserPosts : []);
+  const taggedPosts = userPosts.filter((p) => p.productLinks.length > 0);
   const displayPosts = outfitTab === "posts" ? userPosts : taggedPosts;
 
   const isFollowing = state?.followedUsernames.includes(username) ?? false;
 
+  // Writes through to the server, mirroring what /community already does. This page only
+  // toggled the local-storage mirror, so a follow made here was invisible to the followed
+  // user and to every other device — and it fed the real follower counts shown right above it,
+  // which therefore never moved.
   function handleToggleFollow() {
-    toggleFollowFor(username);
+    // One write at a time. Two fast clicks used to send `toggle` and `remove` concurrently;
+    // they can resolve in either order, and `isFollowing` is derived from local state with no
+    // read-back, so the button could settle showing the opposite of the server's real state
+    // with nothing to reconcile it.
+    if (isFollowPending) return;
+    const wasFollowing = isFollowing;
+    toggleFollowFor(username); // optimistic
+    if (targetUserId == null) return;
+
+    const pendingFor = targetUserId;
+    setFollowPending(pendingFor);
+    const req = wasFollowing ? follows.remove(pendingFor) : follows.toggle(pendingFor);
+    req
+      .then(() => {
+        // Refreshing the counts is a SEPARATE concern from the mutation. It used to be
+        // chained onto the same promise, so a counts fetch that failed — a transient 5xx, a
+        // dropped connection, a rate limit — ran the revert below: the button snapped back
+        // and the user was told the follow had failed, while the server had recorded it.
+        // Only `req` rejecting means the follow itself did not happen.
+        follows
+          .counts(pendingFor)
+          .then((c) => setCounts({ userId: pendingFor, ...c }))
+          .catch(() => {
+            /* Counts are a display refinement; the follow succeeded. */
+          });
+      })
+      .catch(() => {
+        toggleFollowFor(username); // revert
+        toast.error("Couldn't update follow. Please try again.");
+      })
+      // Only clear if this request is still the pending one, so a slow reply for a profile
+      // the user has left cannot re-enable the button for a newer in-flight write.
+      .finally(() =>
+        setFollowPending((prev) => (prev === pendingFor ? null : prev))
+      );
   }
 
   if (profileNotFound) {
@@ -280,10 +379,11 @@ export default function ProfilePage() {
                 {!isOwnProfile && user && (
                   <button
                     onClick={handleToggleFollow}
+                    disabled={isFollowPending}
                     aria-pressed={isFollowing}
                     aria-label={isFollowing ? `Unfollow ${username}` : `Follow ${username}`}
                     className={cn(
-                      "mt-4 rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors",
+                      "mt-4 rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors disabled:opacity-60",
                       isFollowing
                         ? "border border-border text-muted-foreground"
                         : "bg-foreground text-background"
@@ -334,7 +434,28 @@ export default function ProfilePage() {
             </div>
 
             {/* Grid */}
-            {displayPosts.length === 0 ? (
+            {/* Three distinct states. "No outfits yet" must mean exactly that — not
+                "still loading" and not "the request failed", which is how an outage used to
+                read on this grid. */}
+            {postsFailed ? (
+              <div role="alert" className="py-12 text-center text-sm text-foreground">
+                <p>We couldn&apos;t load these outfits.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPostsResult(null);
+                    setPostsRetry((n) => n + 1);
+                  }}
+                  className="mt-2 font-medium text-brand underline hover:no-underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : postsLoading ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                Loading outfits…
+              </p>
+            ) : displayPosts.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-12">
                 No outfits yet
               </p>
@@ -384,8 +505,18 @@ export default function ProfilePage() {
               if (!open) setSelectedPost(null);
             }}
             onUpdate={(updated) => {
-              setSelectedPost(updated);
-              handlePostUpdate(updated); // persists — the hook mirrors to storage
+              // Guarded for the same reason as on /community: a failed comment write rolls
+              // back asynchronously, and the dialog is rendered as `{selectedPost && ...}`,
+              // so an unconditional set re-opened a dialog the user had closed — or, if they
+              // had opened another post, swapped its content for the old one.
+              setSelectedPost((prev) =>
+                prev && prev.id === updated.id ? updated : prev
+              );
+              // Both stores, because the grid reads from whichever one supplied it. For a
+              // server-sourced profile the post is not in the viewer's local cache at all, so
+              // writing only there left the interaction invisible the moment the dialog closed.
+              patchServerPost(updated);
+              handlePostUpdate(updated); // local cache + its storage mirror
             }}
             currentUserName={user?.name ?? undefined}
             currentUserHandle={user?.username ?? undefined}

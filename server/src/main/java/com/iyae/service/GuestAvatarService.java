@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ public class GuestAvatarService {
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
     private final BrandProperties brandProperties;
+    private final AvatarService avatarService;
 
     @Value("${AVATAR_GENERATION_PROVIDER:mock}")
     private String avatarProvider;
@@ -69,13 +71,43 @@ public class GuestAvatarService {
         String externalStatus = task.getStatus() == TaskStatus.MATERIALIZED
                 ? "READY" : task.getStatus().name();
 
+        // Hand back the API route, not the worker's raw /assets/avatars/... path. That path is no
+        // longer served as a static file by nginx or Spring (the avatars subtree is personal data
+        // and is excluded from every asset allow-list), so returning it left the anonymous try-on
+        // flow pointing at a URL that now 404s in production and 403s in dev.
         String glbUrl = null;
         if ((task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.MATERIALIZED)
-                && task.getOutputPayload() != null) {
-            glbUrl = extractField(task.getOutputPayload(), "glb_url");
+                && task.getOutputPayload() != null
+                && extractField(task.getOutputPayload(), "glb_url") != null) {
+            glbUrl = "/api/public/avatar/model/" + taskId;
         }
 
         return new GuestAvatarStatusResponse(taskId, externalStatus, glbUrl, task.getErrorMessage());
+    }
+
+    /**
+     * Opens a guest avatar GLB for streaming.
+     *
+     * <p>Authorisation is the same one {@link #getTaskStatus} already applies: the task must belong
+     * to the internal guest account. The task id is therefore exactly as guessable as it is for
+     * {@code GET /api/public/avatar/status/{taskId}}, which has always been keyed this way — this
+     * route does not widen that surface. It is not the authenticated route's guarantee, which is
+     * why real accounts go through {@code GET /api/avatar/model} and resolve from the principal;
+     * a guest mesh is built from measurements typed in by an anonymous visitor with no account.
+     */
+    @Transactional(readOnly = true)
+    public Resource openTaskModel(Long taskId) {
+        AvatarGenerationTask task = avatarTaskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("Task not found"));
+
+        User guest = getOrCreateGuestUser();
+        if (!task.getUser().getId().equals(guest.getId())) {
+            throw new IllegalArgumentException("Task not found");
+        }
+        if (task.getStatus() != TaskStatus.READY && task.getStatus() != TaskStatus.MATERIALIZED) {
+            throw new IllegalArgumentException("Avatar not found");
+        }
+        return avatarService.openAvatarModelAt(extractField(task.getOutputPayload(), "glb_url"));
     }
 
     private User getOrCreateGuestUser() {

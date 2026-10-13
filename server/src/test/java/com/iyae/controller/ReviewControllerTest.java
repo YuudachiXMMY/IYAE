@@ -86,14 +86,14 @@ class ReviewControllerTest {
     }
 
     @Test
-    void createReview_unauthenticated_returns403() throws Exception {
+    void createReview_unauthenticated_returns401() throws Exception {
         String body = objectMapper.writeValueAsString(new ReviewRequest(4, "Great quality!"));
 
         mockMvc.perform(post("/api/products/1/reviews")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

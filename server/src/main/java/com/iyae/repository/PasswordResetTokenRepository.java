@@ -20,4 +20,8 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Modifying
     @Query("UPDATE PasswordResetToken t SET t.usedAt = :now WHERE t.tokenHash = :hash AND t.usedAt IS NULL AND t.expiresAt > :now")
     int consumeToken(@Param("hash") String tokenHash, @Param("now") Instant now);
+
+    // Account deletion (AccountDeletionService): removes this user's reset tokens.
+    void deleteByUser(User user);
+
 }

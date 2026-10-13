@@ -51,6 +51,7 @@ public class GlbAssetInitializer implements CommandLineRunner {
 
     private void ensureGlbAssets() {
         List<Product> products = productRepository.findAll();
+        Path modelsRoot = Path.of(assetsOutputDir, "models").toAbsolutePath().normalize();
         int generated = 0;
         for (Product product : products) {
             String url = product.getGlbUrl();
@@ -58,7 +59,19 @@ public class GlbAssetInitializer implements CommandLineRunner {
                 continue;
             }
             String relative = url.substring("/assets/".length());
-            Path glbPath = Path.of(assetsOutputDir, relative);
+            Path glbPath = Path.of(assetsOutputDir, relative).toAbsolutePath().normalize();
+
+            // `startsWith("/assets/models/")` is satisfied by
+            // "/assets/models/../../../../etc/cron.d/x", and glbUrl is settable by any
+            // self-registered DESIGNER through the product create/update API. Resolving that
+            // string gave an arbitrary file write, as the server user, on every boot. Validate
+            // the resolved path, not the prefix of the string it came from.
+            if (!glbPath.startsWith(modelsRoot) || !glbPath.getFileName().toString().endsWith(".glb")) {
+                log.error("GlbAssetInitializer: refusing product {} glbUrl {} — it resolves to {}, "
+                        + "outside {}", product.getId(), url, glbPath, modelsRoot);
+                continue;
+            }
+
             if (!Files.exists(glbPath)) {
                 if (GlbPlaceholderGenerator.writeGlbFile(glbPath, product.getCategory())) {
                     generated++;

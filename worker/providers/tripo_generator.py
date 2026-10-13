@@ -83,7 +83,12 @@ class TripoGenerator:
             "triangle_count": data["output"].get("triangle_count", 0),
             "bbox": data["output"].get("bbox"),
             "sanity": {
-                "glb_size_bytes": len(glb_resp.content),
+                # From the file on disk, not from the response body. `stream_to_file_capped`
+                # has already consumed the stream, so `glb_resp.content` raises
+                # requests.exceptions.StreamConsumedError — which crashed every real Tripo3D
+                # generation at the very last step, after the download had succeeded. The
+                # identical bug was fixed in the Meshy provider and missed here.
+                "glb_size_bytes": os.path.getsize(glb_path),
                 "has_nan_vertices": False,
             },
             "elapsed_ms": elapsed_ms,

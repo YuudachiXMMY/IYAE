@@ -50,6 +50,6 @@ class SizeRecommendationControllerTest {
         // /api/products/*/recommended-size is guarded by an explicit authenticated() matcher
         // placed before the public /api/products/** rule; anonymous access is rejected.
         mockMvc.perform(get("/api/products/1/recommended-size"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

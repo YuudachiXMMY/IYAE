@@ -10,6 +10,17 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "users")
+// NOT @SQLRestriction("deleted_at is null"). That was the first attempt, on the belief that
+// Hibernate exempts by-id and to-one association loads from the restriction. It does not — on
+// 6.6 the restriction is baked into every loader including the single-id one, so
+// `order.getUser()` on a tombstoned customer threw EntityNotFoundException, which the
+// catch-all handler then served as a 500. That broke exactly what the tombstone exists to
+// protect: CheckoutService.fulfillPaidSession dereferences order.getUser() four times, so a
+// buyer deleting their account between checkout and Stripe's webhook broke fulfilment.
+//
+// The filtering lives on the identity lookups in UserRepository instead — one place per
+// lookup rather than one per call site, which keeps the property that mattered (no caller has
+// to remember) while leaving by-id loads alone so order history still resolves its user.
 @Getter
 @Setter
 @NoArgsConstructor
@@ -110,6 +121,21 @@ public class User {
     @Column(name = "city", length = 120)
     private String city;
 
+    /**
+     * Set when the account is deleted. The row survives because {@code orders} holds a non-null
+     * FK to it and an order is a financial record, so deletion scrubs the identifying fields
+     * instead.
+     *
+     * <p>A tombstone is invisible to the identity lookups in {@code UserRepository} — the
+     * filtering is on those queries, not on each of their callers, so no caller has to
+     * remember ({@code findByEmail} alone has nine). By-id loads are deliberately NOT
+     * filtered, which is what lets an {@code Order} still resolve its customer: order history
+     * survives the deletion, de-identified. See the note on the class for why the
+     * entity-level {@code @SQLRestriction} that looked simpler does not work.
+     */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -117,4 +143,19 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /**
+     * The handle shown to other people.
+     *
+     * <p>Falls back to a derived {@code user{id}} rather than to the email address. Community
+     * posts, comments and reports previously used the email when no username had been set —
+     * and username is optional at registration, so a buyer who signed up and posted once had
+     * their address published next to their post for every visitor and every scraper.
+     *
+     * <p>Not {@code name} either: that is a display name a user may have entered as their real
+     * name without intending it as a public handle.
+     */
+    public String publicDisplayName() {
+        return username != null && !username.isBlank() ? username : "user" + id;
+    }
 }

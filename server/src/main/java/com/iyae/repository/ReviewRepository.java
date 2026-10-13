@@ -18,4 +18,8 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     @Query("SELECT COUNT(r) FROM Review r WHERE r.product.id = :productId")
     Long countByProductId(@Param("productId") Long productId);
+
+    // Account deletion (AccountDeletionService): removes this user's reviews.
+    void deleteByUserId(Long userId);
+
 }

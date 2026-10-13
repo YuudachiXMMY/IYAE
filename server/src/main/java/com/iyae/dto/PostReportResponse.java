@@ -16,9 +16,9 @@ public record PostReportResponse(
     Instant createdAt
 ) {
     public static PostReportResponse from(PostReport report) {
-        String reporterUsername = report.getReporter().getUsername() != null
-            ? report.getReporter().getUsername()
-            : report.getReporter().getEmail();
+        // Never the email address — see User.publicDisplayName(). Admin-only surface, but the
+        // reporter's address has no business being in a moderation payload either.
+        String reporterUsername = report.getReporter().publicDisplayName();
         return new PostReportResponse(
             report.getId(),
             report.getPost().getId(),

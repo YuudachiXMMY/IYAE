@@ -58,7 +58,7 @@ class SavedLookControllerTest {
     }
 
     @Test
-    void saveLook_unauthenticated_returns403() throws Exception {
+    void saveLook_unauthenticated_returns401() throws Exception {
         SavedLookRequest request = new SavedLookRequest(10L, "My fav look");
         String body = objectMapper.writeValueAsString(request);
 
@@ -66,7 +66,7 @@ class SavedLookControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -132,7 +132,7 @@ function GarmentSwatch({ kicker, label }: { kicker: string; label: string }) {
   return (
     <div className="rounded-[12px] bg-background/10 p-3">
       <AbstractForm tint={40} rounded="rounded-[8px]" className="h-16 w-full" />
-      <p className="mt-3 font-body text-[10px] uppercase tracking-[0.12px] text-background/60">
+      <p className="mt-3 font-body text-[10px] uppercase tracking-[0.12px] text-inverted-muted-foreground">
         {kicker}
       </p>
       <p className="text-[13px] text-background">{label}</p>
@@ -476,7 +476,7 @@ export default function ChatPage() {
 
           {/* Right column — virtual fitting room */}
           <DarkPanel className="flex flex-col rounded-[16px] p-8 lg:p-10">
-            <p className="font-body text-[12px] uppercase tracking-[0.12px] text-background/60">
+            <p className="font-body text-[12px] uppercase tracking-[0.12px] text-inverted-muted-foreground">
               Virtual Fitting Room
             </p>
             <p className="mt-2 font-display text-[32px] leading-tight text-background lg:text-[40px]">
@@ -508,7 +508,7 @@ export default function ChatPage() {
               </Button>
             </div>
 
-            <p className="mt-6 text-[12px] leading-relaxed text-background/60">
+            <p className="mt-6 text-[12px] leading-relaxed text-inverted-muted-foreground">
               Fit preview uses your saved measurements. Your body data stays
               private.
             </p>

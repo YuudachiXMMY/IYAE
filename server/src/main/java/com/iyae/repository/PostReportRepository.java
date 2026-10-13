@@ -14,4 +14,8 @@ public interface PostReportRepository extends JpaRepository<PostReport, Long> {
     Page<PostReport> findByStatusOrderByCreatedAtDesc(ReportStatus status, Pageable pageable);
     boolean existsByPostAndReporter(Post post, User reporter);
     Optional<PostReport> findByPostAndReporter(Post post, User reporter);
+
+    // Account deletion (AccountDeletionService): removes this user's reports.
+    void deleteByReporter(User reporter);
+
 }

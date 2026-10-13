@@ -30,7 +30,7 @@ jobs:
   # pay for the docker-compose bring-up the E2E job needs.
 
   web-unit:
-    name: Web (vitest + tsc + lint)
+    name: Web (vitest + tsc + lint + build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -61,6 +61,20 @@ jobs:
       - name: Unit tests
         working-directory: web
         run: npm run test
+
+      # `tsc --noEmit` is not a build. The production build resolves things the
+      # typechecker never looks at — `next/font` loaders, the Turbopack import
+      # map, CSS — and until now it only happened inside the Playwright job's
+      # `docker compose build`. So a `next` upgrade passed this job and then took
+      # the E2E job down with "TypeError: fetch failed" in global-setup, because
+      # the web image had not built and there was no server to log in to. The
+      # real error (a weight ARRAY is invalid for a variable font in 16.4.0) was
+      # buried in a Docker build log two steps removed from the failure.
+      #
+      # Last, because it is the slowest step and the fast signals should land first.
+      - name: Production build
+        working-directory: web
+        run: npm run build
 
   server-tests:
     name: Server (JUnit)
@@ -95,6 +109,41 @@ jobs:
           name: server-test-report
           path: server/build/reports/tests/test/
           retention-days: 14
+
+  migrations:
+    name: Migrations (MySQL 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # The server job runs on H2 with `spring.flyway.enabled: false`, so no JUnit test executes a
+    # migration file, and the Playwright job — which does bring the real schema up through Flyway
+    # — always starts from an empty database. That left V23's MySQL-specific
+    # `DELETE ... JOIN ... GROUP_CONCAT` de-duplication having run many times without ever seeing
+    # a duplicate row. This job seeds the duplicates first, so the branch is actually exercised.
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: verify-migrations
+          MYSQL_DATABASE: iyae_migration_check
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -pverify-migrations"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply V1..V24 and assert V23 de-duplicated real rows
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_ROOT_PASSWORD: verify-migrations
+          DB_NAME: iyae_migration_check
+        run: ./scripts/verify-migrations.sh
 
   worker-tests:
     name: Worker (pytest)

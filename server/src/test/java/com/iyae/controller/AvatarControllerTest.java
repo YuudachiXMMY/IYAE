@@ -44,10 +44,10 @@ class AvatarControllerTest {
     }
 
     @Test
-    void generateAvatar_unauthenticated_returns403() throws Exception {
+    void generateAvatar_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/avatar/generate")
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -61,9 +61,9 @@ class AvatarControllerTest {
     }
 
     @Test
-    void getStatus_unauthenticated_returns403() throws Exception {
+    void getStatus_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/avatar/status"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -77,9 +77,9 @@ class AvatarControllerTest {
     }
 
     @Test
-    void deleteAvatarData_unauthenticated_returns403() throws Exception {
+    void deleteAvatarData_unauthenticated_returns401() throws Exception {
         mockMvc.perform(delete("/api/avatar")
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

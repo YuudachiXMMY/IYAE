@@ -12,4 +12,8 @@ public interface OutfitRecommendationRepository extends JpaRepository<OutfitReco
     List<OutfitRecommendation> findByUserOrderByCreatedAtDesc(User user);
 
     Optional<OutfitRecommendation> findByIdAndUser(Long id, User user);
+
+    // Account deletion (AccountDeletionService): removes this user's outfit recommendations.
+    void deleteByUser(User user);
+
 }

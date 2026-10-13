@@ -5,6 +5,7 @@ import com.iyae.dto.PagedResponse;
 import com.iyae.dto.PublicUserSummary;
 import com.iyae.entity.Follow;
 import com.iyae.entity.User;
+import com.iyae.util.Pagination;
 import com.iyae.repository.FollowRepository;
 import com.iyae.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,7 @@ public class FollowService {
     @Transactional(readOnly = true)
     public PagedResponse<PublicUserSummary> getFollowers(Long userId, int page, int size) {
         User user = findUserById(userId);
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Pagination.clampPage(page), Pagination.clampSize(size));
         // Redacted summary — never leak email/demographics across the follows graph.
         return PagedResponse.from(
             followRepository.findByFollowingOrderByCreatedAtDesc(user, pageable)
@@ -59,7 +60,7 @@ public class FollowService {
     @Transactional(readOnly = true)
     public PagedResponse<PublicUserSummary> getFollowing(Long userId, int page, int size) {
         User user = findUserById(userId);
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageRequest.of(Pagination.clampPage(page), Pagination.clampSize(size));
         return PagedResponse.from(
             followRepository.findByFollowerOrderByCreatedAtDesc(user, pageable)
                 .map(f -> PublicUserSummary.from(f.getFollowing()))
@@ -87,8 +88,14 @@ public class FollowService {
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
+    /**
+     * Resolves a follow target. Deliberately tombstone-aware: the unfiltered {@code findById}
+     * exists so an order can still name its deleted customer, but a deleted account must not be
+     * followable — that wrote a live Follow row against a user who no longer exists, and the
+     * follower/following lists then rendered it as an ordinary profile.
+     */
     private User findUserById(Long id) {
-        return userRepository.findById(id)
+        return userRepository.findActiveById(id)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 }
