@@ -29,7 +29,37 @@ require_env_vars() {
   [ "$missing" -eq 0 ] || exit 1
 }
 
+# .env holds DB_PASSWORD, JWT_SECRET, ADMIN_BOOTSTRAP_PASSWORD, INTERNAL_MAIL_SECRET, the
+# third-party API keys and (once payment is enabled) STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET.
+# `cp .env.example .env` creates it under the host's default umask -- 644 on a typical host -- so
+# any second account on the production host (another operator, a backup or monitoring agent, a CI
+# runner with persistent access) could read it with no exploit at all: JWT_SECRET forges an ADMIN
+# token, DB_PASSWORD reads every customer's PII and body measurements. do_backup below already
+# reasons exactly this way about the dumps it writes; it was never applied to the file it reads.
+secure_env_file() {
+  [ -f .env ] || return 0
+
+  local mode=""
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    mode="$(stat -f '%Lp' .env 2>/dev/null || true)"
+  else
+    mode="$(stat -c '%a' .env 2>/dev/null || true)"
+  fi
+  [ "$mode" = "600" ] && return 0
+
+  if chmod 600 .env 2>/dev/null; then
+    warn ".env was mode ${mode:-non-600} -- readable beyond its owner. Tightened to 600."
+    warn "Treat every secret in it as exposed and rotate them (JWT_SECRET, DB_PASSWORD, API keys)."
+  else
+    warn "Could not chmod 600 .env (mode ${mode:-unknown}); it may be readable by other local accounts."
+  fi
+}
+
 ensure_env_loaded() {
+  # Every subcommand that reads .env funnels through here -- up, update, backup, restore,
+  # ssl-init, ssl-renew, health -- so this is also where an .env a previous deploy created loose
+  # gets tightened, not just a freshly copied one.
+  secure_env_file
   if [ -f .env ]; then
     set -a; source .env; set +a
   fi
@@ -58,7 +88,12 @@ resolve_site_conf() {
 # Persist the nginx site selection to .env so it survives a rollback, a rebuild and a reboot.
 set_site_conf_file() {
   local value="$1"
-  touch .env
+  # The third path that can create .env, and the one easy to miss: `ssl-init` gates on nothing
+  # that requires .env to exist, so on a host where it was never created this `touch` is the
+  # creator -- and secure_env_file has already returned early from `[ -f .env ] || return 0`
+  # before reaching here. Without the umask it would land at the ambient 644 and only be
+  # repaired by whichever later subcommand happens to call ensure_env_loaded next.
+  (umask 077 && touch .env)
   if grep -qE '^NGINX_SITE_CONF_FILE=' .env; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
       sed -i '' "s|^NGINX_SITE_CONF_FILE=.*|NGINX_SITE_CONF_FILE=${value}|" .env
@@ -253,10 +288,20 @@ is_placeholder_jwt() {
 generate_jwt_secret() {
   local jwt_secret
   jwt_secret=$(openssl rand -base64 32)
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=${jwt_secret}|" .env
+  # The grep guard + append fallback is what dev.sh has always done here, and this copy had
+  # drifted without it: an unconditional sed is a silent no-op on an .env with no JWT_SECRET=
+  # line, so it reported "Generated JWT_SECRET" having written nothing, and the operator then
+  # got "Environment variable JWT_SECRET is not set" two lines later. Reachable because
+  # set_site_conf_file's `touch` can leave behind an empty .env that `setup` then declines to
+  # overwrite (its guard is `[ ! -f .env ]`).
+  if grep -q "^JWT_SECRET=" .env; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=${jwt_secret}|" .env
+    else
+      sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${jwt_secret}|" .env
+    fi
   else
-    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${jwt_secret}|" .env
+    echo "JWT_SECRET=${jwt_secret}" >> .env
   fi
   success "Generated JWT_SECRET"
 }
@@ -294,8 +339,11 @@ case "${1:-help}" in
 
     if [ ! -f .env ]; then
       if [ -f .env.example ]; then
-        cp .env.example .env
-        info "Created .env from .env.example"
+        # umask in a subshell rather than a chmod afterwards: a chmod leaves a window in which
+        # the file -- about to be filled with a generated JWT_SECRET and then the production
+        # secrets -- is world-readable. Same reasoning as do_backup's `umask 077`.
+        (umask 077 && cp .env.example .env)
+        info "Created .env from .env.example (mode 600)"
       else
         error ".env.example not found"
         exit 1
