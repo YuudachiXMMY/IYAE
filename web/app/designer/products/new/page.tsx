@@ -6,6 +6,7 @@ import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { ProductForm, type ProductFormData } from "@/components/ProductForm";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
+import { CATALOG_MANAGER_ROLES } from "@/lib/roles";
 import { api, type SizeMeasurement } from "@/lib/api";
 
 interface CreateProductRequest {
@@ -21,7 +22,7 @@ interface CreateProductRequest {
 }
 
 export default function NewProductPage() {
-  const { loading: authLoading } = useRequireAuth("DESIGNER");
+  const { loading: authLoading } = useRequireAuth(CATALOG_MANAGER_ROLES);
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 

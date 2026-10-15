@@ -9,10 +9,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PromotionList } from "@/components/designer/PromotionList";
 import { PromotionForm } from "@/components/designer/PromotionForm";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
+import { CATALOG_MANAGER_ROLES } from "@/lib/roles";
 import { promotions as promotionsApi, ApiError, type PromotionResponse } from "@/lib/api";
 
 export default function PromotionsPage() {
-  const { user, loading: authLoading } = useRequireAuth("DESIGNER");
+  const { user, loading: authLoading } = useRequireAuth(CATALOG_MANAGER_ROLES);
 
   // `null` is "not loaded yet" — the skeleton state — so the fetch below has no
   // loading flag to set.

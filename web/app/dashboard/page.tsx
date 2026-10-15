@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { BRAND } from "@/lib/brand";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { useAuth } from "@/lib/auth-context";
+import { canManageCatalog } from "@/lib/roles";
 import { useProfileSurface } from "@/lib/profile-surface";
 import { useCommunityState } from "@/lib/hooks/useCommunityState";
 import { getProfileTabPosts, getProfileStats } from "@/lib/profile-dashboard";
@@ -432,7 +433,7 @@ function BuyerProfile({ user }: { user: BuyerUser }) {
           completion={completion}
           active={activeSection}
           onSelect={setSection}
-          isDesigner={user.role === "DESIGNER" || user.role === "ADMIN"}
+          isDesigner={canManageCatalog(user.role)}
           onOpenSettings={() => setSettingsOpen(true)}
           onSignOut={handleSignOut}
         />
