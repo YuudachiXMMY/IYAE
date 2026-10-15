@@ -73,3 +73,8 @@ dashboard-*.png
 # drop the site back to plain HTTP.
 nginx/conf.d/tls-active.conf
 nginx/conf.d/*.http-only.bak
+
+# The operator's real starter catalogue, for the same reason: it is per-deployment content, and
+# `update`'s rollback would discard it. Only the example is tracked.
+deploy/*.json
+!deploy/catalog-seed.example.json
