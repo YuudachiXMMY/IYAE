@@ -526,6 +526,30 @@ case "${1:-help}" in
       error "TLS: NOT configured — traffic is plaintext HTTP"
     fi
 
+    # B-11. An empty catalogue is a dead storefront that every other check calls healthy:
+    # containers Up, database reachable, nginx serving — and /products rendering "No pieces
+    # found" for every visitor. Flyway inserts no content and DataSeeder does not run in
+    # production, so this is the default state of a fresh instance, not an unlikely one.
+    #
+    # Probed through the public endpoint rather than the database: it needs no credentials and it
+    # is the exact path a shopper takes, so a PUBLISHED-but-unservable catalogue also shows up.
+    # Same totalElements/grep idiom as the CI readiness gate — deliberately, so there is one way
+    # to ask this question and no jq dependency.
+    #
+    # Reported here and not gated in `up`: a fresh instance is legitimately empty until it has
+    # been seeded, so refusing to start would deadlock the very deploy that fixes it.
+    catalogue_count=$(curl -fsS 'http://localhost/api/products?page=0&size=1' 2>/dev/null \
+      | grep -o '"totalElements":[0-9]*' | cut -d: -f2 || true)
+    if [ -z "${catalogue_count:-}" ]; then
+      warn "Catalogue: could not be read from /api/products — cannot tell whether the shop has content"
+    elif [ "$catalogue_count" -gt 0 ]; then
+      success "Catalogue: $catalogue_count published product(s)"
+    else
+      error "Catalogue: EMPTY — every visitor sees \"No pieces found\" and the AI stylist returns"
+      error "  outfits with no items. Seed it (CATALOG_SEED_MANIFEST, see deploy/catalog-seed.example.json)"
+      error "  or publish listings from /designer/products as the operator account."
+    fi
+
     if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
       info "Most recent backup: $(ls -1t "$BACKUP_DIR" | head -1)"
     else
