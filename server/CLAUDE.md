@@ -112,6 +112,7 @@ test/       (77)  --> 73 JUnit 5 + Mockito test classes + 4 test support (637 me
 - Flyway (`flyway-core`, `flyway-mysql`)
 - MySQL Connector/J
 - JJWT 0.12.6 (JWT API + impl + Jackson)
+- stripe-java 26.12.0 (webhook signature verification + Checkout session creation). **Pinned exactly, and a dynamic range will not resolve**: `resolutionStrategy { failOnDynamicVersions(); failOnChangingVersions() }` applies to every configuration, so re-introducing `26.+` fails the build. It used to be `26.+`, which resolved to `26.13.0-beta.1` — a Gradle range does not exclude prereleases. Bump it in a reviewed commit.
 - Lombok (compile-only)
 - `spring-boot-starter-test` (JUnit 5, Mockito, MockMvc, AssertJ)
 

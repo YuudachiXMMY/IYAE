@@ -90,7 +90,34 @@ wait_for_http() {
   return 1
 }
 
+# .env holds DB_PASSWORD, JWT_SECRET, ADMIN_BOOTSTRAP_PASSWORD, INTERNAL_MAIL_SECRET and every
+# third-party API key. `cp .env.example .env` creates it under the host's default umask -- 644 on
+# a typical host -- so every local account could read it, and JWT_SECRET alone is enough to forge
+# a valid HS256 token for any user id including an ADMIN. do_backup in prod_deploy.sh already
+# reasons this way about the dumps it writes; it was never applied to the file it reads.
+secure_env_file() {
+  [ -f .env ] || return 0
+
+  local mode=""
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    mode="$(stat -f '%Lp' .env 2>/dev/null || true)"
+  else
+    mode="$(stat -c '%a' .env 2>/dev/null || true)"
+  fi
+  [ "$mode" = "600" ] && return 0
+
+  if chmod 600 .env 2>/dev/null; then
+    warn ".env was mode ${mode:-non-600} -- readable beyond its owner. Tightened to 600."
+    warn "If this host is shared or production, treat the secrets in it as exposed and rotate them."
+  else
+    warn "Could not chmod 600 .env (mode ${mode:-unknown}); it may be readable by other local accounts."
+  fi
+}
+
 ensure_env_loaded() {
+  # Every command that reads .env funnels through here, so this is also where an .env that was
+  # created loose by an older checkout gets tightened -- not just a freshly copied one.
+  secure_env_file
   if [ -f .env ]; then
     set -a; source .env; set +a
   fi
@@ -128,8 +155,11 @@ cmd_setup() {
 
   if [ ! -f .env ]; then
     if [ -f .env.example ]; then
-      cp .env.example .env
-      info "Created .env from .env.example"
+      # umask in a subshell rather than a chmod afterwards: a chmod leaves a window in which the
+      # file -- about to be filled with a generated JWT_SECRET -- is world-readable. Same
+      # reasoning as do_backup's `umask 077` in prod_deploy.sh.
+      (umask 077 && cp .env.example .env)
+      info "Created .env from .env.example (mode 600)"
     else
       error ".env.example not found"
       exit 1
