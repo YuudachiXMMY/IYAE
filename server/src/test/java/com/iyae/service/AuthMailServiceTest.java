@@ -53,7 +53,7 @@ class AuthMailServiceTest {
 
         authMailService = new AuthMailService(new ObjectMapper());
         ReflectionTestUtils.setField(authMailService, "frontendBaseUrl", "http://localhost:3000");
-        ReflectionTestUtils.setField(authMailService, "resendEndpoint", endpointUrl);
+        ReflectionTestUtils.setField(authMailService, "internalMailEndpoint", endpointUrl);
         ReflectionTestUtils.setField(authMailService, "internalMailSecret", "test-secret");
     }
 
@@ -92,7 +92,7 @@ class AuthMailServiceTest {
     }
 
     @Test
-    void sendViaResend_escapesQuotesInName() {
+    void sendViaMailRoute_escapesQuotesInName() {
         authMailService.sendVerificationEmail("user@example.com", "Ann \"Q\" Lee", "tok");
 
         // Embedded quotes must be JSON-escaped so the serialized payload stays valid.
@@ -111,7 +111,7 @@ class AuthMailServiceTest {
     @Test
     void sendVerificationEmail_endpointUnreachable_throwsEmailDeliveryException() {
         // Point at a closed port so the HTTP client cannot connect.
-        ReflectionTestUtils.setField(authMailService, "resendEndpoint",
+        ReflectionTestUtils.setField(authMailService, "internalMailEndpoint",
                 "http://localhost:1/api/internal/mail/send");
 
         assertThatThrownBy(() ->
@@ -123,7 +123,7 @@ class AuthMailServiceTest {
     void sendVerificationEmail_blankEndpoint_throwsEmailDeliveryException() {
         // Option A removes the SMTP fallback: an unconfigured endpoint must fail loudly,
         // never silently no-op.
-        ReflectionTestUtils.setField(authMailService, "resendEndpoint", "");
+        ReflectionTestUtils.setField(authMailService, "internalMailEndpoint", "");
 
         assertThatThrownBy(() ->
                 authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))

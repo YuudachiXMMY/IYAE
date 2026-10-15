@@ -28,7 +28,7 @@ class ProductionConfigValidatorTest {
         set(validator, "corsOrigins", "https://iyae.ca");
         set(validator, "frontendBaseUrl", "https://iyae.ca");
         set(validator, "internalMailSecret", "a-real-generated-secret");
-        set(validator, "resendMailEndpoint", "http://web:3000/api/internal/mail/send");
+        set(validator, "internalMailEndpoint", "http://web:3000/api/internal/mail/send");
         set(validator, "stripeSecretKey", "");
         set(validator, "stripeWebhookSecret", "");
         return validator;

@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * Delivers transactional emails (verification, password reset) exclusively through the
- * Next.js internal mail route, which renders the templates and sends via Resend.
+ * Next.js internal mail route, which renders the templates and hands the message to SMTP.
  * <p>
  * The email HTML lives in a single place — {@code web/lib/email-templates.ts} — so this
  * service only forwards the mail {@code type} plus the recipient and action URL; it does
@@ -44,8 +44,8 @@ public class AuthMailService {
     @Value("${app.frontend.base-url}")
     private String frontendBaseUrl;
 
-    @Value("${app.mail.resend-endpoint:}")
-    private String resendEndpoint;
+    @Value("${app.mail.internal-endpoint:}")
+    private String internalMailEndpoint;
 
     @Value("${app.mail.internal-secret:}")
     private String internalMailSecret;
@@ -54,7 +54,7 @@ public class AuthMailService {
     private Duration requestTimeout = Duration.ofSeconds(10);
 
     /**
-     * Sends an email verification email with a tokenized link via the Resend route.
+     * Sends an email verification email with a tokenized link via the internal mail route.
      *
      * @param toEmail  recipient email address
      * @param name     recipient display name
@@ -62,11 +62,11 @@ public class AuthMailService {
      */
     public void sendVerificationEmail(String toEmail, String name, String rawToken) {
         String verifyUrl = frontendBaseUrl + "/verify-email?token=" + rawToken;
-        sendViaResend("verification", toEmail, name, verifyUrl);
+        sendViaMailRoute("verification", toEmail, name, verifyUrl);
     }
 
     /**
-     * Sends a password-reset email with a tokenized link via the Resend route.
+     * Sends a password-reset email with a tokenized link via the internal mail route.
      *
      * @param toEmail  recipient email address
      * @param name     recipient display name
@@ -74,11 +74,11 @@ public class AuthMailService {
      */
     public void sendPasswordResetEmail(String toEmail, String name, String rawToken) {
         String resetUrl = frontendBaseUrl + "/reset-password?token=" + rawToken;
-        sendViaResend("password-reset", toEmail, name, resetUrl);
+        sendViaMailRoute("password-reset", toEmail, name, resetUrl);
     }
 
     /**
-     * Sends an email via the Next.js internal Resend route. Throws {@link EmailDeliveryException}
+     * Sends an email via the Next.js internal mail route. Throws {@link EmailDeliveryException}
      * on any failure — including an unconfigured endpoint or a timeout — so delivery can never
      * silently no-op or hang the caller.
      *
@@ -87,7 +87,7 @@ public class AuthMailService {
      * @param name      recipient display name
      * @param actionUrl CTA button URL (verify link or reset link)
      */
-    private void sendViaResend(String type, String toEmail, String name, String actionUrl) {
+    private void sendViaMailRoute(String type, String toEmail, String name, String actionUrl) {
         try {
             // Build the payload with a real serializer so all JSON metacharacters and control
             // characters are escaped correctly (no hand-rolled escaping).
@@ -99,7 +99,7 @@ public class AuthMailService {
             String json = objectMapper.writeValueAsString(payload);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(resendEndpoint))
+                    .uri(URI.create(internalMailEndpoint))
                     .timeout(requestTimeout)
                     .header("Content-Type", "application/json")
                     .header("x-internal-mail-secret", internalMailSecret)
@@ -109,17 +109,17 @@ public class AuthMailService {
             HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.error("Resend mail endpoint returned {}: {}", response.statusCode(), response.body());
+                log.error("Internal mail route returned {}: {}", response.statusCode(), response.body());
                 throw new EmailDeliveryException(
-                        "Resend endpoint returned " + response.statusCode(), null);
+                        "Internal mail route returned " + response.statusCode(), null);
             }
 
-            log.info("{} email sent via Resend to {}", type, toEmail);
+            log.info("{} email accepted by the mail route for {}", type, toEmail);
         } catch (EmailDeliveryException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Failed to send {} email via Resend to {}: {}", type, toEmail, e.getMessage(), e);
-            throw new EmailDeliveryException("Failed to deliver email via Resend to " + toEmail, e);
+            log.error("Failed to send {} email to {}: {}", type, toEmail, e.getMessage(), e);
+            throw new EmailDeliveryException("Failed to deliver email to " + toEmail, e);
         }
     }
 

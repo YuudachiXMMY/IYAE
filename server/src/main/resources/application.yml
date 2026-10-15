@@ -50,7 +50,7 @@ app:
   frontend:
     base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
   mail:
-    resend-endpoint: ${RESEND_MAIL_ENDPOINT:}
+    internal-endpoint: ${INTERNAL_MAIL_ENDPOINT:}
     internal-secret: ${INTERNAL_MAIL_SECRET:}
   auth:
     verification-token-ttl: 24h
