@@ -53,7 +53,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       SPRING_PROFILES_ACTIVE: prod
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
-      RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
+      INTERNAL_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET}
       # Without these the deployment has no administrator and cannot get one, so the
       # /admin console and the UGC report queue are live but unreachable.
@@ -131,8 +131,19 @@ services:
         API_PROXY_TARGET: http://server:8080
     environment:
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET}
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      MAIL_FROM: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}
+      # Self-hosted SMTP. 465 (implicit TLS), not 587: the mail server publishes 587 but does
+      # not enable STARTTLS on it, so 587 answers ECONNREFUSED on the first registration.
+      # SMTP_TLS_SERVERNAME keeps certificate verification ON while connecting to an internal
+      # hostname that cannot match the certificate — set it to the name on the cert.
+      # `prod_deploy.sh up` refuses to deploy without this set coherently (B-10).
+      SMTP_HOST: ${SMTP_HOST:-stalwart}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-1}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS_SERVERNAME: ${SMTP_TLS_SERVERNAME:-}
+      SMTP_TLS_INSECURE: ${SMTP_TLS_INSECURE:-0}
+      MAIL_FROM: ${MAIL_FROM:?MAIL_FROM must be an address on a domain your mail server relays for}
     depends_on:
       - server
     healthcheck:
