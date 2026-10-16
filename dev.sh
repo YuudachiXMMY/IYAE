@@ -114,6 +114,24 @@ secure_env_file() {
   fi
 }
 
+# The server and worker images run as uid 10001 (see server/Dockerfile). Docker gives a NEW,
+# EMPTY named volume the ownership of the image directory it seeds from, so a first-time
+# assets_data is already 10001-owned and this is a no-op. A volume left over from when those
+# containers ran as root is still root-owned, and the non-root server could not write an upload
+# or a placeholder GLB into it — so claim it once, here.
+#
+# The chown runs in a throwaway container via `compose run --user 0:0`, not in the service: that
+# resolves the real volume name (<project>_assets_data) without this script having to guess the
+# compose project prefix, and root exists only for the lifetime of that one command.
+claim_asset_volume() {
+  info "Claiming the assets volume for uid 10001..."
+  if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps --user 0:0 \
+      --entrypoint sh server -c 'chown -R 10001:10001 /var/iyae/assets' >/dev/null 2>&1; then
+    warn "Could not chown /var/iyae/assets. If uploads or 3D placeholders fail to write,"
+    warn "run: docker compose -f $COMPOSE_FILE run --rm --no-deps --user 0:0 --entrypoint sh server -c 'chown -R 10001:10001 /var/iyae/assets'"
+  fi
+}
+
 ensure_env_loaded() {
   # Every command that reads .env funnels through here, so this is also where an .env that was
   # created loose by an older checkout gets tightened -- not just a freshly copied one.
@@ -269,7 +287,9 @@ case "${1:-help}" in
       info "Building with --no-cache..."
       docker compose -f "$COMPOSE_FILE" --profile rigging build --no-cache
     fi
-    docker compose -f "$COMPOSE_FILE" --profile rigging up -d --build
+    docker compose -f "$COMPOSE_FILE" --profile rigging build
+    claim_asset_volume
+    docker compose -f "$COMPOSE_FILE" --profile rigging up -d
     wait_for_mysql
     wait_for_http "http://localhost:${api_port}/api/health" "API Server"
     success "Services started. API: http://localhost:${api_port}, Frontend: http://localhost:${web_port}"
