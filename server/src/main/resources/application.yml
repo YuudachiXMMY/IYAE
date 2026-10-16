@@ -63,6 +63,13 @@ app:
     # moderation surface is live but unreachable. See AdminBootstrap.
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+  catalog:
+    # Path to a JSON manifest of starter listings, created on boot under the operator account
+    # from app.admin.bootstrap-email and skipped by name if already present. Blank seeds
+    # nothing. Flyway inserts no content and DataSeeder does not run in production, so without
+    # this (or a hand-entered catalogue) a fresh instance serves an empty storefront.
+    # See CatalogSeeder and deploy/catalog-seed.example.json.
+    seed-manifest: ${CATALOG_SEED_MANIFEST:}
   payments:
     # The free-order dev stub. OFF everywhere except dev/test: a blank STRIPE_SECRET_KEY must
     # make checkout answer 503, not write the order PAID without collecting payment.

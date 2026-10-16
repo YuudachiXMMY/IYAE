@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ProductForm, type ProductFormData } from "@/components/ProductForm";
 import { GenerationStatusCard } from "@/components/GenerationStatusCard";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
+import { CATALOG_MANAGER_ROLES } from "@/lib/roles";
 import { useGenerationStatus } from "@/lib/hooks/useGenerationStatus";
 import { RiggingStatusCard } from "@/components/RiggingStatusCard";
 import { api, type SizeMeasurement } from "@/lib/api";
@@ -27,7 +28,7 @@ interface UpdateProductRequest {
 }
 
 export default function EditProductPage() {
-  const { loading: authLoading } = useRequireAuth("DESIGNER");
+  const { loading: authLoading } = useRequireAuth(CATALOG_MANAGER_ROLES);
   const router = useRouter();
   const params = useParams();
   const productId = Number(params.id);

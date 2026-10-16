@@ -122,4 +122,61 @@ class DesignerProductControllerTest {
         mockMvc.perform(get("/api/designer/products"))
                 .andExpect(status().isForbidden());
     }
+
+    // ---- B-11: ADMIN reaches the catalogue write surface ----
+    //
+    // These exercise the real SecurityConfig: WebMvcSecurityConfig @Imports it rather than
+    // standing up a permissive stub, so the matcher is what decides these statuses. Before
+    // Role.canManageCatalog() the matcher was hasRole("DESIGNER") and all three were 403 —
+    // which is why a fresh production instance, whose only administrator is an ADMIN from
+    // AdminBootstrap, could not put a single product in the shop.
+
+    @Test
+    @WithMockUser(username = "ops@iyae.ca", roles = "ADMIN")
+    void listDesignerProducts_admin_returns200() throws Exception {
+        when(productService.getDesignerProducts("ops@iyae.ca")).thenReturn(List.of(sampleProduct()));
+
+        mockMvc.perform(get("/api/designer/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "ops@iyae.ca", roles = "ADMIN")
+    void createProduct_admin_returns201() throws Exception {
+        when(productService.createProduct(eq("ops@iyae.ca"), any())).thenReturn(sampleProduct());
+
+        mockMvc.perform(post("/api/designer/products")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateProductRequest(
+                                "Linen Shirt", "A nice shirt", new BigDecimal("59.99"), "CAD",
+                                "Tops", Collections.emptyList(), Collections.emptyList(),
+                                List.of("S", "M", "L"), null, null, null))))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(username = "ops@iyae.ca", roles = "ADMIN")
+    void updateProduct_admin_returns200() throws Exception {
+        when(productService.updateProduct(eq("ops@iyae.ca"), eq(1L), any())).thenReturn(sampleProduct());
+
+        mockMvc.perform(put("/api/designer/products/1")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateProductRequest(
+                                "Renamed", null, null, null, null, null, null, null, null,
+                                null, null, null))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "ops@iyae.ca", roles = "ADMIN")
+    void deleteProduct_admin_returns204() throws Exception {
+        doNothing().when(productService).deleteProduct(eq("ops@iyae.ca"), eq(1L));
+
+        mockMvc.perform(delete("/api/designer/products/1")
+                        .with(csrf()))
+                .andExpect(status().isNoContent());
+    }
 }

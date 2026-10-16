@@ -1,7 +1,9 @@
 package com.iyae.config;
 
+import com.iyae.entity.DesignerProfile;
 import com.iyae.entity.User;
 import com.iyae.entity.enums.Role;
+import com.iyae.repository.DesignerProfileRepository;
 import com.iyae.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminBootstrap implements CommandLineRunner {
 
     private final UserRepository userRepository;
+    private final DesignerProfileRepository designerProfileRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${app.admin.bootstrap-email:}")
@@ -55,12 +58,24 @@ public class AdminBootstrap implements CommandLineRunner {
             return;
         }
 
+        String email = bootstrapEmail.trim().toLowerCase();
+
         if (userRepository.countByRole(Role.ADMIN) > 0) {
+            // The role work is done, but the operator DesignerProfile may not be: an instance
+            // deployed before B-11 has an ADMIN with no profile, and without one every write to
+            // /api/designer/** answers 400 "Designer profile not found" even though the matcher
+            // now lets it through. So this path still backfills rather than returning outright.
+            //
+            // Scoped to the configured address, and only when that account is already ADMIN —
+            // this neither promotes anything nor touches an administrator the operator did not
+            // name. If countByRole is non-zero because of some *other* admin, nothing happens.
+            userRepository.findByEmail(email)
+                    .filter(u -> u.getRole() == Role.ADMIN)
+                    .ifPresent(this::ensureOperatorDesignerProfile);
             log.info("ADMIN account already exists — admin bootstrap is a no-op");
             return;
         }
 
-        String email = bootstrapEmail.trim().toLowerCase();
         User existing = userRepository.findByEmail(email).orElse(null);
         if (existing != null) {
             // Promoting an existing row is only safe if the operator actually controls it.
@@ -90,6 +105,7 @@ public class AdminBootstrap implements CommandLineRunner {
             }
             existing.setRole(Role.ADMIN);
             userRepository.save(existing);
+            ensureOperatorDesignerProfile(existing);
             log.info("Promoted existing account {} to ADMIN", email);
             return;
         }
@@ -101,13 +117,47 @@ public class AdminBootstrap implements CommandLineRunner {
             return;
         }
 
-        userRepository.save(User.builder()
+        User created = userRepository.save(User.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode(bootstrapPassword))
                 .name("IYAE Admin")
                 .role(Role.ADMIN)
                 .emailVerified(true)
                 .build());
+        ensureOperatorDesignerProfile(created);
         log.info("Created ADMIN account {} from deploy-time configuration", email);
+    }
+
+    /**
+     * B-11. Gives the operator account the {@link DesignerProfile} that every catalogue write
+     * resolves through, creating it only if absent.
+     *
+     * <p>{@code Role.canManageCatalog()} lets ADMIN reach {@code /api/designer/**} and
+     * {@code /api/promotions/**}, but the role alone is not enough: ownership is resolved from the
+     * principal's profile, so {@code ProductService.resolveDesignerProfile} and
+     * {@code PromotionService} both throw {@code IllegalArgumentException} — a 400, not a 403 —
+     * for an ADMIN that has none. The role and the profile have to arrive together or the
+     * operator gets a confusing failure on the first thing they try to do.
+     *
+     * <p>Absent-only by design. A promoted account that was already a DESIGNER keeps its existing
+     * profile and its listings; re-running on every boot must not reset {@code displayName} back
+     * over an edit. {@code displayName} comes from the account's own name rather than a literal,
+     * so it is whatever the operator already chose — and it is public: the storefront renders it
+     * as {@code ProductResponse.designerDisplayName} on every listing the operator creates.
+     *
+     * <p>{@code shopName}, {@code bio} and {@code city} are left null. There is no write path for
+     * them in any environment (no controller calls {@code DesignerProfileService.updateProfile}),
+     * so setting them here would invent values the operator cannot subsequently correct.
+     */
+    private void ensureOperatorDesignerProfile(User admin) {
+        if (designerProfileRepository.findByUserId(admin.getId()).isPresent()) {
+            return;
+        }
+        designerProfileRepository.save(DesignerProfile.builder()
+                .user(admin)
+                .displayName(admin.getName())
+                .build());
+        log.info("Created operator DesignerProfile for ADMIN account {} — catalogue writes "
+                + "under /api/designer/** and /api/promotions/** resolve through it", admin.getEmail());
     }
 }

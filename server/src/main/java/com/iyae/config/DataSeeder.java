@@ -95,7 +95,7 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
 
         // ADMIN operator — granted only via seed/DB (public registration rejects ADMIN).
-        userRepository.save(User.builder()
+        User admin = userRepository.save(User.builder()
                 .email("admin@" + domain)
                 .passwordHash(encodedPassword)
                 .name("IYAE Admin")
@@ -104,6 +104,7 @@ public class DataSeeder implements CommandLineRunner {
                 .build());
 
         // 2. Create designer profiles
+
         DesignerProfile lunaProfile = designerProfileRepository.save(DesignerProfile.builder()
                 .user(luna)
                 .displayName("Luna Kim")
@@ -127,6 +128,17 @@ public class DataSeeder implements CommandLineRunner {
                 .bio("Artisanal handcraft meets slow fashion. Each garment is individually made with organic materials and old-world techniques.")
                 .city("Toronto")
                 .isLocal(true)
+                .build());
+
+        // The operator gets one too, mirroring AdminBootstrap in prod. Without it dev cannot
+        // exercise the ADMIN catalogue-write path at all (every write 400s on the missing
+        // profile), which is also what the Playwright admin persona signs in to use.
+        // Last of the four deliberately: seeded profile ids are observable through
+        // ProductResponse.designerProfileId, and putting this first silently renumbered the
+        // three designers.
+        designerProfileRepository.save(DesignerProfile.builder()
+                .user(admin)
+                .displayName(admin.getName())
                 .build());
 
         // 3. Create body profiles for buyers

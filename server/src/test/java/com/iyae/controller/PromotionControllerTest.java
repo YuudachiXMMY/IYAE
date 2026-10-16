@@ -78,6 +78,22 @@ class PromotionControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "ops@iyae.ca", roles = "ADMIN")
+    void createPromotion_admin_returns201() throws Exception {
+        // B-11. /api/promotions/** was hasRole("DESIGNER"), so the operator could not fill the
+        // FEATURED or SPONSORED slots and the homepage carousel had no way to get content.
+        // Row scope is unchanged: createPromotion still resolves an *owned* product, so this
+        // promotes the operator's own listings, not another designer's.
+        when(promotionService.createPromotion(eq("ops@iyae.ca"), any())).thenReturn(samplePromotion());
+
+        mockMvc.perform(post("/api/promotions")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promotionRequestJson()))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     @WithMockUser(username = "buyer@example.com", roles = "BUYER")
     void createPromotion_nonDesigner_returns403() throws Exception {
         mockMvc.perform(post("/api/promotions")

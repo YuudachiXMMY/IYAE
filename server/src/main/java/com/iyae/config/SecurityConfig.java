@@ -1,5 +1,6 @@
 package com.iyae.config;
 
+import com.iyae.entity.enums.Role;
 import com.iyae.security.JwtAuthenticationFilter;
 import com.iyae.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
@@ -63,8 +64,13 @@ public class SecurityConfig {
                 .requestMatchers("/assets/**").denyAll()
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/stripe").permitAll()
                 .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers("/api/designer/**").hasRole("DESIGNER")
-                .requestMatchers("/api/promotions/**").hasRole("DESIGNER")
+                // DESIGNER *and* ADMIN — see Role.canManageCatalog() for why, and note that
+                // DesignerUploadController reads the same predicate. Widening only one of the two
+                // leaves the other silently rejecting ADMIN. Row-level ownership is still resolved
+                // per request from the principal's own DesignerProfile, so this grants the surface,
+                // not other designers' listings.
+                .requestMatchers("/api/designer/**").hasAnyRole(Role.catalogManagerRoleNames())
+                .requestMatchers("/api/promotions/**").hasAnyRole(Role.catalogManagerRoleNames())
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )

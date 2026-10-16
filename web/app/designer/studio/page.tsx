@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
+import { CATALOG_MANAGER_ROLES } from "@/lib/roles";
 import { ArrowLeft } from "@phosphor-icons/react";
 
 function QuickCard({
@@ -61,7 +62,7 @@ function QuickCard({
 }
 
 export default function DesignerStudioPage() {
-  const { user, loading } = useRequireAuth("DESIGNER");
+  const { user, loading } = useRequireAuth(CATALOG_MANAGER_ROLES);
 
   if (loading) {
     return (
