@@ -47,6 +47,13 @@ class ResaleListingRepositoryDataJpaTest {
     @Autowired
     ResaleListingRepository repo;
 
+    /**
+     * Provenance ids for the fixtures below. original_order_id is NOT NULL as of V25, and each
+     * listing here stands for a distinct physical unit, so each gets its own value rather than
+     * sharing one — sharing it would make them duplicates under uk_resale_owned_unit.
+     */
+    private long orderSeq = 0;
+
     private ResaleListing persistListing(String name, String category, ResaleStatus status) {
         User seller = em.persist(User.builder()
                 .email(name + "-seller@ex.com").passwordHash("x").name(name).role(Role.BUYER).build());
@@ -58,7 +65,8 @@ class ResaleListingRepositoryDataJpaTest {
                 .designerProfile(dp).name(name).description("d").price(new BigDecimal("10.00"))
                 .currency("CAD").category(category).status(ProductStatus.PUBLISHED).build());
         return em.persist(ResaleListing.builder()
-                .seller(seller).product(product).sizeLabel("M").condition(ResaleCondition.GOOD)
+                .seller(seller).product(product).originalOrderId(++orderSeq)
+                .sizeLabel("M").condition(ResaleCondition.GOOD)
                 .askingPrice(new BigDecimal("5.00")).currency("CAD").status(status).build());
     }
 
