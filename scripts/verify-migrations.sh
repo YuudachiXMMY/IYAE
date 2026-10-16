@@ -13,9 +13,13 @@
 # times and has never once seen a duplicate row. It is also MySQL-specific, so H2 could not
 # execute it even if the test profile enabled Flyway.
 #
-# This script closes exactly that gap. It stops at V22, seeds the duplicates V23 is supposed to
-# collapse — including the status-precedence and oldest-first tie-breaks the migration comments
-# promise — applies V23/V24, and asserts what survived.
+# This script closes exactly that gap, for every data-dependent migration. It stops at V22, seeds
+# the duplicates V23 is supposed to collapse — including the status-precedence and oldest-first
+# tie-breaks the migration comments promise — applies V23/V24 and asserts what survived; then
+# seeds the NULL-provenance listings V25 is supposed to remove (two rows that are duplicates of
+# each other, which uk_resale_owned_unit fails to refuse precisely because MySQL does not treat
+# NULL as equal to NULL), applies V25 onwards, and asserts both the cleanup and that the
+# resulting constraints refuse what they exist to refuse.
 #
 # Usage
 # -----
@@ -155,7 +159,7 @@ ok "9 listings seeded across 4 units (3 of them duplicated)"
 info "Applying V23 .. V24 ..."
 for file in $(ls "$MIGRATIONS"/V*.sql | sort -V); do
   version="$(basename "$file" | sed 's/^V\([0-9]*\)__.*/\1/')"
-  if [ "$version" -ge 23 ]; then
+  if [ "$version" -ge 23 ] && [ "$version" -le 24 ]; then
     apply "$file"
   fi
 done
@@ -208,4 +212,81 @@ assert_eq "V24 added the stripe_session_id index" "1" \
 assert_eq "V22 added users.deleted_at" "1" \
   "$(query "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='users' AND COLUMN_NAME='deleted_at'")"
 
-printf '\n\033[0;32mAll migration checks passed — V1..V24 applied to MySQL 8, V23 de-duplicated real rows.\033[0m\n'
+# ── 5. Seed the NULL-provenance rows V25 has to clean up ──────────────────────
+#
+# Same reasoning as the V23 seeding above: on an empty database V25's DELETE touches nothing, so
+# running it would prove only that it parses. These two rows are the state ON DELETE SET NULL
+# would have left behind, and the fact that BOTH insert is the defect V25 closes — they are the
+# same (product_id, size_label) with a NULL original_order_id, which uk_resale_owned_unit is
+# supposed to forbid but does not, because MySQL does not treat NULL as equal to NULL.
+info "Seeding listings with NULL provenance ..."
+query "
+INSERT INTO resale_listings (id, seller_id, product_id, original_order_id, size_label, cond, asking_price, status, created_at) VALUES
+  (20, 1, 11, NULL, 'XS', 'GOOD', 30.00, 'LISTED', '2026-06-01 00:00:00'),
+  (21, 1, 11, NULL, 'XS', 'GOOD', 35.00, 'LISTED', '2026-06-02 00:00:00');
+"
+assert_eq "two identical NULL-provenance listings both inserted (the defect V25 closes)" "2" \
+  "$(query 'SELECT COUNT(*) FROM resale_listings WHERE original_order_id IS NULL')"
+
+# ── 6. Apply V25 onwards against that data ────────────────────────────────────
+
+info "Applying V25 .. latest ..."
+for file in $(ls "$MIGRATIONS"/V*.sql | sort -V); do
+  version="$(basename "$file" | sed 's/^V\([0-9]*\)__.*/\1/')"
+  if [ "$version" -ge 25 ]; then
+    apply "$file"
+  fi
+done
+ok "V25 onwards applied to a database that had NULL-provenance listings in it"
+
+# ── 7. Assert the provenance and index changes ────────────────────────────────
+
+assert_eq "V25 removed the unattributable listings" "0" \
+  "$(query 'SELECT COUNT(*) FROM resale_listings WHERE original_order_id IS NULL')"
+
+assert_eq "V25 left the listings that do have provenance" "4" \
+  "$(query 'SELECT COUNT(*) FROM resale_listings')"
+
+assert_eq "V25 made original_order_id NOT NULL" "NO" \
+  "$(query "SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='resale_listings' AND COLUMN_NAME='original_order_id'")"
+
+# NO ACTION is how MySQL reports RESTRICT. The point is that it is no longer SET NULL: that
+# action was the only remaining way a NULL could get back into the column.
+assert_eq "V25 replaced ON DELETE SET NULL with RESTRICT" "NO ACTION" \
+  "$(query "SELECT DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$DB_NAME' AND CONSTRAINT_NAME='fk_resale_original_order'")"
+
+# The column constraint is the point of V25 — the unique index only constrains rows that have
+# a provenance id, so the database has to be the thing that refuses a row without one.
+if query "INSERT INTO resale_listings (seller_id, product_id, original_order_id, size_label, cond, asking_price, status) VALUES (1, 11, NULL, 'XS', 'GOOD', 30.00, 'LISTED')" 2>/dev/null; then
+  fail "a listing with NULL provenance was still accepted after V25"
+fi
+ok "a listing with NULL provenance is refused by the database"
+
+# RESTRICT has to actually bite, or provenance could still be detached from a live listing.
+if query "DELETE FROM orders WHERE id = 100" 2>/dev/null; then
+  fail "deleting an order referenced by a listing was still allowed after V25"
+fi
+ok "deleting an order a listing depends on is refused by the database"
+
+# V26 drops exactly one index, and the two that back foreign keys must survive it. If a future
+# edit widens V26 to the other two, MySQL refuses the DROP and `apply` fails above — this pins
+# the end state as well.
+assert_eq "V26 dropped idx_follows_follower" "0" \
+  "$(query "SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='follows' AND INDEX_NAME='idx_follows_follower'")"
+
+assert_eq "V26 kept uk_follows_pair, which now serves that foreign key" "1" \
+  "$(query "SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='follows' AND INDEX_NAME='uk_follows_pair'")"
+
+assert_eq "V26 kept the two indexes that back foreign keys" "2" \
+  "$(query "SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DB_NAME' AND ((TABLE_NAME='model_generation_tasks' AND INDEX_NAME='idx_tasks_product') OR (TABLE_NAME='analytics_events' AND INDEX_NAME='idx_events_user'))")"
+
+# A follow must still insert and still be deduplicated, so the dropped index is provably not
+# load-bearing for the behaviour the table exists for.
+query "INSERT INTO follows (follower_id, following_id) VALUES (1, 2)"
+if query "INSERT INTO follows (follower_id, following_id) VALUES (1, 2)" 2>/dev/null; then
+  fail "follows lost its duplicate protection after V26"
+fi
+ok "follows still inserts once and refuses the duplicate pair"
+
+latest="$(ls "$MIGRATIONS"/V*.sql | sort -V | tail -1 | sed 's/.*\/V\([0-9]*\)__.*/\1/')"
+printf '\n\033[0;32mAll migration checks passed — V1..V%s applied to MySQL 8, V23 de-duplicated real rows, V25 cleaned up real NULL-provenance rows.\033[0m\n' "$latest"
