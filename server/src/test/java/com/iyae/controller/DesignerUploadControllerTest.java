@@ -70,6 +70,36 @@ class DesignerUploadControllerTest {
                 .andExpect(jsonPath("$.url").value("/uploads/img.jpg"));
     }
 
+    private User adminUser() {
+        User user = new User();
+        user.setId(3L);
+        user.setEmail("ops@iyae.ca");
+        user.setRole(Role.ADMIN);
+        return user;
+    }
+
+    @Test
+    @WithMockUser(username = "ops@iyae.ca", roles = "ADMIN")
+    void uploadImage_adminRole_returns200() throws Exception {
+        // B-11. This controller carries its own role check on top of the SecurityConfig matcher.
+        // While the matcher was hasRole("DESIGNER") that check was unreachable — the matcher
+        // rejected BUYER first — so widening the matcher alone would have left this the one thing
+        // rejecting ADMIN: the operator could create a product and then not upload its image.
+        // Both now read Role.canManageCatalog().
+        when(userRepository.findByEmail("ops@iyae.ca")).thenReturn(Optional.of(adminUser()));
+        when(fileStorageService.storeImage(any())).thenReturn(
+                new UploadResponse("/uploads/img.jpg", "img.jpg", 1024L, "image/jpeg"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "img.jpg", "image/jpeg", "fake-image-content".getBytes());
+
+        mockMvc.perform(multipart("/api/designer/products/upload/image")
+                        .file(file)
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value("/uploads/img.jpg"));
+    }
+
     @Test
     @WithMockUser(username = "buyer@example.com", roles = "BUYER")
     void uploadImage_buyerRole_returns403() throws Exception {

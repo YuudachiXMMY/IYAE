@@ -59,6 +59,10 @@ services:
       # /admin console and the UGC report queue are live but unreachable.
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD}
+      # Starter catalogue. Unset means seed nothing, which on a fresh database means an empty
+      # storefront — `prod_deploy.sh health` reports that as a failure. The path is inside the
+      # container: the manifest is mounted read-only below. See deploy/catalog-seed.example.json.
+      CATALOG_SEED_MANIFEST: ${CATALOG_SEED_MANIFEST:-}
       # Payment is OFF for launch #1: both blank means POST /api/checkout answers 503.
       # These must be passed through here because no compose file uses env_file:, so without
       # these two lines an operator cannot supply them at all. Supply BOTH or NEITHER —
@@ -70,6 +74,10 @@ services:
       RATE_LIMIT_TRUSTED_PROXIES: ${RATE_LIMIT_TRUSTED_PROXIES:-172.16.0.0/12}
     volumes:
       - assets_data:/var/iyae/assets
+      # Read-only, and the whole directory rather than the one file so an operator can keep
+      # their real manifest beside the example without editing this file. Harmless when the
+      # directory holds only the example: CATALOG_SEED_MANIFEST unset means seed nothing.
+      - ./deploy:/etc/iyae/deploy:ro
     depends_on:
       mysql:
         condition: service_healthy

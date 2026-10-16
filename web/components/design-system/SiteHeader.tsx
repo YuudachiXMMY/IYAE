@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
 import { useAuth } from "@/lib/auth-context";
+import { canManageCatalog } from "@/lib/roles";
 import { useCart } from "@/lib/cart-context";
 import { useProfileSurface } from "@/lib/profile-surface";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -93,7 +94,9 @@ export function SiteHeader({ variant = "app" }: SiteHeaderProps) {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const displayName = surface.displayName ?? user?.name ?? null;
-  const isDesigner = user?.role === "DESIGNER";
+  // Not mutually exclusive: ADMIN manages the catalogue too (B-11), so it gets the Studio and
+  // Promotions links as well as the Admin one. Previously only one branch could ever render.
+  const isDesigner = canManageCatalog(user?.role);
   const isAdmin = user?.role === "ADMIN";
   const navItems = variant === "landing" ? LANDING_NAV : APP_NAV;
 

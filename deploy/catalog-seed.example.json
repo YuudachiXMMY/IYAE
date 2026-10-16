@@ -1,0 +1,61 @@
+{
+  "_comment": [
+    "Starter catalogue for a fresh production instance. Copy, replace with real listings, and",
+    "point CATALOG_SEED_MANIFEST at the copy (mount it into the server container).",
+    "",
+    "CatalogSeeder creates these on boot under the ADMIN_BOOTSTRAP_EMAIL account and skips any",
+    "whose `name` already exists under it, so a re-run fills gaps and overwrites nothing. Edit a",
+    "seeded listing in the studio and the manifest stops being the truth for it — by design.",
+    "",
+    "`publish: true` is required for a listing to appear in GET /api/products; createProduct",
+    "always writes DRAFT, and a DRAFT is invisible to shoppers. Omit it to stage content and",
+    "publish from /designer/products when you are ready.",
+    "",
+    "`category` must match what the shop filters and the outfit slots look for. The vocabulary",
+    "lives in three places that do not fully agree (see finding A-27) — Tops, Bottoms, Dresses,",
+    "Outerwear, Shoes, Accessories are the values DataSeeder uses and the catalogue filters match.",
+    "",
+    "`media` are URLs served from the shared asset volume or /uploads; upload the images through",
+    "POST /api/designer/products/upload/image first and paste the returned paths here. `glbUrl`",
+    "is optional — leaving it out means no 3D preview, and the try-on surface degrades rather",
+    "than breaking."
+  ],
+  "products": [
+    {
+      "name": "Charcoal Linen Shirt",
+      "description": "Relaxed shoulder, mother-of-pearl buttons, washed Belgian linen.",
+      "price": 148.00,
+      "currency": "CAD",
+      "category": "Tops",
+      "styleTags": ["minimalist", "everyday"],
+      "colorTags": ["charcoal", "grey"],
+      "sizes": ["XS", "S", "M", "L", "XL"],
+      "media": ["/assets/images/products/placeholder.svg"],
+      "publish": true
+    },
+    {
+      "name": "Wide-Leg Trouser",
+      "description": "High rise, pressed crease, drapes from the hip in a heavy Tencel twill.",
+      "price": 196.00,
+      "currency": "CAD",
+      "category": "Bottoms",
+      "styleTags": ["minimalist", "tailored"],
+      "colorTags": ["black"],
+      "sizes": ["XS", "S", "M", "L"],
+      "media": ["/assets/images/products/placeholder.svg"],
+      "publish": true
+    },
+    {
+      "name": "Bias Slip Dress",
+      "description": "Cut on the bias in sand-washed silk; falls to mid-calf.",
+      "price": 268.00,
+      "currency": "CAD",
+      "category": "Dresses",
+      "styleTags": ["evening", "romantic"],
+      "colorTags": ["bone", "cream"],
+      "sizes": ["S", "M", "L"],
+      "media": ["/assets/images/products/placeholder.svg"],
+      "publish": true
+    }
+  ]
+}

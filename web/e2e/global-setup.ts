@@ -16,7 +16,10 @@ import { TOKEN_CACHE_FILE, type SeedRole } from './session';
 const API_URL = process.env.PLAYWRIGHT_API_URL ?? 'http://localhost:3001';
 // Only the roles specs actually sign in as. Every extra login here eats into
 // the same five-per-minute budget the form-login tests need.
-const ROLES: SeedRole[] = ['shopper', 'designer'];
+// `admin` joined the list for B-11 (admin-catalogue.spec.ts): the operator's
+// catalogue-write path is the only one no other persona can exercise, and the
+// seeded ADMIN had never been signed in by any spec.
+const ROLES: SeedRole[] = ['shopper', 'designer', 'admin'];
 
 async function mint(role: SeedRole): Promise<string | null> {
   const { email } = SEED_USERS[role];

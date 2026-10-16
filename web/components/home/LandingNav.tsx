@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth-context";
+import { canManageCatalog } from "@/lib/roles";
 import { useProfileSurface } from "@/lib/profile-surface";
 import { ProfileSettingsDialog } from "@/components/profile/ProfileSettingsDialog";
 import { BRAND } from "@/lib/brand";
@@ -95,7 +96,7 @@ export function LandingNav() {
     user ? String(user.id) : undefined
   );
   const displayName = surface.displayName ?? user?.name ?? null;
-  const isDesigner = user?.role === "DESIGNER";
+  const isDesigner = canManageCatalog(user?.role);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
