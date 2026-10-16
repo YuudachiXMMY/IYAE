@@ -12,7 +12,11 @@ type TransportOptions = {
   tls?: { servername?: string; rejectUnauthorized?: boolean };
 };
 
-const mockCreateTransport = vi.fn((_options: TransportOptions) => ({ sendMail: mockSend }));
+// Typed through the generic rather than an unused parameter, so `mock.calls[0][0]` is
+// TransportOptions without a placeholder argument.
+const mockCreateTransport = vi.fn<(options: TransportOptions) => { sendMail: typeof mockSend }>(
+  () => ({ sendMail: mockSend }),
+);
 
 vi.mock('nodemailer', () => ({
   default: { createTransport: mockCreateTransport },

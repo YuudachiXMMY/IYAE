@@ -26,6 +26,11 @@ class AuthMailServiceTest {
 
     private AuthMailService authMailService;
     private HttpServer server;
+    private final AtomicInteger healthRequestCount = new AtomicInteger();
+    private final AtomicReference<String> capturedHealthSecret = new AtomicReference<>();
+    private final AtomicReference<String> healthBody = new AtomicReference<>(
+            "{\"status\":\"UP\",\"transport\":\"UP\",\"lastSend\":{\"state\":\"never\"}}");
+    private volatile int healthStatus = 200;
 
     private volatile int responseStatus = 200;
     private final AtomicInteger requestCount = new AtomicInteger();
@@ -45,6 +50,16 @@ class AuthMailServiceTest {
             capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(responseStatus, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        // Sibling of /send on the same server, so checkMailHealth's URL derivation is exercised
+        // by whether the request actually lands here — not by asserting on a string.
+        server.createContext("/api/internal/mail/health", exchange -> {
+            healthRequestCount.incrementAndGet();
+            capturedHealthSecret.set(exchange.getRequestHeaders().getFirst("x-internal-mail-secret"));
+            byte[] body = healthBody.get().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(healthStatus, body.length);
             exchange.getResponseBody().write(body);
             exchange.close();
         });
@@ -147,5 +162,109 @@ class AuthMailServiceTest {
         assertThatThrownBy(() ->
                 authMailService.sendVerificationEmail("user@example.com", "Test User", "tok"))
                 .isInstanceOf(AuthMailService.EmailDeliveryException.class);
+    }
+
+    // ---- B-10 alerting half: checkMailHealth ----
+
+    @Test
+    void checkMailHealth_reachesTheHealthSiblingOfTheSendEndpoint() {
+        // The health URL is derived from the configured send URL rather than being a second
+        // environment variable, because two values that must agree is the drift this codebase
+        // keeps paying for. This passes only if the derived path actually resolves.
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(healthRequestCount.get()).isEqualTo(1);
+        assertThat(health.healthy()).isTrue();
+        assertThat(health.transport()).isEqualTo("UP");
+        assertThat(health.lastSend()).isEqualTo("never");
+    }
+
+    @Test
+    void checkMailHealth_sendsTheSharedSecret() {
+        authMailService.checkMailHealth();
+        assertThat(capturedHealthSecret.get()).isEqualTo("test-secret");
+    }
+
+    @Test
+    void checkMailHealth_derivesTheUrlWhenTheEndpointHasNoSendSuffix() {
+        // Tolerates a configured base URL as well as the conventional /send one.
+        ReflectionTestUtils.setField(authMailService, "internalMailEndpoint",
+                "http://localhost:" + server.getAddress().getPort() + "/api/internal/mail");
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(healthRequestCount.get()).isEqualTo(1);
+        assertThat(health.healthy()).isTrue();
+    }
+
+    @Test
+    void checkMailHealth_reportsUnhealthyWhenTheRouteSaysDown() {
+        healthBody.set("{\"status\":\"DOWN\",\"transport\":\"DOWN\","
+                + "\"transportReason\":\"ECONNREFUSED\",\"lastSend\":{\"state\":\"never\"}}");
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(health.healthy()).isFalse();
+        assertThat(health.transport()).isEqualTo("DOWN");
+        assertThat(health.detail()).contains("ECONNREFUSED");
+    }
+
+    @Test
+    void checkMailHealth_reportsUnhealthyWhenTheTransportIsUpButTheLastSendFailed() {
+        // The case a connect-and-authenticate probe cannot see on its own: the transport is
+        // fine and the mail server refuses to relay for the sending domain.
+        healthBody.set("{\"status\":\"DOWN\",\"transport\":\"UP\",\"lastSend\":"
+                + "{\"state\":\"failed\",\"at\":\"2026-10-15T00:00:00Z\","
+                + "\"reason\":\"550 relay not permitted\"}}");
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(health.healthy()).isFalse();
+        assertThat(health.transport()).isEqualTo("UP");
+        assertThat(health.lastSend()).isEqualTo("failed");
+    }
+
+    @Test
+    void checkMailHealth_treatsANon2xxAsUnhealthyRatherThanThrowing() {
+        // The caller is a health endpoint and a scheduled canary. Both want a verdict; an
+        // exception here would turn a monitoring signal into a 500.
+        healthStatus = 503;
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(health.healthy()).isFalse();
+        assertThat(health.detail()).contains("503");
+    }
+
+    @Test
+    void checkMailHealth_treatsAnUnreachableRouteAsUnhealthy() {
+        ReflectionTestUtils.setField(authMailService, "internalMailEndpoint",
+                "http://localhost:1/api/internal/mail/send");
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(health.healthy()).isFalse();
+        assertThat(health.transport()).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void checkMailHealth_treatsAnUnconfiguredEndpointAsUnhealthy() {
+        // Not "no news is good news": an unconfigured mail path is precisely the B-10 state.
+        ReflectionTestUtils.setField(authMailService, "internalMailEndpoint", "");
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(health.healthy()).isFalse();
+        assertThat(health.detail()).contains("INTERNAL_MAIL_ENDPOINT");
+        assertThat(healthRequestCount.get()).isZero();
+    }
+
+    @Test
+    void checkMailHealth_toleratesAMalformedBody() {
+        healthBody.set("not json at all");
+
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+
+        assertThat(health.healthy()).isFalse();
     }
 }

@@ -16,6 +16,13 @@ export const BRAND = {
   tagline: "AI-Powered Fashion",
   /** Canonical site URL — used as the metadata base. */
   url: "https://iyae.ca",
-  /** Default transactional sender address (fallback when MAIL_FROM is unset). */
-  mailFrom: "noreply@iyae.ca",
+  /**
+   * Default transactional sender address (fallback when MAIL_FROM is unset).
+   *
+   * Deliberately a different domain from `url`: mail is sent from `i-yae.com`, which is the
+   * domain registered in the mail server and the one carrying the SPF, DKIM and DMARC records.
+   * A fallback on any other domain would be rejected at the relay, so this value and the mail
+   * server's domain list have to agree — that is the only reason it is not derived from `url`.
+   */
+  mailFrom: "noreply@i-yae.com",
 } as const;

@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import nodemailer, { type Transporter } from 'nodemailer';
+import { mailTransport, recordSendFailure, recordSendSuccess } from '@/lib/mail-transport';
 import { buildPasswordResetEmailHtml, buildVerificationEmailHtml } from '@/lib/email-templates';
 import { BRAND } from '@/lib/brand';
 
@@ -43,71 +43,6 @@ function secretMatches(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-let cachedTransport: Transporter | undefined;
-
-/**
- * The SMTP transport, built once and reused.
- *
- * Pooled and module-scoped on purpose: a transport per request means a fresh TCP and TLS
- * handshake for every verification email, which is pure latency on the registration path.
- *
- * Defaults target the deployment this ships into — Stalwart on the shared Docker network, port
- * 465 with implicit TLS. Note 587/STARTTLS is published by that container but **not enabled** in
- * the running server; pointing at it yields ECONNREFUSED. 465 is the working submission port.
- *
- * On certificate verification: the internal hostname (`stalwart`) never matches the name on
- * Stalwart's certificate (`mail.<mail-domain>`), so a naive client has to choose between failing
- * and not checking at all. It does not: `SMTP_TLS_SERVERNAME` tells TLS which name to *verify*
- * while still connecting to `SMTP_HOST`, which is what SNI is for. Verification therefore stays
- * on by default and `SMTP_TLS_INSECURE` exists only for a transport whose certificate cannot be
- * validated at all (a self-signed deployment).
- */
-function mailTransport(): Transporter {
-  if (cachedTransport) {
-    return cachedTransport;
-  }
-
-  const host = process.env.SMTP_HOST?.trim();
-  if (!host) {
-    throw new Error('SMTP_HOST is not set — there is no mail server to deliver through');
-  }
-
-  const port = Number(process.env.SMTP_PORT ?? '465');
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`SMTP_PORT is not a valid port: ${process.env.SMTP_PORT}`);
-  }
-
-  // Implicit TLS unless explicitly turned off. `secure: false` means STARTTLS, which is the
-  // right setting for 25 and 587 and the wrong one for 465.
-  const secure = process.env.SMTP_SECURE !== '0';
-
-  const user = process.env.SMTP_USER?.trim() || process.env.SMTP_USERNAME?.trim();
-  const pass = process.env.SMTP_PASSWORD;
-  if (user && !pass) {
-    throw new Error('SMTP_USER is set but SMTP_PASSWORD is empty — authentication would fail');
-  }
-
-  const servername = process.env.SMTP_TLS_SERVERNAME?.trim();
-  const rejectUnauthorized = process.env.SMTP_TLS_INSECURE !== '1';
-
-  cachedTransport = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    // Omitted rather than passed empty, which supports an unauthenticated internal relay
-    // (Stalwart's :25 from a trusted network). Authenticated submission is preferred; the
-    // production preflight in prod_deploy.sh requires credentials.
-    auth: user && pass ? { user, pass } : undefined,
-    tls: {
-      ...(servername ? { servername } : {}),
-      rejectUnauthorized,
-    },
-    pool: true,
-    maxConnections: 2,
-  });
-  return cachedTransport;
-}
-
 export async function POST(request: Request) {
   const secret = request.headers.get('x-internal-mail-secret');
   const expected = process.env.INTERNAL_MAIL_SECRET;
@@ -149,6 +84,7 @@ export async function POST(request: Request) {
       subject: SUBJECT_MAP[mailType],
       html: TEMPLATE_MAP[mailType](name, actionUrl),
     });
+    recordSendSuccess();
     return Response.json({ success: true, id: info.messageId }, { status: 200 });
   } catch (error) {
     // 502, not 500, and deliberately: AuthMailService turns any non-2xx into
@@ -160,6 +96,12 @@ export async function POST(request: Request) {
     // operator grepping for it after a user reports a missing email needs to know who was
     // affected. The error carries the SMTP reply, which is what distinguishes "domain not
     // registered in Stalwart" from "cannot reach the mail server".
+    const reason = error instanceof Error ? error.message : String(error);
+    // Recorded so GET /api/internal/mail/health — and the server's /api/health/mail above it —
+    // can report that real delivery is failing. A transport that connects and authenticates
+    // still gets refused when the sending domain is not registered on the mail server, and
+    // `verify()` cannot see that; only a real send can.
+    recordSendFailure(reason);
     console.error(`[mail] delivery failed type=${mailType} to=${toEmail}:`, error);
     return Response.json({ error: 'Failed to send email' }, { status: 502 });
   }

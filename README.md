@@ -103,14 +103,31 @@ cd worker && pytest             # Worker: pytest (15 files, 292 tests)
 
 ## Production
 
+> **This repository does not deploy itself.** The live instance runs on a shared multi-app VPS,
+> deployed from a separate infrastructure repository that clones this one and builds
+> `web/`, `server/` and `worker/` as Docker build contexts. The compose file, the generated
+> `.env`, the reverse proxy (Traefik) and TLS all live there, not here.
+>
+> `prod_deploy.sh` and `docker-compose.prod.yml` below are **standalone-VPS tooling and are not
+> the current deployment path.** Nothing on the live host references them, and they are
+> structurally incompatible with it — they bind ports 80/443 that Traefik owns, declare their own
+> private network with no `proxy`, and name the database `iyae` where the live one is `clossette`.
+> Running them against the live host would not work and is not how anything is deployed.
+>
+> They are kept because `require_production_config` in `prod_deploy.sh` is the most complete
+> inventory anywhere of what this application needs in order to boot correctly in production —
+> treat it as that specification. **A new required variable must also be enforced on the real
+> path**, which has no equivalent of `require_env_vars`; the mechanism there is a
+> `${VAR:?message}` guard in the infrastructure repo's compose file.
+
 ```bash
+# Standalone-VPS tooling — see the note above. Useful for a self-contained deployment
+# or for reading require_production_config as a spec; not the live path.
 ./prod_deploy.sh setup              # Generate .env, validate required vars
 ./prod_deploy.sh up                 # Build and start all production services
-./prod_deploy.sh health             # Container status, HTTP checks, SSL expiry
+./prod_deploy.sh health             # Container status, HTTP checks, SSL expiry, catalogue
 ./prod_deploy.sh ssl-init <domain>  # Obtain SSL via Let's Encrypt
 ```
-
-Production uses `docker-compose.prod.yml` with Nginx reverse proxy (ports 80/443).
 
 ## Key Environment Variables
 

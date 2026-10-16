@@ -1,11 +1,13 @@
 package com.iyae.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -52,6 +54,73 @@ public class AuthMailService {
 
     /** Per-request read timeout; a hung route fails with {@link EmailDeliveryException} rather than blocking. */
     private Duration requestTimeout = Duration.ofSeconds(10);
+
+    /** What {@link #checkMailHealth()} found, as the mail route reported it. */
+    public record MailHealth(boolean healthy, String transport, String lastSend, String detail) {
+        static MailHealth unreachable(String detail) {
+            return new MailHealth(false, "UNKNOWN", "UNKNOWN", detail);
+        }
+    }
+
+    /**
+     * Asks the mail route whether delivery actually works. B-10's alerting half.
+     *
+     * <p>Reaches the route's health sibling, which reports two things the server cannot see for
+     * itself: whether the SMTP transport connects and authenticates, and how the last real
+     * delivery went. Neither alone is enough — a transport that authenticates is still refused
+     * when the sending domain is not registered on the mail server, and an instance that has
+     * never sent anything has no delivery history to judge.
+     *
+     * <p>Never throws. An unreachable route is itself an unhealthy answer, not an error to
+     * propagate: the caller is a health endpoint and a scheduled canary, and both want a verdict.
+     */
+    public MailHealth checkMailHealth() {
+        if (internalMailEndpoint == null || internalMailEndpoint.isBlank()) {
+            return MailHealth.unreachable("INTERNAL_MAIL_ENDPOINT is not configured");
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(healthEndpoint()))
+                    .timeout(requestTimeout)
+                    .header("x-internal-mail-secret", internalMailSecret == null ? "" : internalMailSecret)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return MailHealth.unreachable("mail route returned " + response.statusCode());
+            }
+            Map<String, Object> body = objectMapper.readValue(
+                    response.body(), new TypeReference<Map<String, Object>>() {});
+            String transport = String.valueOf(body.getOrDefault("transport", "UNKNOWN"));
+            Object lastSendNode = body.get("lastSend");
+            // `getOrDefault` on a wildcard Map will not take a String default, so read then
+            // fall back rather than fighting the capture type.
+            String lastSend = lastSendNode instanceof Map<?, ?> m && m.get("state") != null
+                    ? String.valueOf(m.get("state"))
+                    : "UNKNOWN";
+            boolean healthy = "UP".equals(String.valueOf(body.getOrDefault("status", "DOWN")));
+            String detail = String.valueOf(body.getOrDefault("transportReason", ""));
+            return new MailHealth(healthy, transport, lastSend, detail);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return MailHealth.unreachable(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
+    }
+
+    /**
+     * The health sibling of the send endpoint, derived rather than configured.
+     *
+     * <p>A second environment variable holding the same base URL is two values that must agree,
+     * which is the drift this codebase keeps paying for. One variable, one derivation.
+     */
+    private String healthEndpoint() {
+        String endpoint = internalMailEndpoint;
+        return endpoint.endsWith("/send")
+                ? endpoint.substring(0, endpoint.length() - "/send".length()) + "/health"
+                : endpoint + "/health";
+    }
 
     /**
      * Sends an email verification email with a tokenized link via the internal mail route.
