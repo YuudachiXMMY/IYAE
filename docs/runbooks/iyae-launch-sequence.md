@@ -32,14 +32,26 @@ Note the mail server's own identity does **not** change: its PTR and `HELO` rema
 `mail.ithacateens.com`. So DMARC still passes on **DKIM alignment** rather than on the HELO
 name, which is why the DKIM record in ③.1 is mandatory and not merely recommended.
 
-> ### ⚠️ Creating `prod` armed a hazard in the other app
-> `apps/clossette/app.env` also says `GIT_BRANCH="prod"`, against the same repository. Until now
-> that was harmless: the branch did not exist, so any clossette deploy failed loudly at the
-> clone. It resolves now. Once `prod` carries the SMTP code (step ①), a `clossette` redeploy
-> pulls a build configured for an SMTP server it has no settings for, and its mail stops.
+> ### Creating `prod` armed a hazard in the other app — now closed
+> `apps/clossette/app.env` also said `GIT_BRANCH="prod"`, against the same repository. That was
+> harmless only because the branch did not exist: every clossette deploy failed loudly at the
+> clone. Creating `prod` made it resolve, so once `prod` advanced onto the SMTP code a clossette
+> redeploy would have come up with mail silently broken — it has no SMTP settings, and
+> registration returns 201 either way.
 >
-> Pick one before step ①: pin clossette to a different ref, or decide it will not be
-> redeployed. This was deliberately left alone — the change was scoped to `apps/iyae/`.
+> **Resolved:** `clossette-prod` was created, frozen at `ed1fc8c` (the last commit whose mail
+> path matches that app's Resend configuration), and `apps/clossette/app.env` now points at it.
+> The three refs started life at the same commit; `prod` moves at step ①, `clossette-prod` does
+> not. Nothing else about that app changed.
+>
+> A branch rather than a tag or a SHA, because the ref is consumed three ways —
+> `git clone --branch` and `git checkout` in `provision.sh`, and `git pull origin "$GIT_BRANCH"`
+> in `ops.sh` — and only a branch works with all three. A bare SHA is rejected by
+> `clone --branch`; a tag leaves the clone on a detached HEAD that `pull` then merges into.
+>
+> Still open on that app, and deliberately untouched: `GIT_REPO` says `Clossette.git`, which
+> works only through GitHub's rename redirect. Worth correcting to `IYAE.git` the next time that
+> file is edited for its own reasons.
 
 ---
 
@@ -281,5 +293,8 @@ promotion, and ②.8's email arrives.
   other. That test does not see the infrastructure copy, and production serves the infrastructure
   copy. A subtree added in the app repo and forgotten here 404s; one added here and not there
   publishes something the app believes is private. Check both.
-- **`clossette` is untouched and still running**, on its own database, still sending through
-  Resend. Decide separately whether it is retired, and if any data has to move before it is.
+- **`clossette` is still running**, on its own database, still sending through Resend, and now
+  pinned to `clossette-prod` so it no longer follows this app's code. Decide separately whether
+  it is retired, and whether any data has to move before it is. Its deploy path is reproducible
+  but frozen: advancing it means moving that branch deliberately, and supplying SMTP settings
+  first if the target includes the mail change.
