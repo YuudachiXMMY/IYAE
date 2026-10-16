@@ -1,5 +1,6 @@
 package com.iyae.config;
 
+import com.iyae.service.AuthMailService;
 import com.iyae.service.AvatarService;
 import com.iyae.service.GenerationService;
 import com.iyae.service.RiggingService;
@@ -10,11 +11,15 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SchedulerConfigTest {
@@ -23,6 +28,7 @@ class SchedulerConfigTest {
     @Mock AvatarService avatarService;
     @Mock RiggingService riggingService;
     @Mock WeatherService weatherService;
+    @Mock AuthMailService authMailService;
 
     @InjectMocks SchedulerConfig schedulerConfig;
 
@@ -61,5 +67,55 @@ class SchedulerConfigTest {
         } finally {
             scheduler.shutdown();
         }
+    }
+
+    // ---- B-10 alerting half: the mail canary ----
+
+    @Test
+    void checkMailDeliverability_asksTheMailServiceEachTick() {
+        // The point of polling: the signal has to exist without waiting for a real user's
+        // registration to be the probe.
+        when(authMailService.checkMailHealth())
+                .thenReturn(new AuthMailService.MailHealth(true, "UP", "never", ""));
+
+        schedulerConfig.checkMailDeliverability();
+
+        verify(authMailService).checkMailHealth();
+    }
+
+    @Test
+    void checkMailDeliverability_survivesAThrowingCheck() {
+        // A scheduled method that throws kills its own future executions.
+        when(authMailService.checkMailHealth()).thenThrow(new RuntimeException("boom"));
+
+        assertThatCode(() -> schedulerConfig.checkMailDeliverability()).doesNotThrowAnyException();
+    }
+
+
+
+
+    @Test
+    void checkMailDeliverability_startsOptimisticSoTheFirstFailureIsATransition() {
+        // Transition detection is the whole reason this does not log every tick. Starting
+        // pessimistic would make a healthy boot log "recovered", and starting optimistic means
+        // the first unhealthy tick is the one that logs. Asserted through the state itself,
+        // since log output is not the contract.
+        AtomicBoolean latch = (AtomicBoolean) ReflectionTestUtils.getField(schedulerConfig, "mailHealthy");
+        assertThat(latch).isNotNull();
+        assertThat(latch.get()).isTrue();
+
+        when(authMailService.checkMailHealth())
+                .thenReturn(new AuthMailService.MailHealth(false, "DOWN", "never", "x"));
+        schedulerConfig.checkMailDeliverability();
+
+        assertThat(((AtomicBoolean) ReflectionTestUtils.getField(schedulerConfig, "mailHealthy")).get())
+                .isFalse();
+
+        when(authMailService.checkMailHealth())
+                .thenReturn(new AuthMailService.MailHealth(true, "UP", "ok", ""));
+        schedulerConfig.checkMailDeliverability();
+
+        assertThat(((AtomicBoolean) ReflectionTestUtils.getField(schedulerConfig, "mailHealthy")).get())
+                .isTrue();
     }
 }

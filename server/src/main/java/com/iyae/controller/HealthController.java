@@ -43,6 +43,19 @@ public class HealthController {
             : ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
     }
 
+    /**
+     * Mail deliverability. 503 when mail cannot be delivered, so an HTTP uptime monitor can
+     * alarm on it directly - unlike {@code /ai}, which always answers 200 with the verdict in
+     * the body and is therefore unalarmable without keyword matching.
+     */
+    @GetMapping("/mail")
+    public ResponseEntity<Map<String, String>> mailHealth() {
+        HealthService.MailHealthView view = healthService.getMailHealth();
+        return view.healthy()
+            ? ResponseEntity.ok(view.body())
+            : ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(view.body());
+    }
+
     @GetMapping("/ai")
     public ResponseEntity<Map<String, String>> aiHealth() {
         return ResponseEntity.ok(healthService.getAiHealth());

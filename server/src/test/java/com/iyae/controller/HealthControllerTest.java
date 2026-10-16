@@ -106,4 +106,45 @@ class HealthControllerTest {
                 .andExpect(jsonPath("$.status").value("NOT_READY"))
                 .andExpect(jsonPath("$.database").value("DOWN"));
     }
+
+    // ---- B-10 alerting half ----
+
+    @Test
+    void mailHealth_deliverable_returns200() throws Exception {
+        when(healthService.getMailHealth()).thenReturn(new HealthService.MailHealthView(
+                true, java.util.Map.of("status", "UP", "transport", "UP", "lastSend", "ok")));
+
+        mockMvc.perform(get("/api/health/mail"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void mailHealth_notDeliverable_returns503() throws Exception {
+        // 503, not 200-with-a-field. An HTTP uptime monitor alarms on the status code; the
+        // sibling /api/health/ai endpoint always answers 200 and is therefore unalarmable
+        // without keyword matching, which is the mistake this deliberately does not repeat.
+        when(healthService.getMailHealth()).thenReturn(new HealthService.MailHealthView(
+                false, java.util.Map.of("status", "DOWN", "transport", "DOWN", "lastSend", "never")));
+
+        mockMvc.perform(get("/api/health/mail"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("DOWN"));
+    }
+
+    @Test
+    void mailHealth_doesNotLeakTheMailHostOrCredentials() throws Exception {
+        // /api/health/** is permitAll, so this body is world-readable. It reports whether
+        // delivery works and nothing about where it goes or who it authenticates as.
+        when(healthService.getMailHealth()).thenReturn(new HealthService.MailHealthView(
+                false, java.util.Map.of("status", "DOWN", "transport", "DOWN", "lastSend", "failed")));
+
+        String body = mockMvc.perform(get("/api/health/mail"))
+                .andReturn().getResponse().getContentAsString();
+
+        org.assertj.core.api.Assertions.assertThat(body)
+                .doesNotContain("stalwart")
+                .doesNotContain("@")
+                .doesNotContain("password");
+    }
 }

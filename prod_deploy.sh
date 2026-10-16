@@ -247,14 +247,17 @@ do_restore() {
 # breaks fulfilment rather than enabling payment. Neither set = payment stays off (503).
 require_paired_env_vars() {
   local a="$1" b="$2"
+  # Why a half-configured pair is worse than neither. Caller-supplied, because this helper now
+  # guards two unrelated pairs and the Stripe consequence was hardcoded into it.
+  local consequence="${3:-}"
   local a_set=0 b_set=0
   [ -n "${!a:-}" ] && a_set=1
   [ -n "${!b:-}" ] && b_set=1
   if [ "$a_set" -ne "$b_set" ]; then
     if [ "$a_set" -eq 1 ]; then
-      error "$a is set but $b is not — supply both or neither. A key without a webhook secret breaks order fulfilment."
+      error "$a is set but $b is not — supply both or neither.${consequence:+ $consequence}"
     else
-      error "$b is set but $a is not — supply both or neither."
+      error "$b is set but $a is not — supply both or neither.${consequence:+ $consequence}"
     fi
     exit 1
   fi
@@ -278,7 +281,8 @@ require_production_config() {
   require_env_vars DB_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET \
     INTERNAL_MAIL_SECRET ADMIN_BOOTSTRAP_EMAIL ADMIN_BOOTSTRAP_PASSWORD \
     CORS_ORIGINS FRONTEND_BASE_URL
-  require_paired_env_vars STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
+  require_paired_env_vars STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET \
+    "A key without a webhook secret charges the buyer and then rejects every delivery."
 
   if is_placeholder_jwt "${JWT_SECRET:-}"; then
     error "JWT_SECRET is unset, a known placeholder, or shorter than 32 characters."
@@ -289,6 +293,78 @@ require_production_config() {
   case "${FRONTEND_BASE_URL:-}" in
     *localhost*|*127.0.0.1*)
       error "FRONTEND_BASE_URL is $FRONTEND_BASE_URL — email links and checkout redirects would point at the operator's own machine."
+      exit 1
+      ;;
+  esac
+
+  require_mail_config
+}
+
+# B-10. Mail delivery had no preflight of any kind, and its failure mode is silent by design:
+# AuthService.register catches EmailDeliveryException and only log.warns, so registration still
+# returns 201 with a usable token while the user never receives a link — and production gates
+# login on emailVerified, so the account is then permanently stuck with no in-app error at any
+# step. There is no metrics or alerting dependency anywhere in the tree, so the only trace is a
+# line in container stdout that nobody is paged to read.
+#
+# This check lives here rather than in ProductionConfigValidator on purpose: the SMTP settings
+# are consumed by the *web* container, so Spring's Environment cannot see them. `.env` is the
+# only place that sees both halves, and every subcommand that deploys funnels through here.
+require_mail_config() {
+  require_env_vars SMTP_HOST MAIL_FROM
+
+  # Both or neither, which deliberately still permits the unauthenticated internal relay the
+  # mail server accepts from a trusted network. Authenticated submission is preferred — an app
+  # password is what lets the operator revoke this one sender without touching the other
+  # services sharing that mail server — but a username with no password is never right: the
+  # client would attempt AUTH and be rejected.
+  require_paired_env_vars SMTP_USER SMTP_PASSWORD \
+    "A username with no password makes every send fail authentication."
+
+  # 587 is the conventional submission port and the wrong answer here: the mail server publishes
+  # it but does not enable STARTTLS on it, so a deploy that takes the conventional default gets
+  # ECONNREFUSED on the first registration. 465 (implicit TLS) is the working port.
+  case "${SMTP_PORT:-465}" in
+    465|25) ;;
+    *)
+      error "SMTP_PORT is ${SMTP_PORT} — only 465 (implicit TLS) and 25 (internal relay) are"
+      error "  supported by the mail server. 587 is published but STARTTLS is not enabled on it,"
+      error "  so it answers ECONNREFUSED."
+      exit 1
+      ;;
+  esac
+
+  # An internal hostname cannot match the name on the mail server's certificate, so TLS
+  # verification fails unless the deploy says which name to verify (SNI) or opts out. Left
+  # unset, every send fails — at which point we are back to B-10's silent-failure shape.
+  case "${SMTP_HOST}" in
+    *.*) ;;  # a public name verifies against itself
+    *)
+      if [ -z "${SMTP_TLS_SERVERNAME:-}" ] && [ "${SMTP_TLS_INSECURE:-0}" != "1" ]; then
+        error "SMTP_HOST is '${SMTP_HOST}', an internal name that cannot match the mail server's"
+        error "  certificate, and neither SMTP_TLS_SERVERNAME nor SMTP_TLS_INSECURE is set."
+        error "  Every email would fail TLS verification. Set SMTP_TLS_SERVERNAME to the name on"
+        error "  the certificate (e.g. mail.<your-mail-domain>) — that keeps verification on."
+        exit 1
+      fi
+      ;;
+  esac
+
+  # The sending domain has to be one the mail server is configured to relay for, and it has to
+  # be the domain whose SPF/DKIM/DMARC records are published. A mismatch is rejected at the
+  # server, or accepted and then filed as spam by the recipient.
+  case "${MAIL_FROM}" in
+    *@*.*) ;;
+    *)
+      error "MAIL_FROM is '${MAIL_FROM}' — expected an address like noreply@example.com."
+      exit 1
+      ;;
+  esac
+  case "${MAIL_FROM}" in
+    *@resend.dev|*@example.com|*@localhost)
+      error "MAIL_FROM is '${MAIL_FROM}', a placeholder domain. Mail would be rejected or"
+      error "  filed as spam. Use an address on a domain registered in your mail server with"
+      error "  SPF, DKIM and DMARC published."
       exit 1
       ;;
   esac
@@ -547,6 +623,30 @@ case "${1:-help}" in
       success "TLS: configured"
     else
       error "TLS: NOT configured — traffic is plaintext HTTP"
+    fi
+
+    # B-11. An empty catalogue is a dead storefront that every other check calls healthy:
+    # containers Up, database reachable, nginx serving — and /products rendering "No pieces
+    # found" for every visitor. Flyway inserts no content and DataSeeder does not run in
+    # production, so this is the default state of a fresh instance, not an unlikely one.
+    #
+    # Probed through the public endpoint rather than the database: it needs no credentials and it
+    # is the exact path a shopper takes, so a PUBLISHED-but-unservable catalogue also shows up.
+    # Same totalElements/grep idiom as the CI readiness gate — deliberately, so there is one way
+    # to ask this question and no jq dependency.
+    #
+    # Reported here and not gated in `up`: a fresh instance is legitimately empty until it has
+    # been seeded, so refusing to start would deadlock the very deploy that fixes it.
+    catalogue_count=$(curl -fsS 'http://localhost/api/products?page=0&size=1' 2>/dev/null \
+      | grep -o '"totalElements":[0-9]*' | cut -d: -f2 || true)
+    if [ -z "${catalogue_count:-}" ]; then
+      warn "Catalogue: could not be read from /api/products — cannot tell whether the shop has content"
+    elif [ "$catalogue_count" -gt 0 ]; then
+      success "Catalogue: $catalogue_count published product(s)"
+    else
+      error "Catalogue: EMPTY — every visitor sees \"No pieces found\" and the AI stylist returns"
+      error "  outfits with no items. Seed it (CATALOG_SEED_MANIFEST, see deploy/catalog-seed.example.json)"
+      error "  or publish listings from /designer/products as the operator account."
     fi
 
     if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then

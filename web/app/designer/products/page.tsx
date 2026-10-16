@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GenerationStatusBadge } from "@/components/GenerationStatusBadge";
 import { useAuth } from "@/lib/auth-context";
+import { canManageCatalog } from "@/lib/roles";
 import { api } from "@/lib/api";
 import { TONE_CLASS } from "@/lib/status";
 import type { Product } from "@/components/ProductListItem";
@@ -69,7 +70,7 @@ export default function DesignerProductsPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (authLoading || !user || user.role !== "DESIGNER") return;
+    if (authLoading || !canManageCatalog(user?.role)) return;
     async function fetchProducts() {
       try {
         const data = await api.get<Product[]>("/api/designer/products");
@@ -147,7 +148,10 @@ export default function DesignerProductsPage() {
   }
 
   /* ─── Non-designer gate ─── */
-  if (user && user.role !== "DESIGNER") {
+  // Unlike the other four designer routes this one renders an in-place dead end instead of
+  // redirecting, which is what e2e/designer-crud.spec.ts pins for a shopper. ADMIN now passes
+  // (B-11); a BUYER still lands here.
+  if (user && !canManageCatalog(user.role)) {
     return (
       <>
         <SiteHeader variant="app" />

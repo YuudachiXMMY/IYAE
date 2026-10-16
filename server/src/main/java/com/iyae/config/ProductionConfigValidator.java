@@ -25,7 +25,7 @@ import java.util.List;
  *       own machine. Users cannot verify their email, so they cannot use the product at all.
  *   <li>The dev fallback {@code INTERNAL_MAIL_SECRET} — the shared secret guarding the
  *       server→web mail route is published in the compose file.
- *   <li>Blank {@code RESEND_MAIL_ENDPOINT} — mail delivery throws on every send.
+ *   <li>Blank {@code INTERNAL_MAIL_ENDPOINT} — mail delivery throws on every send.
  * </ul>
  *
  * <p>Refusing to boot is deliberate: these are not degraded modes, they are a deployment that
@@ -64,8 +64,8 @@ public class ProductionConfigValidator {
     @Value("${app.mail.internal-secret:}")
     private String internalMailSecret;
 
-    @Value("${app.mail.resend-endpoint:}")
-    private String resendMailEndpoint;
+    @Value("${app.mail.internal-endpoint:}")
+    private String internalMailEndpoint;
 
     @Value("${STRIPE_SECRET_KEY:}")
     private String stripeSecretKey;
@@ -114,8 +114,8 @@ public class ProductionConfigValidator {
                     + "drive the internal mail route. Generate a real secret.");
         }
 
-        if (isBlank(resendMailEndpoint)) {
-            problems.add("RESEND_MAIL_ENDPOINT is empty — every email send throws.");
+        if (isBlank(internalMailEndpoint)) {
+            problems.add("INTERNAL_MAIL_ENDPOINT is empty — every email send throws.");
         }
 
         // Both-or-neither, enforced here as well as in prod_deploy.sh, because an operator who

@@ -30,6 +30,32 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # Mirrors docker-compose.prod.yml so the catalogue-seeding path can be exercised in dev
+      # rather than first encountered on a production cutover. Unset = seed nothing.
+      #
+      # The admin variables take a DEV_-prefixed name on purpose, so that copying a production
+      # .env into a dev stack cannot set them by accident. Read this before you set them:
+      #
+      #   AdminBootstrap is @Order(0) and DataSeeder is @Order(2), and DataSeeder skips entirely
+      #   when `users.count() > 0`. So on a FRESH dev database, setting DEV_ADMIN_BOOTSTRAP_EMAIL
+      #   makes AdminBootstrap create its one admin first, DataSeeder then find a user already
+      #   present, and seed NOTHING — no designers, no buyers, no 36 products, no promotions.
+      #   Nothing errors; you just get an empty dev environment and an E2E suite that fails at
+      #   sign-in. This is 100% reproducible, not a race.
+      #
+      #   CatalogSeeder needs the operator email to resolve whose profile owns the listings, so
+      #   trying the manifest in dev is a TWO-STEP job: boot once with these unset to let
+      #   DataSeeder populate the database, then set them and restart. `./dev.sh reset` wipes the
+      #   volumes and puts you back at step one.
+      #
+      # Not fixed by changing DataSeeder's guard, deliberately: the obvious narrowing
+      # (`count() > countByRole(ADMIN)`) makes DataSeeder run *after* AdminBootstrap has created
+      # an admin, and DataSeeder then inserts its own `admin@${BRAND_DOMAIN}` — which collides on
+      # the unique email the moment the two addresses match, trading a silent empty database for
+      # a startup exception. The guard also backs CI's readiness probe. Documented instead.
+      CATALOG_SEED_MANIFEST: ${CATALOG_SEED_MANIFEST:-}
+      ADMIN_BOOTSTRAP_EMAIL: ${DEV_ADMIN_BOOTSTRAP_EMAIL:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${DEV_ADMIN_BOOTSTRAP_PASSWORD:-}
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
@@ -41,10 +67,13 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://iyae.localhost},http://localhost:${WEB_PORT:-3000}
       AVATAR_GENERATION_PROVIDER: ${AVATAR_GENERATION_PROVIDER:-mock}
       JAVA_TOOL_OPTIONS: "-Xmx384m -Xms128m"
-      RESEND_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
+      INTERNAL_MAIL_ENDPOINT: http://web:3000/api/internal/mail/send
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET:-dev-internal-secret}
     volumes:
       - assets_data:/var/iyae/assets
+      # Mirrors docker-compose.prod.yml, so CATALOG_SEED_MANIFEST takes the same container path
+      # in both and the manifest can be tried in dev before a cutover depends on it.
+      - ./deploy:/etc/iyae/deploy:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -135,8 +164,16 @@ services:
       - "${WEB_PORT:-3000}:3000"
     environment:
       INTERNAL_MAIL_SECRET: ${INTERNAL_MAIL_SECRET:-dev-internal-secret}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      MAIL_FROM: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}
+      # Mirrors docker-compose.prod.yml. Unset SMTP_HOST means sends fail with a logged 502 —
+      # there is no local inbox to catch them, so dev does not deliver mail by default.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-1}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS_SERVERNAME: ${SMTP_TLS_SERVERNAME:-}
+      SMTP_TLS_INSECURE: ${SMTP_TLS_INSECURE:-0}
+      MAIL_FROM: ${MAIL_FROM:-noreply@localhost}
     depends_on:
       - server
     labels:

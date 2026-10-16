@@ -51,7 +51,7 @@ function buildEmailHtml(options: EmailTemplateOptions): string {
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="border-radius:10px;background:#7a2e3a;">
-                    <a href="${actionUrl}"
+                    <a href="${escapeHtml(actionUrl)}"
                        style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
                       ${escapeHtml(actionText)}
                     </a>
