@@ -19,6 +19,7 @@ public class HealthService {
     private final AIProviderFactory aiProviderFactory;
     private final BrandProperties brandProperties;
     private final DataSource dataSource;
+    private final AuthMailService authMailService;
 
     /**
      * Liveness only: the process is answering. Cheap and always 200 by design — it is the probe
@@ -49,6 +50,32 @@ public class HealthService {
             return false;
         }
     }
+
+    /**
+     * Whether transactional email can actually be delivered. B-10's alerting half.
+     *
+     * <p>Shaped like {@link #isReady()} and deliberately not like {@link #getAiHealth()}: the
+     * caller maps this to a 503, because an endpoint that always answers 200 with the verdict in
+     * the body cannot be alarmed on by an HTTP uptime monitor without keyword matching. The
+     * comment on this class already states the principle - a check that cannot fail is not a
+     * check.
+     *
+     * <p>The payload is coarse on purpose. {@code /api/health/**} is {@code permitAll}, so this
+     * is readable by anyone; it reports whether delivery works and nothing about the host,
+     * credentials or sending domain. The detail stays in the logs and in the internal route.
+     */
+    public MailHealthView getMailHealth() {
+        AuthMailService.MailHealth health = authMailService.checkMailHealth();
+        return new MailHealthView(
+                health.healthy(),
+                Map.of(
+                        "status", health.healthy() ? "UP" : "DOWN",
+                        "transport", health.transport(),
+                        "lastSend", health.lastSend()));
+    }
+
+    /** Verdict plus the body to render, so the controller does not re-derive the status code. */
+    public record MailHealthView(boolean healthy, Map<String, String> body) {}
 
     public Map<String, String> getAiHealth() {
         String providerName = aiProviderFactory.getProviderName();
