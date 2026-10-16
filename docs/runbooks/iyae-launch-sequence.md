@@ -1,11 +1,18 @@
-# Launch sequence — ③ mail server → ② deploy → ① merge
+# Launch sequence — ③ mail server → ① merge → ② deploy
 
 Concrete steps to bring the `iyae` app up as a **new, independent deployment** alongside the
 existing `clossette` one. Nothing in `clossette` is touched; the two run side by side.
 
-The order matters and cannot be reversed. ① (merging the application branches) switches the code
-from Resend to SMTP, so merging it before ③ and ② means every email fails instantly. That is why
-mail-server setup comes first even though it is the least code-like step.
+> **The order changed from ③ → ② → ① to ③ → ① → ②, and the reason is worth stating.** Putting
+> the merge last was the right call while this was a change to a *running* deployment: merging
+> switches the code from Resend to SMTP, which breaks mail the moment it lands. A brand-new app
+> has nothing to break. And provisioning clones `GIT_BRANCH`, so provisioning before the merge
+> would stand the app up on pre-merge code — no `CatalogSeeder` (so step ②.3 cannot work) and
+> still on Resend (so step ②.8 cannot pass). Merge first, point `prod` at it, then provision
+> once, onto code that is already correct.
+
+③ still comes first regardless: the mail server has to exist before anything can send through
+it, and its DNS needs time to propagate.
 
 > **A new app means a new, empty database.** No users, no products, no orders, no admin. That is
 > the point of a separate deployment, but it also means the dead-storefront problem is live from
@@ -13,16 +20,26 @@ mail-server setup comes first even though it is the least code-like step.
 
 ---
 
-## Before you start — two values to confirm
+## Settled
 
-| | Current value | Why it matters |
-|---|---|---|
-| `DOMAIN` in `apps/iyae/app.env` | `iyae.ca` | Traefik's host rule, the Let's Encrypt certificate, `CORS_ORIGINS`, and `FRONTEND_BASE_URL` — which goes into every verification and password-reset link. It is set to `iyae.ca` because that is what the application code already uses as its canonical URL and e2e seed domain. **If the site should live on `i-yae.com` instead, change it here before the first deploy** — changing it later means a new certificate and invalidating any links already sent. |
-| `GIT_BRANCH` in `apps/iyae/app.env` | `main` | `clossette` still says `prod`, and no `prod` branch exists in the IYAE remote — `git clone --branch prod` fails outright. If you want a release branch, create it and set it here. |
+| | Value |
+|---|---|
+| `DOMAIN` | **`i-yae.com`** — one domain for the site and the mail sender, so `From:`, the links in the email body and the page a recipient lands on all agree, and there is a single zone holding SPF/DKIM/DMARC. |
+| `GIT_BRANCH` | **`prod`** — created in the IYAE remote at the then-current `main`. It did not exist before. |
+| `BRAND.url` | `https://i-yae.com`, matching `DOMAIN`. It feeds `metadataBase` and the `privacy@` / `support@` addresses on `/privacy` and `/terms`. |
 
-Also note: the site domain and the **mail** domain are deliberately different. Mail is sent from
-`i-yae.com`; the site is `${DOMAIN}`. That is fine and normal — DMARC aligns on the `From:`
-domain, not on the site.
+Note the mail server's own identity does **not** change: its PTR and `HELO` remain
+`mail.ithacateens.com`. So DMARC still passes on **DKIM alignment** rather than on the HELO
+name, which is why the DKIM record in ③.1 is mandatory and not merely recommended.
+
+> ### ⚠️ Creating `prod` armed a hazard in the other app
+> `apps/clossette/app.env` also says `GIT_BRANCH="prod"`, against the same repository. Until now
+> that was harmless: the branch did not exist, so any clossette deploy failed loudly at the
+> clone. It resolves now. Once `prod` carries the SMTP code (step ①), a `clossette` redeploy
+> pulls a build configured for an SMTP server it has no settings for, and its mail stops.
+>
+> Pick one before step ①: pin clossette to a different ref, or decide it will not be
+> redeployed. This was deliberately left alone — the change was scoped to `apps/iyae/`.
 
 ---
 
@@ -88,11 +105,41 @@ status in one pass, and fixing a score of 4 is much easier before users depend o
 
 ---
 
+# ① Merge, and point `prod` at it
+
+Before provisioning, so the app is built once from correct code.
+
+Two branches, and **#50 goes first** — the catalogue seeder that step ②.3 depends on lives in it:
+
+1. **PR #50** — `worktree-b11-admin-designer-writes`: ADMIN can write the catalogue, the operator
+   designer profile, `CatalogSeeder`, the production-cutover runbook.
+2. **`worktree-b10-stalwart-mail`** — Resend → SMTP, the mail health endpoint and canary, the
+   corrected deployment docs, `DOMAIN`/`BRAND.url` on `i-yae.com`. Push and open a PR.
+
+Then advance `prod`. It was created at the pre-merge `main`, so this is a fast-forward and needs
+no force:
+
+```bash
+git fetch origin
+git push origin origin/main:prod
+git ls-remote --heads origin prod   # confirm it moved
+```
+
+### One documentation follow-up
+
+`docs/runbooks/production-cutover.md` (on #50) records B-10 as an open gap and tells the operator
+to verify mail by hand. After the mail branch merges that is stale — the preflight and the health
+endpoint exist. Left alone deliberately: editing it from the other branch would have conflicted.
+
+---
+
 # ② Deploy the new app
 
-All from the IthacaServer checkout on your machine.
+All from the IthacaServer checkout on your machine. `prod` now points at the merged code, so
+provisioning builds the right thing the first time.
 
-**②.1** DNS for the site: point `${DOMAIN}` (an A record) at the server IP. Traefik obtains the
+**②.1** DNS for the site: point `i-yae.com` (an A record) at the server IP. This is the same
+zone you published SPF/DKIM/DMARC into at ③.3, so it is one more record there. Traefik obtains the
 certificate over HTTP-01 on first request, so this must resolve *before* ②.5 or certificate
 issuance fails and you burn Let's Encrypt rate limit.
 
@@ -143,11 +190,18 @@ git add apps/iyae/app.env apps/iyae/docker-compose.yml apps/iyae/config/nginx.co
 git commit -m "feat(iyae): add IYAE as a separate app"
 ```
 
-**②.5** Provision. This generates the server `.env`, clones the app repo, creates the
-`app-iyae` user and SSH key, builds the three images and starts six containers:
+**②.5** Provision. This generates the server `.env`, clones `prod`, creates the `app-iyae`
+user and SSH key, builds the three images and starts six containers:
 
 ```bash
 ./scripts/provision.sh iyae
+```
+
+Later code changes do not need provisioning again — advance `prod` and redeploy:
+
+```bash
+git push origin origin/main:prod
+ssh -i keys/iyae app-iyae@<SERVER_HOST> 'ops deploy'
 ```
 
 **②.6** Verify — and do not skip the catalogue check, it is the one every other signal misses:
@@ -207,36 +261,6 @@ ssh -i keys/iyae app-iyae@<SERVER_HOST> 'ops backup'
 
 **② is done when** ②.6's three checks pass, ②.7 produces a visible product and a resolving
 promotion, and ②.8's email arrives.
-
----
-
-# ① Merge the application branches
-
-Only now. Merging earlier switches the code to SMTP before there is an SMTP server to reach.
-
-Two branches, and **#50 goes first** — the catalogue seeder that ②.3 depends on lives in it:
-
-1. **PR #50** — `worktree-b11-admin-designer-writes`: ADMIN can write the catalogue, operator
-   designer profile, `CatalogSeeder`, cutover runbook.
-2. **`worktree-b10-stalwart-mail`** — Resend → SMTP, the mail health endpoint and canary, the
-   corrected deployment docs. Not yet pushed; push and open a PR.
-
-After both are on `main`:
-
-```bash
-# redeploy the running app onto the merged code
-ssh -i keys/iyae app-iyae@<SERVER_HOST> 'ops deploy'
-```
-
-Then re-run ②.6 and ②.8. A redeploy rebuilds images from a fresh clone, so the mail path and the
-catalogue both get re-exercised.
-
-### One documentation follow-up after both merge
-
-`docs/runbooks/production-cutover.md` (on #50) records B-10 as an open gap and tells the operator
-to check mail by hand. After this branch merges that is stale — the preflight and the health
-endpoint exist. It was left alone deliberately: editing it from the other branch would have
-conflicted.
 
 ---
 
