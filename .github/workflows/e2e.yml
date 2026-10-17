@@ -137,7 +137,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply V1..V24 and assert V23 de-duplicated real rows
+      - name: Apply every migration and assert V23/V25 processed real rows
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306

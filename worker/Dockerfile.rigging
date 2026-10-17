@@ -1,6 +1,10 @@
-FROM python:3.12-slim
+# ── build stage ───────────────────────────────────────────────────────────────
+# The C/C++ toolchain exists only here. libigl and robust-laplacian publish prebuilt
+# manylinux wheels for the usual targets, so in practice nothing compiles; gcc/g++/cmake/git
+# are kept in this stage anyway so a platform with no matching wheel still falls back to a
+# source build instead of failing the image.
+FROM python:3.12-slim AS build
 
-# Build tools required for libigl (C++ bindings compiled via CMake)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ cmake git \
     && rm -rf /var/lib/apt/lists/*
@@ -8,13 +12,47 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
+# CPU-only torch, matching worker/Dockerfile. requirements.txt asks for a bare `torch>=2.0.0`,
+# so installing it from PyPI pulled the full CUDA build — measured at 454 MB of torch plus a
+# 651 MB nvidia-cudnn wheel and the rest of the CUDA stack — into an image that runs on a host
+# with no GPU and whose rigging path (libigl / robust-laplacian) is CPU code anyway. This image
+# is the production worker, so that was shipping well over a gigabyte of unreachable CUDA.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
-# Rigging-specific deps (require C compiler)
-RUN pip install --no-cache-dir libigl>=2.5.0 robust-laplacian>=1.0.0
-# Pillow moved into requirements.txt — it is needed wherever textured GLBs are
-# read, not just here.
+# Rigging-specific deps. Pillow is NOT here — it moved into requirements.txt, because it is
+# needed wherever textured GLBs are read, not only in this image.
+RUN pip install --no-cache-dir "libigl>=2.5.0" "robust-laplacian>=1.0.0"
+
+# ── runtime stage ─────────────────────────────────────────────────────────────
+# This image is what docker-compose.prod.yml runs as the `worker` service, so it is the
+# production worker — not an optional extra. It previously shipped gcc, g++, cmake and git in
+# the running container, which is a compiler toolchain sitting next to code that parses
+# third-party binary GLB payloads. Only the installed packages are carried over now.
+#
+# Verified on this platform that igl and robust_laplacian both import and compute in a runtime
+# with no toolchain and no libgomp, so dropping the build packages does not break the wheels'
+# shared-library requirements.
+FROM python:3.12-slim
+
+COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=build /usr/local/bin /usr/local/bin
+
+WORKDIR /app
 
 COPY . .
+
+# Run as an unprivileged user. See server/Dockerfile for the full rationale.
+#
+# uid 10001 MUST match server/Dockerfile and worker/Dockerfile — all three mount the same
+# `assets_data` volume read-write, so a mismatch means one service cannot write what another
+# created. SMPLX_MODELS_PATH is a read-only host bind mount, so the model files on the host
+# have to be readable by this uid (the 0644 that scripts/fetch-smplx-models.sh leaves is fine).
+RUN groupadd --gid 10001 iyae \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin iyae \
+    && mkdir -p /var/iyae/assets \
+    && chown -R 10001:10001 /var/iyae/assets
+
+USER 10001:10001
 
 ENV RIGGING_PROVIDER=python
 

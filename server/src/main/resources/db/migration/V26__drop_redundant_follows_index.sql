@@ -1,0 +1,27 @@
+-- Drop the one genuinely redundant index of the three that were suspected.
+--
+-- V24's own header states the principle — "a redundant index is not free", it costs on every
+-- write — and deliberately skipped columns already covered by a foreign key's automatic index.
+-- V2, V8 and V14 predate that principle and were suspected of violating it in three places:
+-- idx_tasks_product on model_generation_tasks(product_id), idx_follows_follower on
+-- follows(follower_id), and idx_events_user on analytics_events(user_id).
+--
+-- Only the middle one is actually redundant. Measured against a real MySQL 8.0.46 with V1..V24
+-- applied (information_schema.statistics, then an attempted DROP on each):
+--
+--   follows                 uk_follows_pair       UNIQUE (follower_id, following_id)
+--                           idx_follows_follower  (follower_id)          <- prefix duplicate
+--                           idx_follows_following (following_id)
+--   model_generation_tasks   idx_tasks_product    (product_id)           <- only index on the column
+--   analytics_events         idx_events_user      (user_id)              <- only index on the column
+--
+-- There is no separate auto-created index beside idx_tasks_product or idx_events_user: those two
+-- ARE the index InnoDB uses to enforce their foreign keys, so they are load-bearing, not
+-- duplicated. MySQL says so directly — dropping either fails with
+--   ERROR 1553 (HY000): Cannot drop index '...': needed in a foreign key constraint
+-- and so does dropping idx_follows_following. Only idx_follows_follower drops cleanly, because
+-- uk_follows_pair's leftmost prefix is follower_id and can serve that foreign key in its place.
+--
+-- Recorded here so this is not "re-fixed" later: two thirds of the original finding was wrong,
+-- and acting on it would have failed the migration rather than saved any write cost.
+DROP INDEX idx_follows_follower ON follows;

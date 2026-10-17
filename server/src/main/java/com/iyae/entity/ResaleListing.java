@@ -31,8 +31,14 @@ public class ResaleListing {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    /** Provenance: the order the seller bought this item in (kept as a plain id; FK is DB-level). */
-    @Column(name = "original_order_id")
+    /**
+     * Provenance: the order the seller bought this item in (kept as a plain id; FK is DB-level).
+     *
+     * Mandatory as of V25. It has to be, for uk_resale_owned_unit to mean anything: that unique
+     * index spans (original_order_id, product_id, size_label), and MySQL does not deduplicate
+     * NULLs, so a NULL here let the same unit be listed twice.
+     */
+    @Column(name = "original_order_id", nullable = false)
     private Long originalOrderId;
 
     @Column(name = "size_label", nullable = false, length = 32)

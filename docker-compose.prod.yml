@@ -69,9 +69,19 @@ services:
       # a key without a webhook secret breaks fulfilment instead of enabling payment.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      # Trust the Nginx reverse proxy's Docker network so per-IP rate limiting keys on the
-      # real client via X-Forwarded-For. Default = Docker bridge range; pin to your subnet.
-      RATE_LIMIT_TRUSTED_PROXIES: ${RATE_LIMIT_TRUSTED_PROXIES:-172.16.0.0/12}
+      # Trust ONLY the Nginx container, so per-IP rate limiting keys on the real client via
+      # X-Forwarded-For without anything else being able to forge that header.
+      #
+      # This was 172.16.0.0/12 — the whole of Docker's default bridge pool, around a million
+      # addresses shared with every other Docker network on the host. Any container in any
+      # unrelated compose project on the same machine was therefore a trusted proxy, and could
+      # present an X-Forwarded-For of its choosing to bypass the per-IP limits on login,
+      # register and forgot-password. 10.89.0.10 is nginx's fixed address on this stack's own
+      # network; `isTrusted` accepts a bare address as well as a CIDR.
+      #
+      # These three values must agree: the subnet under `networks:` at the bottom of this file,
+      # nginx's `ipv4_address`, and this entry.
+      RATE_LIMIT_TRUSTED_PROXIES: ${RATE_LIMIT_TRUSTED_PROXIES:-10.89.0.10}
     volumes:
       - assets_data:/var/iyae/assets
       # Read-only, and the whole directory rather than the one file so an operator can keep
@@ -190,7 +200,10 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - iyae-net
+      iyae-net:
+        # Fixed so RATE_LIMIT_TRUSTED_PROXIES can name this one address instead of guessing a
+        # range. Everything else on the network is assigned from the subnet as usual.
+        ipv4_address: 10.89.0.10
 
   # Automatic renewal. Previously certbot was a one-shot `tools`-profile container and
   # `ssl-renew` was a fully manual command, so the certificate expired on whatever day nobody
@@ -222,6 +235,16 @@ services:
 networks:
   iyae-net:
     driver: bridge
+    # An explicit subnet rather than a Docker-assigned one, so the server can trust nginx by
+    # address instead of trusting a range it had to guess. 10.89.0.0/24 is outside Docker's
+    # default pool (172.17.0.0/12), so it is never handed to an unrelated project on this host;
+    # if it collides with an existing route, `docker compose up` fails loudly at network
+    # creation rather than silently mis-trusting anything.
+    #
+    # Changing this means changing nginx's ipv4_address and RATE_LIMIT_TRUSTED_PROXIES above.
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24
 
 volumes:
   mysql_data:

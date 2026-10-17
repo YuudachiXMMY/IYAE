@@ -55,6 +55,24 @@ secure_env_file() {
   fi
 }
 
+# The server and worker images run as uid 10001 (see server/Dockerfile). Docker gives a NEW,
+# EMPTY named volume the ownership of the image directory it seeds from, so on a first
+# deployment assets_data is already 10001-owned and this is a no-op. A volume carried over from
+# a deployment where those containers ran as root is still root-owned, and the non-root server
+# could not write an upload or a placeholder GLB into it — so claim it once, here.
+#
+# The chown runs in a throwaway container via `compose run --user 0:0`, not in the service: that
+# resolves the real volume name (<project>_assets_data) without this script having to guess the
+# compose project prefix, and root exists only for the lifetime of that one command.
+claim_asset_volume() {
+  info "Claiming the assets volume for uid 10001..."
+  if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps --user 0:0 \
+      --entrypoint sh server -c 'chown -R 10001:10001 /var/iyae/assets' >/dev/null 2>&1; then
+    warn "Could not chown /var/iyae/assets. If uploads or 3D placeholders fail to write,"
+    warn "run: docker compose -f $COMPOSE_FILE run --rm --no-deps --user 0:0 --entrypoint sh server -c 'chown -R 10001:10001 /var/iyae/assets'"
+  fi
+}
+
 ensure_env_loaded() {
   # Every subcommand that reads .env funnels through here -- up, update, backup, restore,
   # ssl-init, ssl-renew, health -- so this is also where an .env a previous deploy created loose
@@ -444,7 +462,9 @@ case "${1:-help}" in
     require_production_config
     require_tls_or_explicit_optout
     info "Starting production services..."
-    docker compose -f "$COMPOSE_FILE" up -d --build
+    docker compose -f "$COMPOSE_FILE" build
+    claim_asset_volume
+    docker compose -f "$COMPOSE_FILE" up -d
     wait_for_healthy mysql
     wait_for_healthy server
     info "All services starting..."
@@ -462,6 +482,9 @@ case "${1:-help}" in
     git pull
     info "Rebuilding services..."
     docker compose -f "$COMPOSE_FILE" build
+    # Also here, not only in `up`: upgrading an instance that was deployed before the containers
+    # went non-root arrives through this path, and that instance's assets_data is root-owned.
+    claim_asset_volume
     info "Restarting services..."
     docker compose -f "$COMPOSE_FILE" up -d
     wait_for_healthy mysql
