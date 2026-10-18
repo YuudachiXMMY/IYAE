@@ -53,31 +53,56 @@ You also need, and only you have:
 
 ---
 
-## Before you start: repo-side fixes that must land first
+## Before you start: merge the repo-side fixes
 
-Do **not** begin step 3 until these are merged. Each one makes the first deploy fail, half-work, or
-silently lose something. Titles only — the detail is the repo owner's.
+All eleven repo-side fixes this checklist originally listed as pending are **written and pushed**,
+in the infrastructure repo, on branch **`worktree-iyae-deploy-fixes`** (4 commits, base
+`origin/main`). Nothing below depends on an unwritten change any more — but the branch is **not
+merged**, so do this first:
 
-**Must land before you start:**
+```bash
+cd /Users/jadyn/Development/IthacaServer
+git fetch origin
+gh pr create --base main --head worktree-iyae-deploy-fixes --fill   # or merge it however you prefer
+```
 
-1. *Add the missing `:?` guards for `DB_PASSWORD` and `MYSQL_ROOT_PASSWORD`, and delete the
-   duplicate `CHANGE_ME` lines from `apps/iyae/app.env`* — infra repo. Without it, one blank line
-   in the wrong file produces a MySQL that starts, reports **healthy**, and never creates the
-   `iyae` user, which a redeploy cannot fix.
-2. *Create and `chown 1005` the db-backup bind source in `provision.sh` before `up`* — infra repo.
-   Step 10 below is the manual workaround if this has not landed.
-3. *Replace `provision.sh`'s unconditional "Application started" with a readiness gate, and echo
-   the deployed SHA* — infra repo. Today a crash-looping server is reported as success.
-4. *Proxy `/assets/images/` to the web container in `apps/iyae/config/nginx.conf`* — infra repo.
-   Without it the product-image placeholder and the community post images 404 in production only.
-5. *Default `AI_PROVIDER` to `mock` in `.env.extra.example`, or guard `MINIMAX_API_KEY`* — infra
-   repo. Step 5 below makes you decide this by hand either way.
+**Verify** — the two things whose absence would otherwise bite you at step 9 and step 10:
 
-**Should land, but will not stop you:** *add a Traefik router for `www.i-yae.com`*; *point the
-server healthcheck at `/api/health/ready`*; *add `iyae/mysql` to `EXPECTED_TARGETS` and stop
-`provision.sh` creating an unused `_backups/iyae`*; *give the mail-submission certificate an owner
-in the infra repo* (step 1 below is the one-off); *fix the client-IP chain behind Cloudflare*
-(step 6 below explains why you should **not** attempt the obvious version of this by hand).
+```bash
+cd /Users/jadyn/Development/IthacaServer
+git log --oneline -4
+grep -c ':?set\|:?' apps/iyae/docker-compose.yml          # expect 9 (was 7 — the two DB keys)
+grep -n 'CHANGE_ME' apps/iyae/app.env || echo "placeholders gone — good"
+bash scripts/tests/require-paired-vars.test.sh | tail -1   # expect PASS 12
+```
+
+What landed, so you know which steps below are now automatic:
+
+| Was a manual step | Now |
+|---|---|
+| `DB_PASSWORD` / `MYSQL_ROOT_PASSWORD` could ship as `CHANGE_ME` | both `:?`-guarded, placeholders deleted from `app.env` |
+| backup dir left `root:root`, every dump failing silently | `provision.sh` creates and chowns it before `up` (step 10 is now a verification, not a fix) |
+| `provision.sh` printed "Application started" unconditionally | readiness gate: fails if any declared service is not running, and prints the deployed SHA |
+| `/assets/images/**` 404'd in production | proxied to the web container |
+| `AI_PROVIDER=minimax` + empty key failed silently at runtime | `provision.sh` refuses to provision on the unpaired combination |
+| `www.i-yae.com` answered a bare 404 | Traefik router + redirect to the apex |
+| healthcheck was `/api/health` (200 with the DB down) | `/api/health/ready` |
+| `iyae` absent from backup coverage | in `EXPECTED_TARGETS`; unused `_backups/iyae` no longer created |
+| nothing noticed the mail certificate expiring | daily `check-cert-expiry.sh` + `/etc/cron.d/cert-expiry` |
+| `ops backup` printed a PROCESS-privilege error every run | `--no-tablespaces` |
+
+**Two things were deliberately NOT fixed in code**, and they stay yours:
+
+- **Renewing the mail certificate (step 1).** Only *detection* was automated. Which mechanism
+  issued the `:465` copy, and where it writes, is inside the `stalwart-etc` volume and not in
+  either repo — and the two plausible causes need different fixes, so guessing a destination path
+  would risk breaking mail outright. `infrastructure/mail/README.md` now carries both causes and
+  the commands that tell them apart.
+- **The client-IP chain behind Cloudflare (step 6).** Restoring real per-visitor rate-limit
+  buckets requires giving Traefik's `websecure` entryPoint `forwardedHeaders.trustedIPs`, which is
+  host-global and changes the client IP **every** app on this host observes. The app's own subnet
+  is now pinned and the correct value is documented, but the default is unchanged on purpose:
+  narrowing it halfway is strictly worse than leaving it (see step 6).
 
 ---
 
@@ -157,6 +182,18 @@ are *not* Traefik entrypoints (`infrastructure/traefik/traefik.yml` says so expl
 renewed its own copy of the `mail.ithacateens.com` certificate on Sep 21 (valid to Dec 20) for the
 admin-UI router on :443, but Stalwart's listener on :465 is still serving the July copy. Two
 independent certificates for one hostname; only one of them is being renewed.
+
+**Detection is now automated; the renewal is still this step.** The merged branch adds
+`scripts/check-cert-expiry.sh` and `/etc/cron.d/cert-expiry`, which fails daily while any
+mail-port certificate is inside 21 days — so this specific surprise cannot recur. It deliberately
+does not install anything, because the destination path is only inside the `stalwart-etc` volume
+and the two plausible causes need different fixes; `infrastructure/mail/README.md` now carries
+both, plus the commands that tell them apart. Run it right now to see the current state:
+
+```bash
+cd /Users/jadyn/Development/IthacaServer && ./scripts/check-cert-expiry.sh
+# today: WARN on :465 and :993 (1 day), OK on :443 (62 days) — the two certificates, side by side
+```
 
 First, find out where Stalwart's listener gets its certificate. This is **not** in either repo —
 Stalwart's config lives in the `stalwart-etc` Docker volume — so it has to be read, not assumed:
@@ -339,9 +376,11 @@ This is the complete contract, derived from `apps/iyae/docker-compose.yml` rathe
 Everything not listed here has a correct default in the compose file and must be left alone.
 
 ```sh
-# ── Database — REQUIRED. Put them HERE, never in app.env ──
-# No `:?` guard yet (see "Before you start" #1). An empty value here does NOT fall
-# back to app.env — .env.extra is appended last and a blank value wins.
+# ── Database — REQUIRED. This is now the ONLY place they exist ──
+# Both are `:?`-guarded, and the `CHANGE_ME` duplicates are gone from app.env, so a
+# blank value here can no longer be mistaken for a fallback — the stack refuses to
+# start instead. Fill both before the first `up`: MySQL reads them only while
+# initialising an empty data directory.
 DB_PASSWORD=<openssl rand -base64 24>
 MYSQL_ROOT_PASSWORD=<openssl rand -base64 24>
 
@@ -361,10 +400,12 @@ MAIL_FROM=noreply@i-yae.com          # already filled from ③
 # ── Starter catalogue — uncomment at step 7 ──
 # CATALOG_SEED_MANIFEST=/etc/iyae/config/catalog-seed.json
 
-# ── AI provider — DECIDE, do not leave as shipped ──
-# As shipped this is AI_PROVIDER=minimax with MINIMAX_API_KEY empty, which boots
-# clean and then answers every AI-stylist message with "I'm having trouble
-# connecting right now." forever, at HTTP 200, with no health signal going red.
+# ── AI provider — DECIDE. provision.sh now refuses the unpaired combination ──
+# minimax with an empty key boots clean and then answers every AI-stylist message
+# with "I'm having trouble connecting right now." forever, at HTTP 200, with no
+# health signal going red. provision.sh now fails fast on exactly that pair
+# (app.env declares the rule in REQUIRE_PAIRED_VARS), so you will be stopped at
+# step 9 rather than discovering it from a user. Supply the key...
 AI_PROVIDER=minimax
 MINIMAX_API_KEY=<paste-real-key>
 #   ...or, if you do not have a key for launch, make the behaviour deliberate:
@@ -489,10 +530,11 @@ verbatim publishes three fake products on the public storefront, which is worse 
 them with real listings, and keep `"publish": true` on each — `createProduct` always writes DRAFT,
 and a DRAFT is invisible to `GET /api/products`.
 
-On images: `media` paths must exist. Until repo-side fix #4 lands, the example's
-`/assets/images/products/placeholder.svg` 404s in production. The clean path is to leave `media`
-empty for now and upload real images through the studio at step 13, then re-run — the seeder is
-idempotent by product name, so a second run fills gaps and overwrites nothing.
+On images: `media` paths must exist. The example's `/assets/images/products/placeholder.svg` now
+resolves in production (the nginx fix is on the merged branch), so leaving it is safe — but it is
+a placeholder on a public storefront. Either point `media` at real images, or leave it empty and
+upload through the studio at step 13, then re-run: the seeder is idempotent by product name, so a
+second run fills gaps and overwrites nothing.
 
 Then uncomment the one line in `apps/iyae/.env.extra`:
 
@@ -565,8 +607,24 @@ It pauses twice:
 Budget **10–20 minutes** after that: it builds a Gradle/JDK 22 server image, a Node web image, and
 a Python worker image on the host.
 
-**Verify** — and do not trust the closing "Application started", which prints unconditionally
-whether or not the server came up (repo-side fix #3):
+`provision.sh` now ends with a readiness gate, so its verdict is trustworthy: it waits for every
+service the compose file declares to be running, prints `Deployed prod at cd69333`, and **exits
+non-zero** with the missing/unhealthy containers named if they do not all come up. A pass is
+`Application started — all 6 service(s) running`.
+
+Two failures it can now report that are worth recognising on sight:
+
+- *Malformed REQUIRE_PAIRED_VARS* / *`AI_PROVIDER=minimax` requires `MINIMAX_API_KEY`* — the
+  preflight, before anything is installed. Go back to step 5.
+- **`failed to create network ... Pool overlaps with other one on this address space`** — the
+  app's internal network is pinned to `10.89.1.0/24`, chosen to sit outside Docker's default pool
+  so a clash fails loudly here rather than silently handing the app a subnet that makes the
+  trusted-proxy list wrong. If the host's `/etc/docker/daemon.json` sets `default-address-pools`
+  to something covering `10.89/16`, this is that clash. Pick another free /24 in
+  `apps/iyae/docker-compose.yml` (and update the value quoted in step 6):
+  `ssh ithacaDeploy "cat /etc/docker/daemon.json; docker network ls -q | xargs -n1 docker network inspect -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'"`
+
+**Verify independently anyway:**
 
 ```bash
 ssh -i keys/iyae app-iyae@2.24.197.12 'ops status'
@@ -578,24 +636,28 @@ ssh -i keys/iyae app-iyae@2.24.197.12 'ops logs server' \
 # expect "Production configuration validated" and Flyway applying 26 migrations
 ```
 
-Be aware that `validate.sh`'s "Containers running" check passes if *any single* container is Up, so
-a crash-looping server still shows green there. Trust `ops status` and the server log.
+Be aware that `validate.sh`'s "Containers running" check still passes if *any single* container is
+Up, so a crash-looping server shows green **there**. Trust the provision gate, `ops status` and the
+server log.
 
 **If this step fails:** go to [If the deploy fails](#if-the-deploy-fails-how-you-know-and-how-to-abort).
 
 ---
 
-## 10. Fix the backup directory's ownership, and restart the sidecar
+## 10. Verify the backup directory's ownership
 
-**Why:** the compose file states the requirement itself — the db-backup sidecar runs as the image's
-`appuser` (uid 1005), so `./data/backups/mysql` on the host must be writable by 1005, "otherwise
-every dump fails with *permission denied* AFTER authenticating while the container stays `Up`."
-Nothing on this deploy path creates that directory (`provision.sh` deliberately prunes `data/` from
-both of its chown passes), so Docker auto-created it `root:root` at step 9. This is the
-2026-08-20 incident on this very host, repeating on a new app.
+**Why:** the db-backup sidecar runs as the image's `appuser` (uid 1005), so
+`./data/backups/mysql` on the host must be writable by 1005 — otherwise every dump fails with
+*permission denied* AFTER authenticating, while the container stays `Up` with restart count 0.
+That is the 2026-08-20 incident on this very host. `provision.sh` deliberately prunes `data/` from
+both of its chown passes (it holds container-owned volume data), which is correct and is also why
+nothing used to create this directory: Docker auto-created it `root:root` at first `up`.
 
-Do it now, before any real user data exists — the dump that failed in the meantime would have been
-of an empty database.
+**This is now done for you** — `BACKUP_DIR_UID="1005"` in `apps/iyae/app.env` makes `provision.sh`
+create and chown it before `up`, and step 9 printed
+`Backup dir /opt/apps/iyae/data/backups/mysql owned by 1005`. So this step is a check, not a fix.
+
+If you provisioned before merging the branch, or the line is missing, do it by hand:
 
 ```bash
 ssh ithacaDeploy
@@ -727,8 +789,15 @@ Then, in a browser, sign in as `ADMIN_BOOTSTRAP_EMAIL` and confirm:
 - `/designer/promotions` creates a `FEATURED` promotion, and
   `curl -s https://i-yae.com/api/promotions/featured` is no longer `[]`
 
-**Known cosmetic defect until repo-side fix #4 lands:** `www.i-yae.com` resolves (measured) but has
-no Traefik router, so it answers a bare `404 page not found` instead of redirecting to the apex.
+`www.i-yae.com` now has a Traefik router that redirects to the apex (on the merged branch), so
+check it too — it needs its own certificate, issued on first request:
+
+```bash
+curl -sI https://www.i-yae.com | head -2     # expect 301 to https://i-yae.com/
+```
+
+A `404 page not found` here means the branch was not merged before step 9; a TLS error means
+Let's Encrypt has not yet issued for the `www` name — retry in a minute.
 
 ---
 
@@ -811,9 +880,8 @@ ssh ithacaDeploy 'sudo /opt/apps/scripts/check-backup-freshness.sh; echo "exit=$
 ```
 
 **Verify:** an `OK     iyae/mysql: fresh dump (…)` line. A `STALE  iyae/mysql: no dump files at
-all` line means step 10 did not take effect. You will also see
-`NOTE   iyae/mysql: not in EXPECTED_TARGETS` — expected until that repo-side fix lands; it is a
-note, not a failure.
+all` — or `MISSING iyae/mysql` — means step 10 did not take effect; `iyae/mysql` is now in
+`EXPECTED_TARGETS`, so the run exits non-zero rather than quietly omitting the app.
 
 > **Known gap:** the copy of this monitor installed at `/opt/apps/scripts/` may still be the
 > 2026-08-20 version, which has none of the `_backups` logic and reports only on `clossette`. If the
@@ -862,7 +930,38 @@ Attach your existing notification channel to all four.
   the marketing homepage and stays green with the database down.
 - **Do not** widen monitor 2's accepted codes to include 5xx. The 503 *is* the signal.
 - Monitor 4 is the one that would have caught the certificate in step 1 before it became a
-  two-day deadline.
+  two-day deadline. The merged branch's `/etc/cron.d/cert-expiry` now also catches it, but keep
+  this monitor: the cron job alerts by mail and the journal on a host whose MTA is the very thing
+  that breaks, while Uptime Kuma alerts out-of-band. They fail independently, which is the point.
+
+### Installing the two host monitors (also fixes the stale copy step 16 warns about)
+
+`setup-server.sh` is what installs them, but it is the **whole** host setup — nine steps including
+redeploying Traefik and the mail stack — so do not reach for it just to refresh two files on a
+host that is serving traffic. Copy them directly instead:
+
+```bash
+cd /Users/jadyn/Development/IthacaServer
+scp scripts/check-backup-freshness.sh scripts/check-cert-expiry.sh ithacaDeploy:~/
+scp infrastructure/host/cron.d/cert-expiry ithacaDeploy:~/
+ssh ithacaDeploy '
+  sudo install -o root -g root -m 755 ~/check-backup-freshness.sh /opt/apps/scripts/check-backup-freshness.sh
+  sudo install -o root -g root -m 755 ~/check-cert-expiry.sh       /opt/apps/scripts/check-cert-expiry.sh
+  sudo install -o root -g root -m 644 ~/cert-expiry                /etc/cron.d/cert-expiry
+  rm -f ~/check-backup-freshness.sh ~/check-cert-expiry.sh ~/cert-expiry
+'
+```
+
+`install` is deliberate rather than `cp` + `chmod`: it sets owner and mode atomically, and
+`/etc/cron.d` entries must be root-owned and 644 or cron silently ignores them.
+
+**Verify:**
+
+```bash
+ssh ithacaDeploy 'sudo /opt/apps/scripts/check-cert-expiry.sh; echo "exit=$?"'
+ssh ithacaDeploy 'sudo /opt/apps/scripts/check-backup-freshness.sh | grep iyae'
+# the second must mention iyae/mysql — if it does not, the stale copy is still installed
+```
 
 Then create a **Push** monitor, and record its URL in `apps/iyae/app.env` so re-provisioning keeps
 registering it:
