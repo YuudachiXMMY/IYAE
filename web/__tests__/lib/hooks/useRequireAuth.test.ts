@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import React from 'react'
 
 // Mock next/navigation
 const mockReplace = vi.fn()

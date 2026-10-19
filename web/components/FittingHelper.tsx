@@ -18,7 +18,7 @@ import { getFabricNormalConfig } from "@/lib/fabric-textures";
  * Uses polygonOffset to push the garment slightly forward in the
  * depth buffer, making it always render "on top of" the body.
  */
-export function applyAntiPenetration(mesh: Mesh): void {
+function applyAntiPenetration(mesh: Mesh): void {
   const materials = Array.isArray(mesh.material)
     ? mesh.material
     : [mesh.material];

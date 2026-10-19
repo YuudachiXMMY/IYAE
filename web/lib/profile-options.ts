@@ -36,23 +36,3 @@ export const OUTFIT_GOALS = [
   "Everyday", "School", "Work", "Formal events",
   "Date nights", "Travel", "Content creation", "Gym/activewear"
 ] as const;
-
-export const AGE_RANGES = [
-  "Under 18", "18-21", "22-25", "26-30", "31+"
-] as const;
-
-export const GENDER_OPTIONS = [
-  "Female", "Male", "Prefer not to say"
-] as const;
-
-export const AVATAR_MODES = [
-  "AI avatar", "Profile photo"
-] as const;
-
-export const AVATAR_PRESETS = [
-  "Runway realism", "Studio mirror", "Creator crop", "Off-duty fit cam"
-] as const;
-
-export const PRICE_PREFERENCE = [
-  "Affordable-first", "Balanced mix", "Luxury-first"
-] as const;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { cn, humanizeNumber } from "@/lib/utils";
+import { humanizeNumber } from "@/lib/utils";
 import type { DashboardTab } from "@/lib/profile-dashboard";
 import type { SocialPost } from "@/lib/community-feed";
 import { PostMedia } from "@/components/community/PostMedia";

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { api, ApiError, type OutfitItem } from "@/lib/api";
+import { api, type OutfitItem } from "@/lib/api";
 import type { RiggingStatusResponse } from "@/lib/api";
 
 interface UseOutfitRiggingStatusResult {
