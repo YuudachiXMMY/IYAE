@@ -13,7 +13,7 @@ export interface SocialProfile {
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
-export const SOCIAL_PROFILES: SocialProfile[] = IS_PROD ? [] : [
+const SOCIAL_PROFILES: SocialProfile[] = IS_PROD ? [] : [
   {
     username: "mila.rue",
     displayName: "Mila Rue",
@@ -87,8 +87,6 @@ export const SOCIAL_PROFILES: SocialProfile[] = IS_PROD ? [] : [
     headline: "Soft power dressing",
   },
 ];
-
-export const DEFAULT_FOLLOWED: string[] = [];
 
 export function findSocialProfile(username: string): SocialProfile | undefined {
   return SOCIAL_PROFILES.find((p) => p.username === username);

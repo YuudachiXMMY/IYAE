@@ -21,7 +21,7 @@ export interface DemoCartItem {
   selectedSize: string;
 }
 
-export const DEMO_CART_STORAGE_KEY = "clossette_demo_cart_items";
+const DEMO_CART_STORAGE_KEY = "clossette_demo_cart_items";
 
 export function loadDemoCartItems(): DemoCartItem[] {
   if (typeof window === "undefined") return [];

@@ -35,21 +35,21 @@ app/           (37 page routes)  --> All "use client", no RSC or server actions
 app/not-found.tsx                --> Custom 404 page (static, no "use client")
 app/error.tsx                    --> Global error boundary ("use client")
 app/layout.tsx                   --> Root layout (AuthProvider -> CartProvider, fonts, metadata)
-components/    (96 total)        --> 77 app-specific (74 .tsx + 3 .ts) + 19 shadcn/ui primitives
+components/    (94 total)        --> 78 app-specific (76 .tsx + 2 .ts) + 16 shadcn/ui primitives
 components/register/ (7)         --> Multi-step registration wizard components
 components/community/ (1)        --> PostMedia (community post media rendering)
 components/profile/ (9)          --> Profile page components (settings, post creation, image picker; 6 of the 9 have no importer -- see the table below)
-components/home/ (6)             --> Landing page sections + shared motion presets (immersive-homepage, hero, about, nav, footer, motion-presets)
+components/home/ (5)             --> Landing page sections (immersive-homepage, hero, about, nav, footer)
 components/outfits/ (5)          --> Manual outfit builder (ProductPickerDialog, ProductSelectCard, OutfitDetailsForm, OutfitBuilderPreview, OutfitSlotSidebarItem)
 components/designer/ (2)         --> Designer studio (PromotionList, PromotionForm)
-components/ui/ (19)              --> shadcn/ui (Radix-based, CLI-generated, DO NOT edit)
+components/ui/ (16)              --> shadcn/ui (Radix-based, CLI-generated, DO NOT edit)
 lib/api.ts                       --> Typed fetch wrapper with auto JWT injection + AbortSignal + auth/rigging/avatar/sizing helpers + outfit types
 lib/auth-context.tsx             --> AuthProvider (JWT lifecycle, hydration via GET /me)
 lib/cart-context.tsx             --> CartProvider (server + demo hybrid cart)
 lib/utils.ts                     --> cn() utility for Tailwind class merging + humanizeNumber() for compact display
 lib/profile-surface.ts           --> Profile surface state (localStorage, cross-tab sync via CustomEvent)
 lib/social-graph.ts              --> Static social profile data (demo users for community)
-lib/profile-options.ts           --> Style aesthetics, fit preferences, colors, brands, budget, goal, avatar constants
+lib/profile-options.ts           --> Style aesthetics, fit preferences, colors, brands, budget, goal constants
 lib/community-feed.ts            --> Community feed state management (posts, likes, saves, comments, follows, lifecycle, create/archive/restore)
 lib/profile-dashboard.ts         --> Profile tab filtering, stats, body measurement coverage
 lib/outfit-slots.ts              --> Outfit slot constants (top/bottom/shoes/accessory), types (Slot, SlotMap), empty slot factory
@@ -58,11 +58,11 @@ lib/fabric-textures.ts           --> Slot-keyed fabric normal-map config (getFab
 lib/demo-looks.ts                --> Demo saved looks data for development
 lib/brand.ts                     --> Single source of brand values (BRAND: name, tagline, url, mailFrom); consumed by wordmark sites, document title/metadataBase, email subjects, and email-templates.ts
 lib/email-templates.ts           --> Email template utilities (reads copy/sender from BRAND); every interpolation is escaped, including the CTA href
-lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatar, useAvatarStatus, useCommunityState, useReveal, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation, useWeather (13 hooks)
+lib/hooks/                       --> useRequireAuth, useDebounce, useARSupport, useGenerationStatus, useAvatar, useAvatarStatus, useCommunityState, useRiggingStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated, usePoseAnimation, useWeather (16 hooks)
 middleware.ts                    --> CSP headers + Permissions-Policy (camera on AR routes only)
 public/assets/                   --> Static assets (product placeholder SVG)
 public/models/                   --> 3D model files (demo-outfit.glb for DemoOutfitModel, default-avatar.glb for guest avatar, poses/ directory for pose animation GLBs)
-__tests__/                       --> Vitest test suite (18 files, 234 cases, jsdom environment)
+__tests__/                       --> Vitest test suite (54 files, 597 cases, jsdom environment)
 e2e/                             --> Playwright E2E specs
 ```
 
@@ -170,7 +170,7 @@ e2e/                             --> Playwright E2E specs
 | ARViewer | WebXR AR session with hit testing |
 | SmartARViewer | Auto-detects device capability, routes to appropriate viewer; passes `previewImageUrl` through to the desktop AvatarViewer |
 
-### Home (`components/home/`, 6)
+### Home (`components/home/`, 5)
 
 `app/page.tsx` renders `ImmersiveHomepage`, which composes exactly
 `HeroSection` + `AboutSection` + `LandingFooter`. The eleven sections of the
@@ -187,7 +187,6 @@ them from history if the sections are wanted back.
 | AboutSection | Editorial about block on the immersive homepage |
 | LandingNav | Landing page dedicated navigation (used by `app/design`) |
 | LandingFooter | Landing page dedicated footer |
-| motion-presets | Shared motion presets: CTA_SPRING, SOFT_SPRING, EASE_OUT_EXPO, textStagger, textChild, fadeUp |
 
 ### Community (`components/community/`, 1)
 
@@ -244,9 +243,9 @@ decide whether to wire them up or drop them.
 | StepAvatar | Avatar mode and preset selection |
 | StepComplete | Registration completion confirmation |
 
-### shadcn/ui Primitives (19, do NOT edit manually)
+### shadcn/ui Primitives (16, do NOT edit manually)
 
-button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, textarea, scroll-area, avatar, alert, separator, sheet, dropdown-menu, radio-group, sonner
+button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, textarea, scroll-area, separator, sheet, dropdown-menu, sonner
 
 ## Key Dependencies
 
@@ -335,7 +334,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Suspense boundaries**: Pages that use `useSearchParams()` wrap the content component in `<Suspense>` to avoid the Next.js 16 hydration bailout (see `products/page.tsx` for reference pattern)
 - **Error boundaries**: Global `error.tsx` catches runtime errors with a reset button; `not-found.tsx` provides a custom 404 page
 - **Dynamic categories**: `SearchFilterBar` fetches categories from `/api/products/categories` on mount using `AbortController` for cleanup; falls back to hardcoded list on error
-- **Community feed**: `community-feed.ts` manages social posts with immutable state updates (toggleLike, toggleSave, toggleRepost, addComment, addReply, requestDelete, pruneDeletedPosts, createPost, archivePost, restorePost, addPostToState); state persisted to localStorage per user; `social-graph.ts` provides static demo profiles; `profile-options.ts` exports style/color/brand/budget/goal/fit/avatar constants used by registration wizard and preferences page
+- **Community feed**: `community-feed.ts` manages social posts with immutable state updates (toggleLike, toggleSave, toggleRepost, addComment, addReply, requestDelete, pruneDeletedPosts, createPost, archivePost, restorePost, addPostToState); state persisted to localStorage per user; `social-graph.ts` provides static demo profiles; `profile-options.ts` exports style/color/brand/budget/goal/fit constants used by registration wizard and preferences page
 - **Profile surface**: `profile-surface.ts` provides `useProfileSurface()` hook for cross-tab synchronized profile state (avatar, banner, bio) via CustomEvent + localStorage
 - **Floating AI stylist**: `floating-ai-stylist.tsx` provides a persistent chat widget that creates/reuses AI chat sessions; hidden on /login, /register, /chat routes
 - **Community state hook**: `useCommunityState` hook encapsulates community state management (load, save, cross-tab sync, post CRUD, follow toggle, archive/restore) for use by dashboard and community pages
@@ -358,7 +357,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 - **Test directory**: `__tests__/` (not `__tests__` inside `app/` or `lib/`)
 - **Pattern**: `__tests__/**/*.test.{ts,tsx}`
 - **Lint**: ESLint via `npm run lint`
-- **Current state**: 48 test files, 529 test cases (measured — `npx vitest run`). The inventory below lists 22 of those files; it has never been complete, so treat a missing row as undocumented, not as a missing test.
+- **Current state**: 54 test files, 597 test cases (measured — `npx vitest run`). The inventory below lists 22 of those files; it has never been complete, so treat a missing row as undocumented, not as a missing test.
 
 ### Test Inventory
 
@@ -405,7 +404,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 
 - All page components (33 routes)
 - All app-specific components (most -- FittingHelper, SizeSelector, RecommendedSizeHint, ProductForm now tested)
-- Custom hooks (useARSupport, useCommunityState, useAvatarStatus, useReveal, useRiggingStatus, usePoseAnimation -- useRequireAuth, useDebounce, useGenerationStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated now tested)
+- Custom hooks (useARSupport, useCommunityState, useAvatarStatus, useRiggingStatus, usePoseAnimation -- useRequireAuth, useDebounce, useGenerationStatus, useOutfitRiggingStatus, useRedirectIfAuthenticated now tested)
 - 3D/AR components (AvatarViewer, ARViewer, SmartARViewer, ModelViewer, DemoOutfitModel)
 - Community/profile lib modules (social-graph.ts, profile-options.ts, demo-looks.ts, email-templates.ts, brand.ts -- profile-surface.ts, profile-dashboard.ts, community-feed.ts now tested; middleware now tested)
 - E2E: cart flow, checkout, chat, designer studio, 3D/AR features, community (registration wizard and pose selector now tested)
@@ -465,7 +464,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `lib/utils.ts` | cn() class merging + humanizeNumber() number formatting |
 | `lib/profile-surface.ts` | Profile surface state with cross-tab sync |
 | `lib/social-graph.ts` | Static social profile data for community demo |
-| `lib/profile-options.ts` | Style/color/brand/budget/goal/fit/avatar option constants |
+| `lib/profile-options.ts` | Style/color/brand/budget/goal/fit option constants |
 | `lib/community-feed.ts` | Community feed state management (posts, likes, follows, comments, create/archive/restore) |
 | `lib/profile-dashboard.ts` | Profile tab filtering, stats, body measurement coverage |
 | `lib/demo-looks.ts` | Demo saved looks data for development |
@@ -483,7 +482,6 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 | `components/PoseSelector.tsx` | Pose preset selector strip for AvatarViewer |
 | `components/SizeSelector.tsx` | Cloth size selection button group |
 | `components/RecommendedSizeHint.tsx` | Presentational recommended-size hint (renders nothing when basis is NONE) |
-| `components/home/motion-presets.ts` | Shared spring/easing presets for landing animations |
 | `lib/demo-cart.ts` | The demo cart's storage key + load/save/clear. Its own module because `cart-context` imports `auth-context` and both need the key |
 | `middleware.ts` | CSP headers and camera permissions |
 | `next.config.ts` | API proxy configuration |
@@ -500,6 +498,7 @@ button, card, input, label, select, badge, skeleton, tabs, dialog, checkbox, tex
 
 | Date | Action |
 |------|--------|
+| 2026-10-19 | **Dead-code sweep (web half).** Detected with `knip` + `eslint`, each removal verified against the full suite (597 cases across 54 files, unchanged start to finish), `tsc --noEmit`, and `npm run build`; eslint warnings 17 → 12, still 0 errors. Deleted with no importer anywhere: `lib/hooks/useReveal.ts`, `components/home/motion-presets.ts`, and `components/ui/{alert,avatar,radio-group}.tsx` — the last three taking `@radix-ui/react-avatar` and `@radix-ui/react-radio-group` with them, since those packages existed only for the primitives. The `Avatar` matches elsewhere in the tree are the unrelated 3D-avatar feature, and nothing reaches `components/ui` through a `dynamic(() => import(...))`, both checked before deleting. `@types/dompurify` dropped (dompurify 3.4.16 declares its own types via its exports map, so the stub was inert), and `postcss` **added** to devDependencies — `__tests__/a11y/dark-mode-plumbing.test.ts` imports it directly while it resolved only transitively. Symbols: `AGE_RANGES`/`GENDER_OPTIONS`/`AVATAR_MODES`/`AVATAR_PRESETS`/`PRICE_PREFERENCE`, `statusBadgeClass` (whose removal made `status.ts`'s `cn` import dead too), `isDemoOutfitId`/`saveDemoLook`/`clearDemoLooks` (+ the now-single-caller `generateDemoId` and `saveDemoLooksToStorage` folded into `removeDemoLook`), and `DEFAULT_FOLLOWED`. Four more were demoted to module-private rather than deleted, being used inside their own file: `STATUS_TONE`, `SOCIAL_PROFILES`, `DEMO_CART_STORAGE_KEY`, `applyAntiPenetration`. In `e2e/`: `register-wizard.spec.ts` carried a byte-identical copy of `seed-users.ts`'s `uniqueEmail` and now imports it, `session.ts` lost the never-called `signInAndVisit`, and `TOKEN_KEY`/`tokenFor` stopped being exported. Plus the five unused imports eslint had been reporting (`waitFor`, `React`, `OutfitItem`, `cn`, `ApiError`). **Not touched:** the six UNWIRED `profile/` components (2026-10-10 decision), the unused `components/ui` re-exports (CLI-generated surface), `ProductListItem` (documented keep for its `Product` type), `SEED_DOMAIN` (fixture contract), and the nine types knip calls unused in `api.ts`/`community-feed.ts` — every one is a field type of another exported interface, so they are reachable shapes, not dead code. Counts in this file were re-measured while syncing and had drifted on their own: components 96 → 94 total (78 app-specific + 16 ui), home 6 → 5, hooks 13 → 16 (never updated as hooks were added), tests 48 files/529 cases → 54/597. |
 | 2026-10-10 | **Dark mode made functional.** It had never rendered: Tailwind 4.3 resolves a theme value into the utility it generates, so `@theme inline { --color-background: #ffffff }` compiled to `.bg-background { background-color: #ffffff }` — a literal the `.dark` block could not reach. Dropping `inline` does not change that (measured on 4.3.0; both forms inline). On top of that no toggle was mounted (`theme-toggle` was deleted as dead code earlier the same day) and `enableSystem` was false, so the `.dark` class could not be applied by anyone either. `globals.css` restructured to the shape shadcn ships for v4 — raw values in `:root`/`.dark`, `@theme inline` mapping `--color-*` onto `var()` — which also makes the 41 raw `var(--color-*)` inline-style call sites dark-correct, as they were not before. **Five AA failures that nobody could see** were fixed in the process: `#ffffff` on `bg-primary` (4.36), on `bg-destructive` (3.76), the `bg-destructive/10` error banner in 27 files (4.33), and `text-brand` on `bg-background`/`bg-card` (4.13 / 3.66). Dark `--brand`/`--primary`/`--ring` `#cb4d6d`→`#d46b86` with an ink foreground, `--destructive` `#ef4444`→`#f15858` likewise, `landing-tone`/`accent`/`highlight` tracking brand — because the token is used **both** as a surface and as a text colour, and in dark those constraints have no overlap, which is also why the ten `bg-brand text-white` sites had to become `text-primary-foreground`. Three gradient-tile icons on `/design` were white on a cream→rose gradient in dark; same fix. **`shadow-heavy` never existed**: `--shadow-heavy-color` was defined (with a dark override) but not `--shadow-heavy`, so seven files’ `hover:shadow-heavy` emitted nothing in either theme. Two `bg-paper` buttons hovered to `bg-landing-surface`, dark in dark mode, putting ink text at 1.3:1 — new theme-invariant `--color-paper-hover`. `theme-toggle` restored (reading `resolvedTheme`, not `theme`) and mounted in `SiteHeader`, reaching 37 surfaces; `/design` keeps its own `LandingNav` and has no toggle, though the choice persists into it. New `__tests__/a11y/dark-mode-plumbing.test.ts` compiles the real `globals.css` and asserts the output shape, since the source is not where the bug was visible; `token-contrast.test.ts` gains the whole dark palette. **36 of the 38 new cases were measured failing against the old `globals.css`.** `e2e/a11y.spec.ts` gains a dark axe pass over the authenticated routes plus a toggle test. Verified in a real browser: every themed utility responds to `.dark`, and a contrast sweep of 10 public routes found 0 text below AA in dark. Web tests 435→495 / 43→44 files. eslint 0 errors (15 warnings, unchanged). |
 | 2026-10-10 | Effect-cleanup pass on the next three #40 carry-forward defects. `app/verify-email/page.tsx`: the 3s redirect timer now dies with the effect, and the verification POST is held in a ref — the token is single-use, so the dev StrictMode replay sent a second request that came back `Invalid verification token` and left the surviving effect instance showing "Verification failed" to a user who *was* verified. `app/products/page.tsx`: `AbortController` + cleanup, with every state commit gated on `signal.aborted`; previously a late page>0 response appended rows from an abandoned filter, its `finally` wrote a stale `loadedQuery` (permanently sticking LOAD MORE on "LOADING…", since `loading` is derived from it), and a superseded request's *rejection* blanked a grid that had loaded fine. `lib/hooks/useCommunityState.ts` now exports `loadCommunityStateFor` + `useCommunityStatePersistence`, which `app/community/page.tsx` uses instead of its verbatim copies of the seeding call and persist effect — the two surfaces share one `clossette-community-state-<userId>` entry, so the seeding fallbacks had to stop being two independent copies (the page's redundant `styleAesthetics` cast went with it). Tests 386->404; 8 of the 18 new cases verified to fail against the old implementations, the 6 `useCommunityState` ones being a characterization baseline that passes either side of the refactor |
 | 2026-10-10 | `lib/cart-context.tsx` demo-cart persistence moved out of the `setDemoItems` updaters into an effect that mirrors committed state (identity-guarded, so neither mount nor StrictMode's double-invoked mount effect writes). An updater must be pure — React double-invokes it under StrictMode and replays it on a later render, so the old in-updater `saveDemoItems()` wrote twice per change and could write for a render React discarded. `generateDemoId()` (`-floor(Date.now() + random * 1000)`) replaced by `nextDemoId(prev)` = one below the lowest id in the list: the clock-based id changed on every re-invocation, and its random term spans a full second so two items added within a second could share an id — which is the React key *and* what `removeDemoItem` matches on. Tests 380->386 (3 of the 6 verified to fail against the old implementation) |

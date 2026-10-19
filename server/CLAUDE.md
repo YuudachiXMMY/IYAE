@@ -37,7 +37,7 @@ ai/          (7)  --> Pluggable AI provider system (interface, factory, exceptio
 security/    (3)  --> JWT filter + token provider + UserDetailsService
 config/     (15)  --> SecurityConfig, CorsConfig, AIConfig, SchedulerConfig, GlobalExceptionHandler, DataSeeder, CatalogSeeder, GlbAssetInitializer, RateLimitFilter, WebMvcConfig, AdminBootstrap, ProductionConfigValidator, BrandProperties / RateLimitProperties / AnalyticsProperties (@ConfigurationProperties)
 util/        (1)  --> GlbPlaceholderGenerator (minimal GLB file generation)
-test/       (83)  --> 79 JUnit 5 + Mockito test classes + 4 test support (715 methods total)
+test/       (82)  --> 79 JUnit 5 + Mockito test classes + 3 test support (730 methods total)
 ```
 
 ## API Endpoints (External Interface)
@@ -381,7 +381,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 - **Framework**: JUnit 5 + Mockito + MockMvc + AssertJ (via `spring-boot-starter-test`)
 - **Test profile**: `application-test.yml` (H2 in-memory, Flyway disabled, mock AI)
 - **Test directory**: `server/src/test/java/com/iyae/`
-- **Current state**: 79 test classes, 715 test methods (+ 4 test support files)
+- **Current state**: 79 test classes, 730 test methods (+ 3 test support files)
 
 ### Test Inventory
 
@@ -493,6 +493,7 @@ Active tasks (PENDING/RUNNING) for the same garment asset are superseded (set to
 
 | Date | Action |
 |------|--------|
+| 2026-10-19 | **Dead-code sweep (server half).** Deleted `src/test/java/com/iyae/testsupport/MockAuthenticationFactory.java` — a complete test-support class (`authenticatedBuyer`/`authenticatedDesigner`/`withUser`) with no reference in any of the 324 Java files, superseded in practice by the Spring Security test annotations the controller slices use — and three unused imports (`java.util.List` in `AuthServiceTest`, `java.util.Collections` in `CartResponse`, `java.util.stream.Stream` in `OutfitService`). Test support 4 → 3; the suite is 730 methods across 79 classes with 0 failures both before and after, measured with the cached Gradle 8.10 since `gradle-wrapper.jar` is gitignored. **The zero-reference type scan written for this pass is recorded here as a dead end, not a backlog:** besides the test classes JUnit discovers by annotation, its only main-source hits were `AIConfig`, `CorsConfig` and `DefaultStripeCheckoutGateway` — a `@Configuration` pair found by component scan and an implementation injected by interface type. Name-reference analysis cannot see Spring's wiring, so every one of those is a false positive and acting on them would have removed live beans with no compile error. Unused *imports*, by contrast, are decidable from the file alone and compiler-verified, which is why that is the only Java signal acted on. |
 | 2026-06-03 | Doc sync: suggestion chips, saved look items, avatar gender mapping; tests 17->18 files / 146->159 methods |
 | 2026-06-07 | Major doc sync: Stripe checkout (V9), tests 18->48 files / 159->333 methods (20 controller + 11 service tests); Resend email integration |
 | 2026-06-08 | Quality audit: corrected MAIL_FROM default `.com`->`.ca`, trimmed changelog |

@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-
 /**
  * Semantic status tones. Each maps to a token pair defined in globals.css
  * (`--color-success/warning/info/destructive` + `bg-muted` for neutral).
@@ -23,7 +21,7 @@ export const TONE_CLASS: Record<StatusTone, string> = {
  * status maps that were previously duplicated across routes. Extend here (not
  * per-route) when a new status string appears. Keys are matched lowercase.
  */
-export const STATUS_TONE: Record<string, StatusTone> = {
+const STATUS_TONE: Record<string, StatusTone> = {
   // order lifecycle
   pending: "warning",
   processing: "info",
@@ -48,13 +46,4 @@ export const STATUS_TONE: Record<string, StatusTone> = {
 export function toneForStatus(status: string | null | undefined): StatusTone {
   if (!status) return "neutral";
   return STATUS_TONE[status.toLowerCase()] ?? "neutral";
-}
-
-/** Full badge className for a status pill; merges any extra classes last. */
-export function statusBadgeClass(status: string | null | undefined, className?: string): string {
-  return cn(
-    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-    TONE_CLASS[toneForStatus(status)],
-    className,
-  );
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { api, ApiError, type OutfitItem, type OutfitDetail } from "@/lib/api";
+import { api, ApiError, type OutfitDetail } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks/useRequireAuth";
 import { SiteHeader } from "@/components/design-system/SiteHeader";
 import { Skeleton } from "@/components/ui/skeleton";

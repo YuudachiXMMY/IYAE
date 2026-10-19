@@ -20,7 +20,7 @@ import { SEED_USERS, SEED_PASSWORD } from './seed-users';
 const API_URL = process.env.PLAYWRIGHT_API_URL ?? 'http://localhost:3001';
 
 /** The app reads its JWT from this key — note the pre-rebrand name. */
-export const TOKEN_KEY = 'clossette_token';
+const TOKEN_KEY = 'clossette_token';
 
 export type SeedRole = keyof typeof SEED_USERS;
 
@@ -73,7 +73,7 @@ async function requestToken(role: SeedRole): Promise<string> {
   );
 }
 
-export function tokenFor(role: SeedRole): Promise<string> {
+function tokenFor(role: SeedRole): Promise<string> {
   const cached = tokenCache.get(role);
   if (cached) return cached;
 
@@ -145,14 +145,4 @@ export async function apiAs<T>(
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
-}
-
-/** `signIn` plus a landing navigation, mirroring what a form login left behind. */
-export async function signInAndVisit(
-  page: Page,
-  role: SeedRole,
-  route = '/dashboard',
-): Promise<void> {
-  await signIn(page, role);
-  await page.goto(route);
 }

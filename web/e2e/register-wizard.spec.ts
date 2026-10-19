@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { SEED_USERS, SEED_PASSWORD } from './seed-users';
+import { SEED_USERS, SEED_PASSWORD, uniqueEmail } from './seed-users';
 
 /**
  * The step CTA is no longer a single "Next" label: `CTA_LABEL` in
@@ -14,10 +14,6 @@ function cta(page: Page): Locator {
 /** The wizard step labels collide with SiteHeader chrome, so scope to <main>. */
 function wizardLabel(page: Page, label: string): Locator {
   return page.getByRole('main').getByText(label, { exact: true });
-}
-
-function uniqueEmail(): string {
-  return `testuser+${Date.now()}@example.com`;
 }
 
 /**
