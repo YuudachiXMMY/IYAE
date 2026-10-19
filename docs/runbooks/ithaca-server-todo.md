@@ -56,15 +56,20 @@ You also need, and only you have:
 ## Before you start: merge the repo-side fixes
 
 All eleven repo-side fixes this checklist originally listed as pending are **written and pushed**,
-in the infrastructure repo, on branch **`worktree-iyae-deploy-fixes`** (4 commits, base
-`origin/main`). Nothing below depends on an unwritten change any more — but the branch is **not
-merged**, so do this first:
+in the infrastructure repo, on branch **`worktree-iyae-deploy-fixes-v2`** (5 commits, rebased onto
+`origin/main` after PR #42 landed). Nothing below depends on an unwritten change any more — but
+the branch is **not merged**, so do this first:
 
 ```bash
 cd /Users/jadyn/Development/IthacaServer
 git fetch origin
-gh pr create --base main --head worktree-iyae-deploy-fixes --fill   # or merge it however you prefer
+gh pr create --base main --head worktree-iyae-deploy-fixes-v2 --fill   # or merge it however you prefer
 ```
+
+> The `-v2` is because the first push predated PR #42, which relocated clossette's backups out of
+> its app directory. Rebasing onto that changed the right fix for iyae (central tree, not
+> `data/backups/`) and surfaced a live gap in #42 — see step 10. Ignore the older
+> `worktree-iyae-deploy-fixes` branch; it is superseded.
 
 **Verify** — the two things whose absence would otherwise bite you at step 9 and step 10:
 
@@ -87,7 +92,7 @@ What landed, so you know which steps below are now automatic:
 | `AI_PROVIDER=minimax` + empty key failed silently at runtime | `provision.sh` refuses to provision on the unpaired combination |
 | `www.i-yae.com` answered a bare 404 | Traefik router + redirect to the apex |
 | healthcheck was `/api/health` (200 with the DB down) | `/api/health/ready` |
-| `iyae` absent from backup coverage | in `EXPECTED_TARGETS`; unused `_backups/iyae` no longer created |
+| `iyae` absent from backup coverage | dumps moved to the central tree `/opt/apps/_backups/iyae`, chowned to uid 1005, watched as `iyae/central` |
 | nothing noticed the mail certificate expiring | daily `check-cert-expiry.sh` + `/etc/cron.d/cert-expiry` |
 | `ops backup` printed a PROCESS-privilege error every run | `--no-tablespaces` |
 
@@ -644,39 +649,62 @@ server log.
 
 ---
 
-## 10. Verify the backup directory's ownership
+## 10. Verify the backup directory's ownership — and fix clossette's while you are here
 
-**Why:** the db-backup sidecar runs as the image's `appuser` (uid 1005), so
-`./data/backups/mysql` on the host must be writable by 1005 — otherwise every dump fails with
-*permission denied* AFTER authenticating, while the container stays `Up` with restart count 0.
-That is the 2026-08-20 incident on this very host. `provision.sh` deliberately prunes `data/` from
-both of its chown passes (it holds container-owned volume data), which is correct and is also why
-nothing used to create this directory: Docker auto-created it `root:root` at first `up`.
+**Why:** the db-backup sidecar runs as the image's `appuser` (uid 1005), so its bind source must
+be writable by 1005 — otherwise every dump fails with *permission denied* AFTER authenticating,
+while the container stays `Up` with restart count 0. That is the 2026-08-20 incident on this very
+host, and nothing in the deploy path used to chown that directory.
+
+iyae's dumps go to **`/opt/apps/_backups/iyae`**, the central tree outside the app directory, not
+to `data/backups/` inside it — because the 2026-09-23 total data loss took an app's data and its
+same-directory backups together. clossette moved there on 2026-10-18 and iyae was pointed there
+before its first deploy.
 
 **This is now done for you** — `BACKUP_DIR_UID="1005"` in `apps/iyae/app.env` makes `provision.sh`
-create and chown it before `up`, and step 9 printed
-`Backup dir /opt/apps/iyae/data/backups/mysql owned by 1005`. So this step is a check, not a fix.
-
-If you provisioned before merging the branch, or the line is missing, do it by hand:
+chown it before `up`, and step 9 printed
+`Backup dir /opt/apps/_backups/iyae owned by 1005`. So this step is a check, not a fix:
 
 ```bash
-ssh ithacaDeploy
-sudo mkdir -p /opt/apps/iyae/data/backups/mysql
-sudo chown -R 1005:1005 /opt/apps/iyae/data/backups/mysql
-sudo chmod 750 /opt/apps/iyae/data/backups/mysql
+ssh ithacaDeploy "stat -c '%u:%g %a' /opt/apps/_backups/iyae"   # expect 1005:1005 750
+```
+
+**clossette needs a one-off, and it is urgent-ish.** Its backups were relocated to the central
+tree on 2026-10-18 without anything chowning the new directory, so its daily dumps have been
+failing since — silently, container at `Up`. The same `BACKUP_DIR_UID` line is now in its
+`app.env`, but that only takes effect on its next provision, so do it by hand now:
+
+```bash
+ssh ithacaDeploy '
+  sudo chown -R 1005:1005 /opt/apps/_backups/clossette
+  sudo chmod 750 /opt/apps/_backups/clossette
+'
+ssh -i keys/clossette app-clossette@2.24.197.12 'ops restart db-backup'
+# then, after a minute or two:
+ssh ithacaDeploy 'sudo ls -l /opt/apps/_backups/clossette | tail -3'
+```
+
+If you provisioned iyae before merging the branch, the same shape applies to it:
+
+```bash
+ssh ithacaDeploy '
+  sudo mkdir -p /opt/apps/_backups/iyae
+  sudo chown -R 1005:1005 /opt/apps/_backups/iyae
+  sudo chmod 750 /opt/apps/_backups/iyae
+'
 sudo /opt/apps/.control/iyae/docker-compose-wrapper.sh restart db-backup
 ```
 
 **Verify:**
 
 ```bash
-ssh ithacaDeploy "stat -c '%u:%g %a' /opt/apps/iyae/data/backups/mysql"
+ssh ithacaDeploy "stat -c '%u:%g %a' /opt/apps/_backups/iyae"
 # expect: 1005:1005 750
 
 ssh ithacaDeploy 'sudo docker logs --tail 50 iyae-db-backup 2>&1 | grep -iE "denied|permission|error"'
 # expect no output
 
-ssh ithacaDeploy 'sudo ls -l /opt/apps/iyae/data/backups/mysql/'
+ssh ithacaDeploy 'sudo ls -l /opt/apps/_backups/iyae/'
 # the sidecar dumps once on start, so expect a *.tgz within a minute or two
 ```
 
@@ -864,14 +892,19 @@ ssh -i keys/iyae app-iyae@2.24.197.12 'ops restore'     # with no argument, list
 ```
 
 Expect `ops backup` to print a `mysqldump: Error: … PROCESS privilege(s) … when trying to dump
-tablespaces` line. **The dump still succeeds** — the schema is pure InnoDB and that query is
-NDB-only. It is noise from the schema-scoped `iyae` user, flagged for a repo fix.
+tablespaces` line — unless the merged branch's `--no-tablespaces` is in place, which removes it.
+Either way **the dump succeeds**: the schema is pure InnoDB and that query is NDB-only, so the
+line was always noise from the schema-scoped `iyae` user.
 
 Two separate things are being checked here, and they do **not** corroborate each other:
 
-- `ops backup` writes to `/opt/apps/iyae/backups` — the manual archive.
-- the sidecar writes to `/opt/apps/iyae/data/backups/mysql` — the automated daily dump, and the
-  **only** one the freshness monitor scans.
+- `ops backup` writes to `/opt/apps/iyae/backups` — the manual archive, *inside* the app dir.
+- the sidecar writes to `/opt/apps/_backups/iyae` — the automated daily dump, in the central tree
+  outside the app dir, and the **only** one the freshness monitor scans (as `iyae/central`).
+
+That asymmetry is deliberate and worth remembering: a `rm -rf /opt/apps/iyae` would take the
+manual archives with it and leave the automated ones intact. That is the whole reason the central
+tree exists.
 
 ```bash
 # Must be run ON THE HOST. Run locally it scans a non-existent /opt/apps and uses GNU
@@ -879,9 +912,10 @@ Two separate things are being checked here, and they do **not** corroborate each
 ssh ithacaDeploy 'sudo /opt/apps/scripts/check-backup-freshness.sh; echo "exit=$?"'
 ```
 
-**Verify:** an `OK     iyae/mysql: fresh dump (…)` line. A `STALE  iyae/mysql: no dump files at
-all` — or `MISSING iyae/mysql` — means step 10 did not take effect; `iyae/mysql` is now in
-`EXPECTED_TARGETS`, so the run exits non-zero rather than quietly omitting the app.
+**Verify:** an `OK     iyae/central: fresh dump (…)` line, and `OK     clossette/central` beside
+it. A `STALE` or `MISSING iyae/central` means step 10 did not take effect; `iyae/central` is in
+`EXPECTED_TARGETS`, so the run exits non-zero rather than quietly omitting the app. If
+`clossette/central` is the one failing, that is the pre-existing breakage step 10 has you fix.
 
 > **Known gap:** the copy of this monitor installed at `/opt/apps/scripts/` may still be the
 > 2026-08-20 version, which has none of the `_backups` logic and reports only on `clossette`. If the
@@ -893,7 +927,7 @@ Optional but cheap, a real restore test into a throwaway schema:
 
 ```bash
 ssh ithacaDeploy
-DUMP=$(sudo ls -t /opt/apps/iyae/data/backups/mysql/*.tgz | head -1); echo "$DUMP"
+DUMP=$(sudo ls -t /opt/apps/_backups/iyae/*.tgz | head -1); echo "$DUMP"
 sudo docker exec -i iyae-db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root -e "CREATE DATABASE iyae_restore_test"'
 sudo tar -xzOf "$DUMP" | sudo docker exec -i iyae-db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root iyae_restore_test'
 sudo docker exec -i iyae-db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root --batch -e "
@@ -960,7 +994,7 @@ ssh ithacaDeploy '
 ```bash
 ssh ithacaDeploy 'sudo /opt/apps/scripts/check-cert-expiry.sh; echo "exit=$?"'
 ssh ithacaDeploy 'sudo /opt/apps/scripts/check-backup-freshness.sh | grep iyae'
-# the second must mention iyae/mysql — if it does not, the stale copy is still installed
+# the second must mention iyae/central — if it does not, the stale copy is still installed
 ```
 
 Then create a **Push** monitor, and record its URL in `apps/iyae/app.env` so re-provisioning keeps
